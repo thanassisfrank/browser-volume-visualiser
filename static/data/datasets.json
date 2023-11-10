@@ -1,0 +1,205 @@
+{
+	"engine": {
+		"name": "engine",
+		"path": "data/engine_256x256x128_uint8.raw",
+		"type": "raw",
+		"complexAvailable": true,
+		"size": {
+			"x": 128,
+			"y": 256,
+			"z": 256
+		},
+		"blocksSize": {
+			"x": 32,
+			"y": 64,
+			"z": 64
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"limits": [
+			0,
+			255
+		],
+		"dataType": "uint8"
+	},
+	"magnetic": {
+		"name": "magnetic",
+		"path": "data/magnetic_reconnection_512x512x512_float32.raw",
+		"type": "raw",
+		"complexAvailable": true,
+		"size": {
+			"x": 512,
+			"y": 512,
+			"z": 512
+		},
+		"blocksSize": {
+			"x": 128,
+			"y": 128,
+			"z": 128
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"limits": [
+			0.018786557,
+			24.195253
+		],
+		"dataType": "float32"
+	},
+	"silicium": {
+		"name": "silicium",
+		"path": "data/silicium_98x34x34_uint8.raw",
+		"type": "raw",
+		"complexAvailable": true,
+		"size": {
+			"x": 34,
+			"y": 34,
+			"z": 98
+		},
+		"blocksSize": {
+			"x": 9,
+			"y": 9,
+			"z": 25
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"limits": [
+			0.0,
+			255.0
+		],
+		"dataType": "uint8",
+		"origin": [
+			16.5,
+			16.5,
+			48.5
+		]
+	},
+	"turbulence": {
+		"name": "Turbulence",
+		"path": "data/tacc_turbulence_256x256x256_float32.raw",
+		"type": "raw",
+		"size": {
+			"x": 256,
+			"y": 256,
+			"z": 256
+		},
+		"blocksSize": {
+			"x": 64,
+			"y": 64,
+			"z": 64
+		},
+		"limits": [
+			0,
+			50
+		],
+		"dataType": "float32"
+	},
+	"heptane": {
+		"name": "Heptane",
+		"path": "data/csafe_heptane_302x302x302_uint8.raw",
+		"type": "raw",
+		"size": {
+			"x": 302,
+			"y": 302,
+			"z": 302
+		},
+		"blocksSize": {
+			"x": 75,
+			"y": 75,
+			"z": 75
+		},
+		"limits": [
+			0,
+			255
+		],
+		"dataType": "uint8"
+	},
+	"pancreas": {
+		"name": "Pancreas",
+		"path": "data/pancreas_240x512x512_int16.raw",
+		"type": "raw",
+		"complexAvailable": true,
+		"limits": [
+			-1024,
+			2421
+		],
+		"size": {
+			"x": 512,
+			"y": 512,
+			"z": 240
+		},
+		"blocksSize": {
+			"x": 128,
+			"y": 128,
+			"z": 60
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"dataType": "int16"
+	},
+	"bluntfin": {
+		"name": "Blunt fin",
+		"path": "data/bluntfin/",
+		"type": "structuredGrid",
+		"originalFiles": [
+			"bluntfin_0.vts",
+			"bluntfin_1.vts"
+		],
+		"pieces": [
+			{
+				"fileName": "bluntfin_0",
+				"size": {
+					"x": 32,
+					"y": 32,
+					"z": 40
+				},
+				"blocksSize": {
+					"x": 8,
+					"y": 8,
+					"z": 10
+				}
+			},
+			{
+				"fileName": "bluntfin_1",
+				"size": {
+					"x": 32,
+					"y": 32,
+					"z": 40
+				},
+				"blocksSize": {
+					"x": 8,
+					"y": 8,
+					"z": 10
+				}
+			}
+		],
+		"data": {
+			"Density": {
+				"name": "Density",
+				"limits": [
+					0.19259999692440033,
+					4.977499961853027
+				],
+				"dataType": "float32",
+				"components": 1
+			}
+		},
+		"origin": [
+			0,
+			0,
+			0
+		],
+		"complexAvailable": true
+	}
+}

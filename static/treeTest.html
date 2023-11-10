@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>tree test</title>
+    </head>
+    <body>
+        <canvas id="c" style="border: 1px solid black"></canvas>
+        <script type="module">
+            import {buildCellKDTree, get} from "./core/utils.js";
+            var max = [900, 700];
+
+            var canvas = get("c");
+            canvas.width = max[0];
+            canvas.height = max[1];
+            var ctx = canvas.getContext("2d");
+
+            var generateData = () => {
+                // generate a set of testPoints
+                // for (let i = 0; i < 1_000; i++) {
+                //     testPoints.push(
+                //         Math.pow(Math.random(), 2)*max[0],
+                //         Math.pow(Math.random(), 2)*max[1],
+                //     )
+                // }
+
+                // do a grid
+                var points = [];
+                var connectivity = [];
+                var cellOffsets = [];
+                var cellTypes = [];
+                
+                var cols = 30;
+                var rows = 30;
+                for (let i = 0; i < rows; i++) { // go through the rows
+                    for (let j = 0; j < cols; j++) { // so through the points on the rows
+                        var newPoint = [j*20 + Math.random()*7, i*20 + Math.random()*7];
+                        var newIndex = points.length/2;
+                        // make 2 new tris
+                        if (i > 0 && j > 0) {
+                            cellTypes.push(5);
+                            cellOffsets.push(connectivity.length);
+                            connectivity.push(newIndex, newIndex - 1, newIndex - cols - 1);
+
+                            cellTypes.push(5);
+                            cellOffsets.push(connectivity.length);
+                            connectivity.push(newIndex, newIndex - cols, newIndex - cols - 1);
+                        }
+                        
+                        points.push(...newPoint);
+                    }
+                }
+
+                return {
+                    points: points,
+                    cellConnectivity: connectivity,
+                    cellOffsets: cellOffsets,
+                    cellTypes: cellTypes
+                }
+            }
+            
+            var testData = generateData();
+            console.log(testData);
+            var start = performance.now();
+            var tree = buildCellKDTree(testData.points, 2, 7, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
+
+            console.log(`build took: ${performance.now() - start}ms`)
+            // console.log(tree);
+
+            var drawTree = (tree) => {
+                // ... and draw the points
+                var nodeQueue = [
+                    {
+                        ...tree,
+                        box: [[0, 0], [canvas.width, canvas.height]]
+                    }
+                ];
+                while(nodeQueue.length > 0) {
+                    var currNode = nodeQueue.pop();
+                    if (currNode.left) {
+                        // not a leaf, draw the dividing line
+                        if (currNode.splitDimension == 0) {
+                            // cut in the x direction
+                            // ctx.moveTo(currNode.splitVal, currNode.box[0][1]);
+                            // ctx.lineTo(currNode.splitVal, currNode.box[1][1]);
+                            ctx.stroke();
+                            // ...and push children with updated bounds
+                            var leftBox = [
+                                currNode.box[0],
+                                [currNode.splitVal, currNode.box[1][1]]
+                            ];
+                            var rightBox = [
+                                [currNode.splitVal, currNode.box[0][1]],
+                                currNode.box[1],
+                            ];
+                            nodeQueue.push(
+                                {
+                                    ...currNode.left,
+                                    box: leftBox
+                                }, 
+                                {
+                                    ...currNode.right,
+                                    box: rightBox
+                                }
+                            );
+                        } else {
+                            // cut in the y direction
+                            // ctx.moveTo(currNode.box[0][0], currNode.splitVal);
+                            // ctx.lineTo(currNode.box[1][0], currNode.splitVal);
+                            ctx.stroke();
+                            // ...and push children with updated bounds
+                            var leftBox = [
+                                currNode.box[0],
+                                [currNode.box[1][0], currNode.splitVal]
+                            ];
+                            var rightBox = [
+                                [currNode.box[0][0], currNode.splitVal],
+                                currNode.box[1],
+                            ];
+                            nodeQueue.push(
+                                {
+                                    ...currNode.left,
+                                    box: leftBox
+                                }, 
+                                {
+                                    ...currNode.right,
+                                    box: rightBox
+                                }
+                            );
+                        }
+                        
+                    } else {
+                        // leaf, draw the points
+                        var leafCol = "rgb(" + 
+                            Math.floor(Math.random()*255) + ", " + 
+                            Math.floor(Math.random()*255) + ", " + 
+                            Math.floor(Math.random()*255) + ")";
+                        ctx.fillStyle = leafCol;
+                        ctx.strokeStyle = leafCol;
+                        // for (let i = 0; i < currNode.points.length; i += 2) {
+                        //     ctx.fillRect(currNode.points[i] - 2, currNode.points[i + 1] - 2, 4, 4);
+                        // }
+                        // draw the bounds
+                        ctx.strokeRect(
+                            currNode.box[0][0] + 1,
+                            currNode.box[0][1] + 1,
+                            currNode.box[1][0] - currNode.box[0][0] - 1,
+                            currNode.box[1][1] - currNode.box[0][1] - 1
+                        );
+                    }
+                }
+            }
+            
+            var queryTree = (tree, point) => {
+                var box = [[0, 0], [canvas.width, canvas.height]];
+                var currNode = tree;
+                while(currNode.left) {
+                    if (point[currNode.splitDimension] <= currNode.splitVal) {
+                        if (currNode.splitDimension == 0) {
+                            box = [
+                                box[0],
+                                [currNode.splitVal, box[1][1]]
+                            ];
+                        } else {
+                            box = [
+                                box[0],
+                                [box[1][0], currNode.splitVal]
+                            ];
+                        }
+                        currNode = currNode.left;
+                    } else {
+                        if (currNode.splitDimension == 0) {
+                            box = [
+                                [currNode.splitVal, box[0][1]],
+                                box[1],
+                            ];
+                        } else {
+                            box = [
+                                [box[0][0], currNode.splitVal],
+                                box[1],
+                            ];
+                        }
+                        currNode = currNode.right;
+                    }
+                }
+                return {
+                    points: currNode.points,
+                    cells: currNode.cells,
+                    box: box
+                };
+            }
+        
+            
+            drawTree(tree);
+
+            canvas.addEventListener("mousemove", (e) => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                var canvasRect = canvas.getBoundingClientRect();
+                var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
+                var start = performance.now();
+                var result = queryTree(tree, mouseCoords);
+                // console.log(result)
+                // console.log(`query took: ${performance.now() - start}ms`)
+                ctx.strokeStyle = "#ff0000";
+                ctx.fillStyle = "#ff0000";
+                // draw the points
+                for (let i = 0; i < result.points.length; i+=2) {
+                    ctx.fillRect(result.points[i] - 2, result.points[i + 1] - 2, 4, 4);
+                }
+                // draw the cells
+                for (let i = 0; i < result.cells.length; i++) {
+                    if (testData.cellTypes[i] == 5) {
+                        // tri
+                        var cellOffset = testData.cellOffsets[result.cells[i]];
+                        var pointIndices = testData.cellConnectivity.slice(cellOffset, cellOffset + 3);
+                        // console.log(pointIndices);
+                        let triPath = new Path2D();
+                        // console.log(pointIndices);
+                        triPath.moveTo(testData.points[2 * pointIndices[0]], testData.points[2 * pointIndices[0] + 1]);
+                        triPath.lineTo(testData.points[2 * pointIndices[1]], testData.points[2 * pointIndices[1] + 1]);
+                        triPath.lineTo(testData.points[2 * pointIndices[2]], testData.points[2 * pointIndices[2] + 1]);
+                        triPath.closePath();
+                        ctx.stroke(triPath);
+                    }
+                }
+
+                // draw the bounds
+                ctx.strokeRect(
+                    result.box[0][0],
+                    result.box[0][1],
+                    result.box[1][0] - result.box[0][0],
+                    result.box[1][1] - result.box[0][1]
+                );
+
+                // console.log(result.points.length/2);
+
+                ctx.fillStyle = "black";
+                ctx.fillRect(...mouseCoords, 1, 1);
+
+            });
+
+            canvas.addEventListener("mouseout", (e) => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawTree(tree);
+            });
+        </script>
+    </body>
+</html>

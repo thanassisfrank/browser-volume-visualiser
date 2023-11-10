@@ -1,0 +1,38 @@
+{
+    "js": {
+        "encoding": "utf8",
+        "contentType": "text/javascript"
+    },
+    "json": {
+        "encoding": "utf8",
+        "contentType": "application/json"
+    },
+    "wasm": {
+        "encoding": null,
+        "contentType": "application/wasm"
+    },
+    "wgsl": {
+        "encoding": "utf8",
+        "contentType": "text/plain"
+    },
+    "html": {
+        "encoding": "utf8",
+        "contentType": "text/html"
+    },
+    "css": {
+        "encoding": "utf8",
+        "contentType": "text/css"
+    },
+    "raw": {
+        "encoding": null,
+        "contentType": "application/octet-stream"
+    },
+    "vts": {
+        "encoding": "utf8",
+        "contentType": "text/plain"
+    },
+    "vtp": {
+        "encoding": "utf8",
+        "contentType": "text/plain" 
+    }
+}

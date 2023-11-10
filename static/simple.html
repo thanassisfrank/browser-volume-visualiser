@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple example</title>
+    </head>
+    <body>
+        <script type="module">
+            import {dataManager} from "./core/data.js";
+            import {marcherManager} from "./core/marcher.js";
+            import {setupMarchModule, autoSetMarchModule} from "./core/marchingCubes/march.js";
+
+            // fetch the file that contains the configuration data of the datasets
+            const datasets = await fetch("/data/datasets.json")
+                    .then((res) => res.json())
+            // set it to the dataManager
+            dataManager.setConfigSet(datasets);
+
+            console.log(datasets)
+
+            // automatically chose the best method of marching cubes
+            // webgpu if available, otherwise wasm
+            autoSetMarchModule();
+
+            // setup the marching module
+            await setupMarchModule();
+
+            // create a new data object from one of the entries in the datasets json file
+            // argument is the key of the dataset
+            var data = await dataManager.getDataObj("engine");
+            // create a new object to march the data object
+            var marcher = await marcherManager.create(data);
+
+            // sets the result from marching to always be stored in the marcher's mesh object
+            marcher.setMarchIntoMesh(true);
+            
+            // threshold value
+            var threshold = 120;
+            // the two different methods of marching through the data
+            const fine = false;
+            if (fine) {
+                // marches only blocks that are cut, full resolution
+                marcher.marchFine(threshold);
+            } else {
+                // marches through the entire dataset, may be at a lower resolution
+                await marcher.march(threshold);
+            }
+            
+
+            // returns the mesh objects for the isosurface
+            // each entry is a block in a multiblock dataset
+            // note: currently normals are calculated in the shader so do not appear here
+            var meshes = marcher.getMeshes();
+            console.log(meshes);
+
+        </script>
+    </body>
+</html>
