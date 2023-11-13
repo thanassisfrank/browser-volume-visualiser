@@ -44,134 +44,27 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.uniformBuffer = webGPU.makeBuffer(256, "u cd cs");
 
         shaderCode = await shaderCode;
-        this.meshRenderPipeline = this.createMeshRenderPipeline();
-        this.pointsRenderPipeline =  this.createPointsRenderPipeline();
-        this.linesRenderPipeline = this.createLinesRenderPipeline();
+
+        this.surfaceRenderPass = webGPU.createPass(
+            webGPU.PassTypes.RENDER, 
+            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "triangle-list", indexed: true},
+            [webGPU.bindGroupLayouts.render0],
+            {str: shaderCode, formatObj: {}}
+        );
+        this.pointsRenderPass = webGPU.createPass(
+            webGPU.PassTypes.RENDER, 
+            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "point-list", indexed: false},
+            [webGPU.bindGroupLayouts.render0],
+            {str: shaderCode, formatObj: {}}
+        );
+        this.linesRenderPass = webGPU.createPass(
+            webGPU.PassTypes.RENDER, 
+            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "line-list", indexed: true},
+            [webGPU.bindGroupLayouts.render0],
+            {str: shaderCode, formatObj: {}}
+        );
 
         return this.ctx;
-    }
-
-    this.createMeshRenderPipeline = function() {
-        // compile shader code
-        const shaderModule = webGPU.device.createShaderModule({
-            code: shaderCode
-        });
-
-        const vertexLayout = webGPU.vertexLayouts.positionAndNormal;
-
-        var bindGroupLayout = webGPU.bindGroupLayouts.render0;
-
-        var pipelineLayout = webGPU.device.createPipelineLayout({bindGroupLayouts: [bindGroupLayout]})
-        
-        // pipeline descriptor
-        const pipelineDescriptor = {
-            layout: pipelineLayout,
-            vertex: {
-                module: shaderModule,
-                entryPoint: "vertex_main",
-                buffers: vertexLayout
-            },
-            fragment: {
-                module: shaderModule,
-                entryPoint: "fragment_main",
-                targets: [{
-                    format: "bgra8unorm"
-                }]
-            },
-            primitive: {
-                topology: "triangle-list"
-            },
-            depthStencil: {
-                format: "depth32float",
-                depthWriteEnabled : true,
-                depthCompare: "less"
-            }
-        };
-
-        // create the rendering pipeline
-        return webGPU.device.createRenderPipeline(pipelineDescriptor);
-    }
-
-    this.createPointsRenderPipeline = function() {
-        // compile shader code
-        const shaderModule = webGPU.device.createShaderModule({
-            code: shaderCode
-        });
-
-        const vertexLayout = webGPU.vertexLayouts.positionAndNormal;
-
-        var bindGroupLayout = webGPU.bindGroupLayouts.render0;
-
-        var pipelineLayout = webGPU.device.createPipelineLayout({bindGroupLayouts: [bindGroupLayout]})
-        
-        // pipeline descriptor
-        const pipelineDescriptor = {
-            layout: pipelineLayout,
-            vertex: {
-                module: shaderModule,
-                entryPoint: "vertex_main",
-                buffers: vertexLayout
-            },
-            fragment: {
-                module: shaderModule,
-                entryPoint: "fragment_main",
-                targets: [{
-                    format: "bgra8unorm"
-                }]
-            },
-            primitive: {
-                topology: "point-list"
-            },
-            depthStencil: {
-                format: "depth32float",
-                depthWriteEnabled : true,
-                depthCompare: "less"
-            }
-        };
-
-        // create the rendering pipeline
-        return webGPU.device.createRenderPipeline(pipelineDescriptor);
-    }
-
-    this.createLinesRenderPipeline = function() {
-        // compile shader code
-        const shaderModule = webGPU.device.createShaderModule({
-            code: shaderCode
-        });
-
-        const vertexLayout = webGPU.vertexLayouts.positionAndNormal;
-
-        var bindGroupLayout = webGPU.bindGroupLayouts.render0;
-
-        var pipelineLayout = webGPU.device.createPipelineLayout({bindGroupLayouts: [bindGroupLayout]})
-        
-        // pipeline descriptor
-        const pipelineDescriptor = {
-            layout: pipelineLayout,
-            vertex: {
-                module: shaderModule,
-                entryPoint: "vertex_main",
-                buffers: vertexLayout
-            },
-            fragment: {
-                module: shaderModule,
-                entryPoint: "fragment_main",
-                targets: [{
-                    format: "bgra8unorm"
-                }]
-            },
-            primitive: {
-                topology: "line-list"
-            },
-            depthStencil: {
-                format: "depth32float",
-                depthWriteEnabled : true,
-                depthCompare: "less"
-            }
-        };
-
-        // create the rendering pipeline
-        return webGPU.device.createRenderPipeline(pipelineDescriptor);
     }
 
     this.createBuffers = function() {
@@ -526,14 +419,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             renderableMeshObj.renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info buffer");
         }
         
-        var projMat = camera.projMat;
-        var modelViewMat = camera.getModelViewMat();
         var meshObj = renderableMeshObj.object;
-        // console.log(renderableMeshObj);
         
         if (meshObj.indicesNum == 0 && meshObj.vertsNum == 0) {
             return;
         }
+
+        if (renderableMeshObj.renderMode == renderModes.NONE) return;
 
         var commandEncoder = webGPU.device.createCommandEncoder();
 
@@ -543,44 +435,28 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         ]);        
 
         await commandEncoder;
-        
-        const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
 
-        // for now, only draw a view if it is fully inside the canvas
-        if (box.right >= 0 && box.bottom >= 0 && box.left >= 0 && box.top >= 0) {
-            // will support rect outside the attachment size for V1 of webgpu
-            // https://github.com/gpuweb/gpuweb/issues/373 
-            passEncoder.setViewport(box.left, box.top, box.width, box.height, 0, 1);
-            // clamp to be inside the canvas
-            clampBox(box, this.ctx.canvas.getBoundingClientRect());
-            passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
-
-            if (renderableMeshObj.renderMode == renderModes.POINTS) {
-                // check if the buffers are not destroyed
-                passEncoder.setPipeline(this.pointsRenderPipeline);
-                passEncoder.setVertexBuffer(0, meshObj.buffers.vertex);
-                passEncoder.setVertexBuffer(1, meshObj.buffers.normal);
-                passEncoder.setBindGroup(0, bindGroup0);
-                passEncoder.draw(meshObj.vertsNum);
-                // console.log(meshObj)
-            } else if (renderableMeshObj.renderMode == renderModes.WIREFRAME) {
-                passEncoder.setPipeline(this.linesRenderPipeline);
-                passEncoder.setIndexBuffer(meshObj.buffers.index, "uint32");
-                passEncoder.setVertexBuffer(0, meshObj.buffers.vertex);
-                passEncoder.setVertexBuffer(1, meshObj.buffers.normal);
-                passEncoder.setBindGroup(0, bindGroup0);
-                passEncoder.drawIndexed(meshObj.indicesNum);
-            } else if (renderableMeshObj.renderMode == renderModes.SURFACE){
-                passEncoder.setPipeline(this.meshRenderPipeline);
-                passEncoder.setIndexBuffer(meshObj.buffers.index, "uint32");
-                passEncoder.setVertexBuffer(0, meshObj.buffers.vertex);
-                passEncoder.setVertexBuffer(1, meshObj.buffers.normal);
-                passEncoder.setBindGroup(0, bindGroup0);
-                passEncoder.drawIndexed(meshObj.indicesNum);
-            }
+        var renderPass;
+        if (renderableMeshObj.renderMode == renderModes.POINTS) {
+            renderPass = this.pointsRenderPass;
+            renderPass.vertsNum = meshObj.vertsNum;
+        } else if (renderableMeshObj.renderMode == renderModes.WIREFRAME) {
+            renderPass = this.linesRenderPass;
+            renderPass.indicesCount = meshObj.indicesNum;
+        } else if (renderableMeshObj.renderMode == renderModes.SURFACE){
+            renderPass = this.surfaceRenderPass;
+            renderPass.indicesCount = meshObj.indicesNum;
         }
-        
-        passEncoder.end();
+        renderPass.vertexBuffers[0] = meshObj.buffers.vertex;
+        renderPass.vertexBuffers[1] = meshObj.buffers.normal;
+        renderPass.indexBuffer = meshObj.buffers.index;
+        renderPass.bindGroups[0] = bindGroup0;
+
+        renderPass.descriptor = renderPassDescriptor;
+        renderPass.box = box;
+        renderPass.boundingBox = this.ctx.canvas.getBoundingClientRect();
+
+        commandEncoder = webGPU.encodeGPUPass(commandEncoder, renderPass);
 
         // write uniforms to buffer
         // write global info buffer

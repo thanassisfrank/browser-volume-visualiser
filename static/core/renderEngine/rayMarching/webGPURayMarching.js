@@ -11,8 +11,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     var constsBuffer;
     var constsBindGroup;
-    var rayMarchPipeline;
     var rayMarchBindGroupLayouts;
+
+    var rayMarchPass;
 
     this.passFlags = {
         phong: true,
@@ -60,55 +61,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         // create code
         var rayMarchCode = await webGPU.fetchShader("core/renderEngine/rayMarching/shaders/rayMarch.wgsl");
-        var rayMarchCodeModule = webGPU.device.createShaderModule({code: rayMarchCode});
-        // create the render pipeline
-        const vertexLayout = webGPU.vertexLayouts.justPosition;
 
-        var pipelineLayout = webGPU.device.createPipelineLayout({bindGroupLayouts: rayMarchBindGroupLayouts})
-        
-        // pipeline descriptor
-        const pipelineDescriptor = {
-            layout: pipelineLayout,
-            vertex: {
-                module: rayMarchCodeModule,
-                entryPoint: "vertex_main",
-                buffers: vertexLayout
-            },
-            fragment: {
-                module: rayMarchCodeModule,
-                entryPoint: "fragment_main",
-                targets: [
-                    {
-                        format: "bgra8unorm",
-                        blend: {
-                            color: {
-                                operation: "add",
-                                srcFactor: "src-alpha", 
-                                dstFactor: "one-minus-src-alpha"
-                            },
-                            alpha: {
-                                operation: "add",
-                                srcFactor: "one",
-                                dstFactor: "zero"
+        rayMarchPass = webGPU.createPass(
+            webGPU.PassTypes.RENDER, 
+            {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
+            rayMarchBindGroupLayouts,
+            {str: rayMarchCode, formatObj: {}}
+        );
 
-                            }
-                        }
-                    },
-                ]
-            },
-            primitive: {
-                topology: "triangle-list",
-                cullMode: "none",
-            },
-            depthStencil: {
-                format: "depth32float",
-                depthWriteEnabled : true,
-                depthCompare: "less"
-            }
-        };
-
-        // create the rendering pipeline
-        rayMarchPipeline =  webGPU.device.createRenderPipeline(pipelineDescriptor);
     };
 
     this.setupRayMarch = async function(renderableDataObj) {
@@ -193,31 +153,20 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
 
         var commandEncoder = await device.createCommandEncoder();
-    
-        const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-        passEncoder.setPipeline(rayMarchPipeline);
-    
-        passEncoder.setBindGroup(0, constsBindGroup);
-        passEncoder.setBindGroup(1, passBindGroup);
-
-        // for now, only draw a view if it is fully inside the canvas
-        if (box.right >= 0 && box.bottom >= 0 && box.left >= 0 && box.top >= 0) {
-            // will support rect outside the attachment size for V1 of webgpu
-            // https://github.com/gpuweb/gpuweb/issues/373 
-            passEncoder.setViewport(box.left, box.top, box.width, box.height, 0, 1);
-            // clamp to be inside the canvas
-            clampBox(box, canvas.getBoundingClientRect());
-            passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
-
-            var meshObj = checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)?.object;
-            // console.log(renderableDataObj)
-            passEncoder.setPipeline(rayMarchPipeline);
-            passEncoder.setIndexBuffer(meshObj.buffers.index, "uint32");
-            passEncoder.setVertexBuffer(0, meshObj.buffers.vertex);
-            passEncoder.drawIndexed(meshObj.indicesNum);
-        }
         
-        passEncoder.end();
+        var renderPass = rayMarchPass;
+        renderPass.descriptor = renderPassDescriptor;
+        renderPass.bindGroups = [constsBindGroup, passBindGroup];
+        renderPass.box = box;
+        renderPass.boundingBox = canvas.getBoundingClientRect();
+        
+        var meshObj = checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)?.object;
+        renderPass.vertexBuffers[0] = meshObj.buffers.vertex;
+        renderPass.indexBuffer = meshObj.buffers.index;
+        renderPass.indicesCount = meshObj.indicesNum;
+
+        // encode the render pass
+        webGPU.encodeGPUPass(commandEncoder, rayMarchPass);
 
         // write global info buffer
         device.queue.writeBuffer(
@@ -260,8 +209,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ...renderableDataObj.object.getdMatInv(),
             ])
         );
-        // console.log(renderableDataObj.object.limits)
-        
+
         device.queue.submit([commandEncoder.finish()]);
     }
 }

@@ -1,7 +1,7 @@
 // webGPUBase.js
 // holds utility functions for webgpu, common to both rendering and compute passes
 
-import { stringFormat } from "../utils.js";
+import { stringFormat, clampBox } from "../utils.js";
 import { RenderableObject, RenderableObjectTypes } from "./sceneObjects.js";
 
 
@@ -57,7 +57,12 @@ export function WebGPUBase (verbose) {
         ]
     }
 
-    this.bindGroupLayouts = {}
+    this.bindGroupLayouts = {};
+
+    this.PassTypes = {
+        RENDER: 1,
+        COMPUTE: 2,
+    }
 
     this.getNewBufferId = function(){
         var id = Object.keys(buffers).length;
@@ -231,10 +236,7 @@ export function WebGPUBase (verbose) {
     }
 
     this.generateComputePipeline = function(codeStr, formatObj, bgLayouts) {
-        const codeFormatted = stringFormat(codeStr, formatObj)
-        var module = this.device.createShaderModule({
-            code: codeFormatted
-        });
+        const module = this.createFormattedShaderModule(codeStr, formatObj);
 
         var pipelineLayout = this.device.createPipelineLayout({
             bindGroupLayouts: bgLayouts
@@ -246,6 +248,13 @@ export function WebGPUBase (verbose) {
                 module: module,
                 entryPoint: "main"
             }
+        });
+    }
+
+    this.createFormattedShaderModule = function(codeStr, formatObj) {
+        const codeFormatted = stringFormat(codeStr, formatObj)
+        return this.device.createShaderModule({
+            code: codeFormatted
         });
     }
 
@@ -459,6 +468,101 @@ export function WebGPUBase (verbose) {
     }
     this.getObjectInfoBuffer = function(renderableMeshObj) {
 
+    }
+
+    // creates a pass object
+    this.createPass = function(passType, passOptions, bindGroupLayouts, code) {
+        var pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
+        var shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
+        if (passType = this.PassTypes.RENDER) {
+            // pipeline descriptor
+            var pipelineDescriptor = {
+                layout: pipelineLayout,
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: "vertex_main",
+                    buffers: passOptions.vertexLayout
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: "fragment_main",
+                    targets: [{
+                        format: "bgra8unorm",
+                        blend: {
+                            color: {
+                                operation: "add",
+                                srcFactor: "src-alpha", 
+                                dstFactor: "one-minus-src-alpha"
+                            },
+                            alpha: {
+                                operation: "add",
+                                srcFactor: "one",
+                                dstFactor: "zero"
+                            }
+                        }
+                    }]
+                },
+                primitive: {
+                    topology: passOptions.topology,
+                },
+                depthStencil: {
+                    format: "depth32float",
+                    depthWriteEnabled : true,
+                    depthCompare: "less"
+                }
+            };
+            // create the render pass object
+            return {
+                passType: this.PassTypes.RENDER,
+                descriptor: {},
+                bindGroups: [],
+                vertexBuffers: [],
+                indexed: passOptions.indexed,
+                indexBuffer: null,
+                indicesCount: 0,
+                vertCount: 0,
+                pipeline: this.device.createRenderPipeline(pipelineDescriptor),
+            }
+        } else if (passType == this.PassTypes.COMPUTE) {
+            // create a compute pass
+        } else {
+            // not a valie pass type
+            return;
+        }
+    }
+
+    // encodes a GPU pass onto the command encoder
+    this.encodeGPUPass = function(commandEncoder, passObj) {
+        const passEncoder = commandEncoder.beginRenderPass(passObj.descriptor);
+
+        if (passObj.passType == this.PassTypes.RENDER) {
+            var box = passObj.box;
+            // for now, only draw a view if it is fully inside the canvas
+            if (box.right >= 0 && box.bottom >= 0 && box.left >= 0 && box.top >= 0) {
+                // will support rect outside the attachment size for V1 of webgpu
+                // https://github.com/gpuweb/gpuweb/issues/373 
+                passEncoder.setViewport(box.left, box.top, box.width, box.height, 0, 1);
+                clampBox(box, passObj.boundingBox);
+                passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
+                passEncoder.setPipeline(passObj.pipeline);
+
+                for (let i = 0; i < passObj.vertexBuffers.length; i++) {
+                    passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
+                }
+                for (let i = 0; i < passObj.bindGroups.length; i++) {
+                    passEncoder.setBindGroup(i, passObj.bindGroups[i]);
+                }
+                if (passObj.indexed) {
+                    passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
+                    passEncoder.drawIndexed(passObj.indicesCount);
+                } else {
+                    passEncoder.draw(passObj.vertCount);
+                }
+            }
+        }
+        passEncoder.end();
+
+        return commandEncoder; 
     }
 
     // TO ADD:

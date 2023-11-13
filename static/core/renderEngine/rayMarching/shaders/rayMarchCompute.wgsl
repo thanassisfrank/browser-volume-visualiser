@@ -74,8 +74,8 @@ struct KDTreeNode {
 @group(1) @binding(6) var<storage> vertexData : F32Buff;
 
 // images
-// input image, rgb encodes xyz of fragment, a indicates if the dataset is missed
-@group(2) @binding(0) var fragmentPositions : texture_2d<f32>;
+// input image f32, the distance to suface from the camera position, if outside, depth is -1
+@group(2) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
 // output image after ray marching into volume
 @group(2) @binding(1) var outputImage : texture_storage_2d<rgba32float, write>;
 
@@ -233,7 +233,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
 
     // traverse the data tree (kdtree) to find the correct leaf node
     var currNodePtr = 0;
-    var currNode = KDTreeNode();
+    var currNode : KDTreeNode;
     loop {
         // make a node at the current position
         currNode = KDTreeNode(
@@ -369,6 +369,15 @@ fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit
     return prevCol + sampleCol;
 }
 
+fn setPixel(x : u32, y : u32, col : vec4<f32>) {
+
+}
+
+fn pixelOnVolume(x : u32, y : u32) -> bool {
+    var pixVal :u32 = textureLoad(boundingVolMaskImage, vec2<u32>(x, y), 0)[0];
+    return pixVal > 0u;
+}
+
 
 // workgroups work on 2d tiles of the input image
 @compute @workgroup_size({{WGSizeX}}, {{WGSizeY}}, 1)
@@ -379,14 +388,21 @@ fn main(
     @builtin(num_workgroups) wgnum : vec3<u32>
 ) {  
     var imageSize = textureDimensions(fragmentPositions);
-    // check if this thread is within the data or not
+    // check if this thread is within the input image
+    if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
+        // outside the image
+        return;
+    }
+    // check if this fragment is on the bounding box
+    if (!pixelOnVolume(id.x, id.y)) {
+        // not on the bounding box, set blank pixel
+        setPixel(id.x, id.y, vec4<f32>(0));
+        return;
+    }
 
-        var passFlags = getFlags(passInfo.flags);
-    var nearPlaneDist = 0.0;
+    var passFlags = getFlags(passInfo.flags);
 
     var e = 2.71828;
-    
-    var dataSize = vec3<f32>(textureDimensions(data, 0));
 
     var fragCol = vec4<f32>(1, 1, 1, 0);
 
@@ -406,7 +422,6 @@ fn main(
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
         enteredDataset = true;
-        // return vec4<f32>(1, 0, 0, 1);
     } else {
         // marching from the inside
         ray.tip = cameraPos;
@@ -414,7 +429,6 @@ fn main(
         // ray = extendRay(ray, nearPlaneDist);
         // guess that we started outside to prevent issues with the near clipping plane
         enteredDataset = false;
-        // return vec4<f32>(0, 1, 0, 1);
     }    
 
     var light = DirectionalLight(vec3<f32>(1), ray.direction);
