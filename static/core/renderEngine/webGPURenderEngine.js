@@ -380,6 +380,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return mesh;
     }
 
+    // FLIPS X AND Z
     this.createBoundingBox = function(renderableDataObj) {
         // check if bounding box if already generated
         if (checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)) return;
@@ -387,13 +388,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         var size = renderableDataObj.object.size;
         var points = new Float32Array([
             0,       0,       0,       // 0
-            size[0], 0,       0,       // 1
+            size[2], 0,       0,       // 1
             0,       size[1], 0,       // 2
-            size[0], size[1], 0,       // 3
-            0,       0,       size[2], // 4
-            size[0], 0,       size[2], // 5
-            0,       size[1], size[2], // 6
-            size[0], size[1], size[2]  // 7
+            size[2], size[1], 0,       // 3
+            0,       0,       size[0], // 4
+            size[2], 0,       size[0], // 5
+            0,       size[1], size[0], // 6
+            size[2], size[1], size[0]  // 7
         ])
         var norms = new Float32Array(points.length);
         var indices = new Uint32Array([
@@ -433,16 +434,17 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return renderableMesh;
     }
 
+    // FLIPS X AND Z
     this.createWireframeBox = function(size) {
         var points = new Float32Array([
             0,       0,       0,       // 0
-            size[0], 0,       0,       // 1
+            size[2], 0,       0,       // 1
             0,       size[1], 0,       // 2
-            size[0], size[1], 0,       // 3
-            0,       0,       size[2], // 4
-            size[0], 0,       size[2], // 5
-            0,       size[1], size[2], // 6
-            size[0], size[1], size[2]  // 7
+            size[2], size[1], 0,       // 3
+            0,       0,       size[0], // 4
+            size[2], 0,       size[0], // 5
+            0,       size[1], size[0], // 6
+            size[2], size[1], size[0]  // 7
         ]);
         var norms = new Float32Array(points.length);
         var indices = new Uint32Array([

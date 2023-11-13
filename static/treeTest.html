@@ -5,8 +5,11 @@
     </head>
     <body>
         <canvas id="c" style="border: 1px solid black"></canvas>
+        <p id="time">0ms</p>
         <script type="module">
             import {buildCellKDTree, get} from "./core/utils.js";
+            import {mat3} from "https://cdn.skypack.dev/gl-matrix";
+
             var max = [900, 700];
 
             var canvas = get("c");
@@ -29,11 +32,13 @@
                 var cellOffsets = [];
                 var cellTypes = [];
                 
-                var cols = 30;
-                var rows = 30;
+                var cols = 110;
+                var rows = 110;
+                var cellSize = 7;
+                var randOffset = 3;
                 for (let i = 0; i < rows; i++) { // go through the rows
                     for (let j = 0; j < cols; j++) { // so through the points on the rows
-                        var newPoint = [j*20 + Math.random()*7, i*20 + Math.random()*7];
+                        var newPoint = [j*cellSize + Math.random()*randOffset, i*cellSize + Math.random()*randOffset];
                         var newIndex = points.length/2;
                         // make 2 new tris
                         if (i > 0 && j > 0) {
@@ -61,7 +66,7 @@
             var testData = generateData();
             console.log(testData);
             var start = performance.now();
-            var tree = buildCellKDTree(testData.points, 2, 7, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
+            var tree = buildCellKDTree(testData.points, 2, 9, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
 
             console.log(`build took: ${performance.now() - start}ms`)
             // console.log(tree);
@@ -150,34 +155,55 @@
                 }
             }
             
-            var queryTree = (tree, point) => {
-                var box = [[0, 0], [canvas.width, canvas.height]];
+            var drawCell = (data, cellID) => {
+                // only does tris for now
+                if (data.cellTypes[cellID] == 5) {
+                        // tri
+                        var cellOffset = data.cellOffsets[cellID];
+                        var pointIndices = data.cellConnectivity.slice(cellOffset, cellOffset + 3);
+                        // console.log(pointIndices);
+                        let triPath = new Path2D();
+                        // console.log(pointIndices);
+                        triPath.moveTo(data.points[2 * pointIndices[0]], data.points[2 * pointIndices[0] + 1]);
+                        triPath.lineTo(data.points[2 * pointIndices[1]], data.points[2 * pointIndices[1] + 1]);
+                        triPath.lineTo(data.points[2 * pointIndices[2]], data.points[2 * pointIndices[2] + 1]);
+                        triPath.closePath();
+                        ctx.stroke(triPath);
+                    }
+            }
+            // returns the leaf node the point is inside
+            var queryTree = (tree, point, getBoxes) => {
+                var boxes = [[[0, 0], [canvas.width, canvas.height]]];
                 var currNode = tree;
                 while(currNode.left) {
                     if (point[currNode.splitDimension] <= currNode.splitVal) {
-                        if (currNode.splitDimension == 0) {
-                            box = [
-                                box[0],
-                                [currNode.splitVal, box[1][1]]
-                            ];
-                        } else {
-                            box = [
-                                box[0],
-                                [box[1][0], currNode.splitVal]
-                            ];
+                        if (getBoxes) {
+                            if (currNode.splitDimension == 0) {
+                                boxes.unshift([
+                                    boxes[0][0],
+                                    [currNode.splitVal, boxes[0][1][1]]
+                                ]);
+                            } else {
+                                boxes.unshift([
+                                    boxes[0][0],
+                                    [boxes[0][1][0], currNode.splitVal]
+                                ]);
+                            }
                         }
                         currNode = currNode.left;
                     } else {
-                        if (currNode.splitDimension == 0) {
-                            box = [
-                                [currNode.splitVal, box[0][1]],
-                                box[1],
-                            ];
-                        } else {
-                            box = [
-                                [box[0][0], currNode.splitVal],
-                                box[1],
-                            ];
+                        if (getBoxes) {
+                            if (currNode.splitDimension == 0) {
+                                boxes.unshift([
+                                    [currNode.splitVal, boxes[0][0][1]],
+                                    boxes[0][1],
+                                ]);
+                            } else {
+                                boxes.unshift([
+                                    [boxes[0][0][0], currNode.splitVal],
+                                    boxes[0][1],
+                                ]);
+                            }
                         }
                         currNode = currNode.right;
                     }
@@ -185,10 +211,62 @@
                 return {
                     points: currNode.points,
                     cells: currNode.cells,
-                    box: box
+                    boxes: boxes
                 };
             }
-        
+            
+            // returns the cellID of the cell that contains the point
+            var queryLeaf = (data, leaf, point) => {
+                for (let cellID of leaf.cells) {
+                    // get the points of this cell
+                    var pointsOffset = data.cellOffsets[cellID];
+                    var cellPoints = [];
+                    for (let i = 0; i < 3; i++) {
+                        var thisPointIndex = data.cellConnectivity[pointsOffset + i];
+                        cellPoints.push([
+                            data.points[2 * thisPointIndex],
+                            data.points[2 * thisPointIndex + 1],
+                        ]);
+                    }
+
+                    var x = point[0];
+                    var y = point[1];
+                    var p = cellPoints;
+                    // compute the barycentric coords
+                    var lambda1 = 1/2* mat3.determinant(
+                        mat3.fromValues(
+                            1,       1,       1,
+                            p[0][0], p[1][0], x,
+                            p[0][1], p[1][1], y,
+                        )
+                    );
+
+                    var lambda2 = 1/2* mat3.determinant(
+                        mat3.fromValues(
+                            1,       1,       1,
+                            p[0][0], x,       p[2][0],
+                            p[0][1], y,       p[2][1]
+                        )
+                    )
+
+                    var lambda3 = 1/2* mat3.determinant(
+                        mat3.fromValues(
+                            1,       1,       1,
+                            x,      p[1][0],  p[2][0],
+                            y,      p[1][1],  p[2][1],
+                        )
+                    )
+                    
+                    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 ||
+                        lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 
+                    ) {
+                        return cellID;
+                    }
+                    continue;
+
+                }
+                return -1;
+            }
             
             drawTree(tree);
 
@@ -197,39 +275,40 @@
                 var canvasRect = canvas.getBoundingClientRect();
                 var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
                 var start = performance.now();
-                var result = queryTree(tree, mouseCoords);
+                var result = queryTree(tree, mouseCoords, true);
+                var intersectedCell = queryLeaf(testData, result, mouseCoords);
+                get("time").innerText = `${performance.now() - start}ms`;
                 // console.log(result)
                 // console.log(`query took: ${performance.now() - start}ms`)
-                ctx.strokeStyle = "#ff0000";
-                ctx.fillStyle = "#ff0000";
+                
                 // draw the points
-                for (let i = 0; i < result.points.length; i+=2) {
-                    ctx.fillRect(result.points[i] - 2, result.points[i + 1] - 2, 4, 4);
+                // for (let i = 0; i < result.points.length; i+=2) {
+                //     ctx.fillRect(result.points[i] - 2, result.points[i + 1] - 2, 4, 4);
+                // }
+                // draw the bounds
+                ctx.strokeStyle = "#aaaaaa";
+                for (let i = result.boxes.length - 1; i >= 0; i--) {
+                    if (i == 0) {
+                        ctx.strokeStyle = "#ff0000";
+                    }
+                    ctx.strokeRect(
+                        result.boxes[i][0][0],
+                        result.boxes[i][0][1],
+                        result.boxes[i][1][0] - result.boxes[i][0][0],
+                        result.boxes[i][1][1] - result.boxes[i][0][1]
+                    );
                 }
+                
+                ctx.strokeStyle = "#aaaaaa";
                 // draw the cells
                 for (let i = 0; i < result.cells.length; i++) {
-                    if (testData.cellTypes[i] == 5) {
-                        // tri
-                        var cellOffset = testData.cellOffsets[result.cells[i]];
-                        var pointIndices = testData.cellConnectivity.slice(cellOffset, cellOffset + 3);
-                        // console.log(pointIndices);
-                        let triPath = new Path2D();
-                        // console.log(pointIndices);
-                        triPath.moveTo(testData.points[2 * pointIndices[0]], testData.points[2 * pointIndices[0] + 1]);
-                        triPath.lineTo(testData.points[2 * pointIndices[1]], testData.points[2 * pointIndices[1] + 1]);
-                        triPath.lineTo(testData.points[2 * pointIndices[2]], testData.points[2 * pointIndices[2] + 1]);
-                        triPath.closePath();
-                        ctx.stroke(triPath);
-                    }
+                    drawCell(testData, result.cells[i]);
                 }
+                // draw the intersected one if there is one
+                ctx.strokeStyle = "#ff0000"
+                if (intersectedCell != -1) drawCell(testData, intersectedCell);
 
-                // draw the bounds
-                ctx.strokeRect(
-                    result.box[0][0],
-                    result.box[0][1],
-                    result.box[1][0] - result.box[0][0],
-                    result.box[1][1] - result.box[0][1]
-                );
+                
 
                 // console.log(result.points.length/2);
 

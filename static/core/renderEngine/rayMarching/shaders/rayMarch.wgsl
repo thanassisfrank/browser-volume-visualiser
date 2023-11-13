@@ -212,7 +212,7 @@ fn fragment_main(
 
     var e = 2.71828;
     
-    var dataSize = vec3<f32>(textureDimensions(data, 0)).zyx;
+    var dataSize = vec3<f32>(textureDimensions(data, 0));
 
     var fragCol = vec4<f32>(1, 1, 1, 0);
 
@@ -259,7 +259,7 @@ fn fragment_main(
         if (ray.length > passInfo.maxLength) {
             break;
         }
-        var tipDataPos = ray.tip.zyx;//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
+        var tipDataPos = ray.tip;//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
         // check if tip has left data
         if (
             ray.tip.x > dataSize.x || ray.tip.x < 0 ||
@@ -286,7 +286,7 @@ fn fragment_main(
                         // find where exactly by lerp
                         var backStep = lastStepSize/(sampleVal-lastSampleVal) * (sampleVal - passInfo.threshold);
                         ray = extendRay(ray, -backStep);
-                        tipDataPos = ray.tip.zyx;
+                        tipDataPos = ray.tip;
                     }
 
                     // set the material
@@ -302,10 +302,10 @@ fn fragment_main(
                     }
 
                     if (passFlags.showNormals) {
-                        fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z).zyx, 1.0);
+                        fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
                         // fragCol = vec4<f32>(1, 0, 0, 1.0);
                     } else if (passFlags.phong) {
-                        var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z).zyx;
+                        var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
                         fragCol = vec4<f32>(phong(material, normalFac * normal, -ray.direction, light), 1.0);
                     } else {
                         fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);

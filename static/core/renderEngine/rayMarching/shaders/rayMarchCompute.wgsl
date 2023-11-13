@@ -30,6 +30,11 @@ struct PassInfo {
     @align(16) dMatInv : mat4x4<f32>, // from world space -> data space
 };
 
+// struct 
+struct PointsBuff {
+    buffer: array<array<3, f32>>,
+};
+
 struct F32Buff {
     buffer : array<f32>,
 };
@@ -58,13 +63,15 @@ struct KDTreeNode {
 // data tree, leaves contain a list of intersecting cells
 @group(1) @binding(1) var<storage> dataTree : U32Buff; 
 // positions of each of the vertices in the mesh
-@group(1) @binding(2) var<storage> vertexPositions : F32Buff;
+@group(1) @binding(2) var<storage> vertexPositions : PointsBuff;
 // what verts make up each cell, indexes into vertexPositions 
 @group(1) @binding(3) var<storage> cellConnectivity : U32Buff;
 // where the vert index list starts for each cell, indexes into cellConnectivity
 @group(1) @binding(4) var<storage> cellOffsets : U32Buff;
 // the types of each cell i.e. how many verts it has
-@group(1) @binding(5) var<storage> cellTypes : U8Buff;
+@group(1) @binding(5) var<storage> cellTypes : U32Buff;
+// the data values associated with each vertex
+@group(1) @binding(6) var<storage> vertexData : F32Buff;
 
 // images
 // input image, rgb encodes xyz of fragment, a indicates if the dataset is missed
@@ -98,6 +105,23 @@ struct DirectionalLight {
     direction : vec3<f32>,
 };
 
+fn allZero8(a : array<8, f32>) -> bool {
+    if (
+        a[0] == 0 &&
+        a[1] == 0 &&
+        a[2] == 0 &&
+        a[3] == 0 &&
+        a[4] == 0 &&
+        a[5] == 0 &&
+        a[6] == 0 &&
+        a[7] == 0
+    ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 fn normalFlagSet(flagUint : u32) -> bool {
     return (flagUint & 1u) == 1u;
 }
@@ -117,7 +141,91 @@ fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
     return textureLoad(data, vec3<u32>(x, y, z), 0)[0];
 }
 
-// sampler not available for f32 -> do own lerp
+fn getCellPointsCount(cellType : u32) -> u32 {
+    switch cellType {
+        case 10u {return 4u} // tet
+        case 12u {return 8u} // hexa
+        case 5u  {return 3u} // tri
+        default  {return 4u}
+    }
+}
+
+// returns the barycentric coords if inside and all 0 if outside
+fn pointInTet(x : f32, y : f32, z : f32, cellID : i32) -> vec4<f32> {
+    // figure out if cell is inside using barycentric coords
+    var pointsOffset : u32 = cellOffsets[cellID];
+    var cellPoints : array<4, array<3, f32>>;
+    var i = 0u;
+    // read all the point positions
+    loop {
+        // get the coords of the point as an array 3
+        var thisPointIndex = cellConnectivity.buffer[pointsOffset + i];
+        cellPoints[i] = vertexPositions[thisPointIndex];
+        i++;
+        if (i > 4u) {break;}
+    }
+    // compute the barycentric coords for the point
+    var p = cellPoints;
+    var lambda1 = 1/6*determinant(mat4x4<f32>(
+        1,       1,       1,       1,
+        p[0][0], p[1][0], p[2][0], x,
+        p[0][1], p[1][1], p[2][1], y,
+        p[0][2], p[1][2], p[2][2], z,
+    ));
+
+    var lambda2 = 1/6*determinant(mat4x4<f32>(
+        1,       1,       1,      1,
+        p[0][0], p[1][0], x,      p[3][0],
+        p[0][1], p[1][1], y,      p[3][1],
+        p[0][2], p[1][2], z,      p[3][2],
+    ));
+
+    var lambda3 = 1/6*determinant(mat4x4<f32>(
+        1,       1,       1,      1,
+        p[0][0], x,       p[2][0], p[3][0],
+        p[0][1], y,       p[2][1], p[3][1],
+        p[0][2], z,       p[2][2], p[3][2],
+    ));
+
+    var lambda4 = 1/6*determinant(mat4x4<f32>(
+        1,       1,       1,      1,
+        x,       p[1][0], p[2][0], p[3][0],
+        y,       p[1][1], p[2][1], p[3][1],
+        z,       p[1][2], p[2][2], p[3][2],
+    ));
+
+    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 ) {
+        return -1.0*vec4<f32>(lambda1, lambda2, lambda3, lambda4);
+    } else if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0) {
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4);
+    } else {
+        // not in this cell
+        return vec4<f32>(0);
+    }
+
+}
+
+fn interpolateInCell(sampleFactors : array<8, f32>, cellID : i32) -> f32 {
+    var lerpValue = 0u;
+    // figure out if cell is inside using barycentric coords
+    var pointsOffset : u32 = cellOffsets[cellID];
+    var cellPoints : array<4, array<3, f32>>;
+    var i = 0u;
+    // read all the point positions
+    loop {
+        // get the coords of the point as an array 3
+        var thisPointIndex = cellConnectivity.buffer[pointsOffset + i];
+        lerpValue += vertexData[thisPointIndex] * sampleFactors[i];
+        i++;
+        if (i > 8u) {break;}
+    }
+}
+
+
+
+// sampling unstructred mesh data
+// have to traverse tree and interpolate within the cell
+// returns -1 if point is not in a cell
 fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     var queryPoint = vec3<f32>(x, y, z);
     var treeBuffer = dataTree.buffer;
@@ -150,18 +258,45 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     }
 
     // check the cells in the leaf node found
-    var cellsPtr = currNodePtr + 5;
+    var cellsPtr = currNodePtr.leaf; // go to where cells are stored
+    var sampleFactors : array<8, f32>(0);
+    var foundCell = false;
+    var cellID : i32;
     var i = 0u;
     loop {
         // go through and check all the contained cells
+        cellID = bitcast<i32>(treeBuffer[cellsPtr + i]);
+        if (cellID == -1) {break;} // there are less than the max # cells in this leaf
+        var pointsCount : u32 = getCellPointsCount(cellTypes.buffer[cellID]);
+
+        sampleFactors = array<8, f32>(0);
+        switch pointsCount {
+            case 4 {
+                // cell is a tetrahedron
+                var tetFactors = pointInTet(x, y, z, cellID);
+                sampleFactors[0] = tetFactors[0];
+                sampleFactors[1] = tetFactors[1];
+                sampleFactors[2] = tetFactors[2];
+                sampleFactors[3] = tetFactors[3];
+            }
+            default {
+                // this kind of cell is not supported currently
+            }
+        }
+
+        if (allZero8(sampleFactors)) {
+            // found a cell that contains the sample point
+            foundCell = true;
+            break;
+        }
         
         i++;
         if (i > passInfo.cellsInLeaves) {break;}
     }
 
     // interpolate value
-    var val = 0;
-    return val;
+    if (!foundCell) {return -1.0} 
+    return interpolateInCell(sampleFactors, cellID);
 
 }
 
@@ -245,5 +380,145 @@ fn main(
 ) {  
     var imageSize = textureDimensions(fragmentPositions);
     // check if this thread is within the data or not
+
+        var passFlags = getFlags(passInfo.flags);
+    var nearPlaneDist = 0.0;
+
+    var e = 2.71828;
+    
+    var dataSize = vec3<f32>(textureDimensions(data, 0));
+
+    var fragCol = vec4<f32>(1, 1, 1, 0);
+
+    var cameraPos : vec3<f32>;
+    if (passFlags.fixedCamera) {
+        cameraPos = vec3<f32>(600, 600, 600); 
+    } else {
+        cameraPos = globalInfo.cameraPos;
+    }
+
+    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
+    var ray : Ray;
+    ray.direction = normalize(raySegment);
+    var enteredDataset : bool;
+    if (front_facing) {
+        // marching from the outside
+        ray.tip = fragInfo.worldPosition.xyz;
+        ray.length = length(raySegment);
+        enteredDataset = true;
+        // return vec4<f32>(1, 0, 0, 1);
+    } else {
+        // marching from the inside
+        ray.tip = cameraPos;
+        ray.length = 0;
+        // ray = extendRay(ray, nearPlaneDist);
+        // guess that we started outside to prevent issues with the near clipping plane
+        enteredDataset = false;
+        // return vec4<f32>(0, 1, 0, 1);
+    }    
+
+    var light = DirectionalLight(vec3<f32>(1), ray.direction);
+
+    // accumulated ray casting colour from samples
+    var volCol : vec3<f32>;
+
+    // march the ray
+    var lastAbove = false;
+    var lastSampleVal : f32;
+    var lastStepSize : f32;
+    var sampleVal : f32;
+    var thisAbove = false;
+    var i = 0u;
+    loop {
+        if (ray.length > passInfo.maxLength) {
+            break;
+        }
+        var tipDataPos = ray.tip;//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
+        // check if tip has left data
+        if (
+            ray.tip.x > dataSize.x || ray.tip.x < 0 ||
+            ray.tip.y > dataSize.y || ray.tip.y < 0 ||
+            ray.tip.z > dataSize.z || ray.tip.z < 0
+        ) {
+            // have gone all the way through the dataset
+            if (enteredDataset) {
+                break;
+            }
+        } else {
+            enteredDataset = true;
+            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            if (sampleVal > passInfo.threshold) {
+                thisAbove = true;
+            } else {
+                thisAbove = false;
+            }
+            if (i > 0u) {
+                // check if the threshold has been crossed
+                if (thisAbove != lastAbove) {
+                    // has been crossed
+                    if (passFlags.backStep) {
+                        // find where exactly by lerp
+                        var backStep = lastStepSize/(sampleVal-lastSampleVal) * (sampleVal - passInfo.threshold);
+                        ray = extendRay(ray, -backStep);
+                        tipDataPos = ray.tip;
+                    }
+
+                    // set the material
+                    var material : Material;
+                    var normalFac = 1.0;
+                    if (thisAbove && !lastAbove) {
+                        // crossed going up the values
+                        material = objectInfo.frontMaterial;
+                    } else if (!thisAbove && lastAbove) {
+                        // crossed going down the values
+                        material = objectInfo.backMaterial;
+                        normalFac = -1.0;
+                    }
+
+                    if (passFlags.showNormals) {
+                        fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
+                        // fragCol = vec4<f32>(1, 0, 0, 1.0);
+                    } else if (passFlags.phong) {
+                        var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+                        fragCol = vec4<f32>(phong(material, normalFac * normal, -ray.direction, light), 1.0);
+                    } else {
+                        fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);
+                    }
+                    break;
+                }
+
+                if (passFlags.showVolume) {
+                    // acumulate colour
+                    volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                }
+            }
+        }
+        
+        continuing {
+            var thisStepSize = passInfo.stepSize;
+            ray = extendRay(ray, passInfo.stepSize);
+            lastAbove = thisAbove;
+            lastSampleVal = sampleVal;
+            lastStepSize = passInfo.stepSize;
+            i += 1u;
+        }
+    }
+
+    if (passFlags.showVolume) {
+        // do the over operation
+        var absorption = vec3<f32>(
+            pow(e, -volCol.r),
+            pow(e, -volCol.g),
+            pow(e, -volCol.b),
+        );
+        fragCol = vec4<f32>(
+            fragCol.r * absorption.r,
+            fragCol.g * absorption.g,
+            fragCol.b * absorption.b,
+            max(fragCol.a, max(1-absorption.r, max(1-absorption.g, 1-absorption.b)))
+        );
+    }
+
+    return fragCol;
 
 }
