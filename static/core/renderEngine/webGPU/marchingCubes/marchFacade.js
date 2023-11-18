@@ -3,7 +3,7 @@
 // chooses which to use depending on availability
 import * as gpu from "../webGPU.js";
 import * as wasm from "./marchingWasm.js";
-import * as js from "./marchingJS.js";
+import * as js from "../../webGL/marchingJS.js";
 
 export var module;
 

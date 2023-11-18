@@ -80,7 +80,7 @@ var dataManager = {
             await Promise.all(results);
             
         } else {
-            await this.marchEngine.setupMarch(newData);
+            // await this.marchEngine.setupMarch(newData);
         }
     },
     createData: async function(config) {

@@ -1,8 +1,8 @@
 // webGPUBase.js
 // holds utility functions for webgpu, common to both rendering and compute passes
 
-import { stringFormat, clampBox } from "../utils.js";
-import { RenderableObject, RenderableObjectTypes } from "./sceneObjects.js";
+import { stringFormat, clampBox } from "../../utils.js";
+import { RenderableObject, RenderableObjectTypes } from "../sceneObjects.js";
 
 
 // class for 
@@ -220,6 +220,11 @@ export function WebGPUBase (verbose) {
                     resource: {
                         buffer: resources[i]
                     }
+                })
+            } else if (resources[i].constructor == GPUTexture){
+                entries.push({
+                    binding: i,
+                    resource: resources[i].createView()
                 })
             } else {
                 entries.push({
@@ -457,25 +462,13 @@ export function WebGPUBase (verbose) {
         return readArrayBuffer;
     }
 
-    this.generateBoundingBoxMesh = function(renderableObject) {
-        if (renderableObject.type = RenderableObjectTypes.DATA) {
-            
-        }
-    }
-    this.getCameraInfoBuffer = function(renderableCameraObj) {
-        var c = renderableCameraObj.object;
-        return new Float32Array()
-    }
-    this.getObjectInfoBuffer = function(renderableMeshObj) {
-
-    }
-
-    // creates a pass object
-    this.createPass = function(passType, passOptions, bindGroupLayouts, code) {
+    // creates a pass descriptor object
+    this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code) {
+        // console.log(bindGroupLayouts);
         var pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
         var shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
         if (passType = this.PassTypes.RENDER) {
-            // pipeline descriptor
+            // create a render pass
             var pipelineDescriptor = {
                 layout: pipelineLayout,
                 vertex: {
@@ -514,28 +507,39 @@ export function WebGPUBase (verbose) {
             // create the render pass object
             return {
                 passType: this.PassTypes.RENDER,
-                descriptor: {},
-                bindGroups: [],
-                vertexBuffers: [],
-                indexed: passOptions.indexed,
-                indexBuffer: null,
-                indicesCount: 0,
-                vertCount: 0,
+                indexed: passOptions.indexed || false,
+                bindGroupLayouts: bindGroupLayouts,
                 pipeline: this.device.createRenderPipeline(pipelineDescriptor),
             }
         } else if (passType == this.PassTypes.COMPUTE) {
             // create a compute pass
+            var pipelineDescriptor = {
+                layout: pipelineLayout,
+                compute: {
+                    module: shaderModule,
+                    entryPoint: "main"
+                }
+            }
+            // create the compute pass object
+            return {
+                passType: this.PassTypes.COMPUTE,
+                bindGroupLayouts: bindGroupLayouts,
+                pipeline: this.device.createComputePipeline(pipelineDescriptor),
+            }
         } else {
-            // not a valie pass type
+            // not a valid pass type
             return;
         }
     }
 
     // encodes a GPU pass onto the command encoder
     this.encodeGPUPass = function(commandEncoder, passObj) {
-        const passEncoder = commandEncoder.beginRenderPass(passObj.descriptor);
-
+        var bindGroups = [];
+        for (let i = 0; i < passObj.resources.length; i++) {
+            bindGroups.push(this.generateBG(passObj.bindGroupLayouts[i], passObj.resources[i]));
+        }
         if (passObj.passType == this.PassTypes.RENDER) {
+            const passEncoder = commandEncoder.beginRenderPass(passObj.renderDescriptor);
             var box = passObj.box;
             // for now, only draw a view if it is fully inside the canvas
             if (box.right >= 0 && box.bottom >= 0 && box.left >= 0 && box.top >= 0) {
@@ -549,8 +553,8 @@ export function WebGPUBase (verbose) {
                 for (let i = 0; i < passObj.vertexBuffers.length; i++) {
                     passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
                 }
-                for (let i = 0; i < passObj.bindGroups.length; i++) {
-                    passEncoder.setBindGroup(i, passObj.bindGroups[i]);
+                for (let i = 0; i < bindGroups.length; i++) {
+                    passEncoder.setBindGroup(i, bindGroups[i]);
                 }
                 if (passObj.indexed) {
                     passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
@@ -559,8 +563,15 @@ export function WebGPUBase (verbose) {
                     passEncoder.draw(passObj.vertCount);
                 }
             }
+            passEncoder.end();
+        } else if (passObj.passType == this.PassTypes.COMPUTE) {
+            passEncoder.setPipeline(dataObj.marchData.pipelines.march);
+            for (let i = 0; i < bindGroups.length; i++) {
+                passEncoder.setBindGroup(i, bindGroups[i]);
+            }
+            passEncoder.dispatchWorkgroups(...passObj.workGroups);
+            passEncoder.end();
         }
-        passEncoder.end();
 
         return commandEncoder; 
     }

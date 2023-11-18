@@ -2,23 +2,22 @@
 // implements the ray marching algorithm with webgpu
 
 import {mat4} from "https://cdn.skypack.dev/gl-matrix";
-import { RenderableObjectTypes, RenderableObjectUsage, checkForChild } from "../sceneObjects.js";
-import { clampBox } from "../../utils.js";
+import { RenderableObjectTypes, RenderableObjectUsage, checkForChild } from "../../sceneObjects.js";
+import { clampBox } from "../../../utils.js";
 
 export function WebGPURayMarchingEngine(webGPUBase) {
     var webGPU = webGPUBase;
     var device = webGPU.device;
 
     var constsBuffer;
-    var constsBindGroup;
     var rayMarchBindGroupLayouts;
 
-    var rayMarchPass;
+    this.rayMarchPassDescriptor;
 
     this.passFlags = {
         phong: true,
         backStep: true,
-        showNormals: false,
+        showNormals: true,
         showVolume: true,
         fixedCamera: false,
     }
@@ -60,12 +59,20 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         constsBuffer.unmap();
 
         // create code
-        var rayMarchCode = await webGPU.fetchShader("core/renderEngine/rayMarching/shaders/rayMarch.wgsl");
+        var rayMarchCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarch.wgsl");
 
-        rayMarchPass = webGPU.createPass(
+        this.rayMarchPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
             rayMarchBindGroupLayouts,
+            {str: rayMarchCode, formatObj: {}}
+        );
+        
+
+        this.depthRenderPass = webGPU.createPassDescriptor(
+            webGPU.PassTypes.RENDER,
+            {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
+            [webGPU.bindGroupLayouts.render0],
             {str: rayMarchCode, formatObj: {}}
         );
 
@@ -115,6 +122,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             this.setupRayMarch(renderableDataObj);
         }
 
+        var meshObj = checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)?.object;
+
         // need to get the transform of object it i.e. rotation and scale as mat4
         var transform = mat4.create();
         // mat4.scale(transform, transform, renderableDataObj.object.cellSize);
@@ -124,49 +133,25 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             mat4.multiply(transform, parent.transform, transform);
             parent = parent.parent;
         }
-        
-        // create bind groups
-        constsBindGroup = webGPU.generateBG(rayMarchBindGroupLayouts[0], [
-            constsBuffer,
-            renderableDataObj.renderData.buffers.objectInfo
-        ]);
-        // var passBindGroup = webGPU.generateBG(rayMarchBindGroupLayouts[1], [
-        //     renderableDataObj.renderData.buffers.passInfo,
-        //     renderableDataObj.renderData.textures.data
-        // ]);
-        var passBindGroup = device.createBindGroup({
-            layout: rayMarchBindGroupLayouts[1],
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: renderableDataObj.renderData.buffers.passInfo
-                    }
-                },
-                {
-                    binding: 1,
-                    resource: renderableDataObj.renderData.textures.data.createView()
-                }
-            ]
-        })
-        
-
 
         var commandEncoder = await device.createCommandEncoder();
         
-        var renderPass = rayMarchPass;
-        renderPass.descriptor = renderPassDescriptor;
-        renderPass.bindGroups = [constsBindGroup, passBindGroup];
-        renderPass.box = box;
-        renderPass.boundingBox = canvas.getBoundingClientRect();
-        
-        var meshObj = checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)?.object;
-        renderPass.vertexBuffers[0] = meshObj.buffers.vertex;
-        renderPass.indexBuffer = meshObj.buffers.index;
-        renderPass.indicesCount = meshObj.indicesNum;
+        var rayMarchRenderPass = {
+            ...this.rayMarchPassDescriptor,
+            renderDescriptor: renderPassDescriptor,
+            resources: [
+                [constsBuffer, renderableDataObj.renderData.buffers.objectInfo],
+                [renderableDataObj.renderData.buffers.passInfo, renderableDataObj.renderData.textures.data]
+            ],
+            box: box,
+            boundingBox: canvas.getBoundingClientRect(),
+            vertexBuffers: [meshObj.buffers.vertex],
+            indexBuffer: meshObj.buffers.index,
+            indicesCount: meshObj.indicesNum,
+        }
 
         // encode the render pass
-        webGPU.encodeGPUPass(commandEncoder, rayMarchPass);
+        webGPU.encodeGPUPass(commandEncoder, rayMarchRenderPass);
 
         // write global info buffer
         device.queue.writeBuffer(

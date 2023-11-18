@@ -1,11 +1,11 @@
 // webGPURender.js
 // contains the main rendering object
 // import { setupWebGPU, createFilledBuffer } from "./webGPUBase.js";
-import { clampBox } from "../utils.js";
-import { EmptyRenderEngine, renderModes} from "./renderEngine.js";
+import { clampBox } from "../../utils.js";
+import { EmptyRenderEngine, renderModes} from "../renderEngine.js";
 import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
-import { RenderableObjectTypes, RenderableObjectUsage, RenderableObject, meshManager, traverseSceneGraph, checkForChild } from "./sceneObjects.js";
+import { RenderableObjectTypes, RenderableObjectUsage, RenderableObject, meshManager, traverseSceneGraph, checkForChild } from "../sceneObjects.js";
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 
 // the main rendering object that handles interacting with the GPU
@@ -29,7 +29,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     this.uniformBuffer;
 
-    var shaderCode = webGPU.fetchShader("core/renderEngine/shaders/shader.wgsl");
+    var shaderCode = webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
 
     this.setup = async function() {        
         this.ctx = this.canvas.getContext("webgpu");
@@ -45,19 +45,19 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         shaderCode = await shaderCode;
 
-        this.surfaceRenderPass = webGPU.createPass(
+        this.surfaceRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "triangle-list", indexed: true},
             [webGPU.bindGroupLayouts.render0],
             {str: shaderCode, formatObj: {}}
         );
-        this.pointsRenderPass = webGPU.createPass(
+        this.pointsRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "point-list", indexed: false},
             [webGPU.bindGroupLayouts.render0],
             {str: shaderCode, formatObj: {}}
         );
-        this.linesRenderPass = webGPU.createPass(
+        this.linesRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "line-list", indexed: true},
             [webGPU.bindGroupLayouts.render0],
@@ -436,25 +436,26 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         await commandEncoder;
 
-        var renderPass;
         if (renderableMeshObj.renderMode == renderModes.POINTS) {
-            renderPass = this.pointsRenderPass;
-            renderPass.vertsNum = meshObj.vertsNum;
+            var thisPassDescriptor = this.pointsRenderPassDescriptor;
         } else if (renderableMeshObj.renderMode == renderModes.WIREFRAME) {
-            renderPass = this.linesRenderPass;
-            renderPass.indicesCount = meshObj.indicesNum;
+            var thisPassDescriptor = this.linesRenderPassDescriptor;
         } else if (renderableMeshObj.renderMode == renderModes.SURFACE){
-            renderPass = this.surfaceRenderPass;
-            renderPass.indicesCount = meshObj.indicesNum;
+            var thisPassDescriptor = this.surfaceRenderPassDescriptor;
         }
-        renderPass.vertexBuffers[0] = meshObj.buffers.vertex;
-        renderPass.vertexBuffers[1] = meshObj.buffers.normal;
-        renderPass.indexBuffer = meshObj.buffers.index;
-        renderPass.bindGroups[0] = bindGroup0;
-
-        renderPass.descriptor = renderPassDescriptor;
-        renderPass.box = box;
-        renderPass.boundingBox = this.ctx.canvas.getBoundingClientRect();
+        var renderPass = {
+            ...thisPassDescriptor,
+            vertsNum: meshObj.vertsNum,
+            indicesCount: meshObj.indicesNum,
+            vertexBuffers: [meshObj.buffers.vertex, meshObj.buffers.normal],
+            indexBuffer: meshObj.buffers.index,
+            resources: [
+                [this.uniformBuffer, renderableMeshObj.renderData.buffers.objectInfo]
+            ],
+            renderDescriptor: renderPassDescriptor,
+            box: box,
+            boundingBox: this.ctx.canvas.getBoundingClientRect(),
+        }
 
         commandEncoder = webGPU.encodeGPUPass(commandEncoder, renderPass);
 

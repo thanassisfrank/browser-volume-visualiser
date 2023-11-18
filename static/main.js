@@ -5,7 +5,7 @@ import {get, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositi
 import {dataManager} from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
 import {cameraManager, meshManager} from "./core/renderEngine/sceneObjects.js";
-import { marcherManager } from "./core/renderEngine/marchingCubes/marcher.js";
+import { marcherManager } from "./core/renderEngine/webGL/marcher.js";
 import { viewManager } from "./view.js";
 import { renderModes } from "./core/renderEngine/renderEngine.js";
 

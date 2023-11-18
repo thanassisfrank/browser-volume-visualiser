@@ -25,7 +25,7 @@ export const RenderableObjectUsage = {
 export function RenderableObject(type, object) {
     this.transform = mat4.create();
     // type is the class of object
-    this.type = type | RenderableObjectTypes.EMPTY;
+    this.type = type || RenderableObjectTypes.EMPTY;
     // usage is what the object is used for
     // this is used to keep track of iso-surface and data point meshes
     this.usage = undefined;
@@ -34,18 +34,58 @@ export function RenderableObject(type, object) {
     this.activeCamera = true; // for camera
     this.object = object;
     this.renderData = {
+        bindGroups: {},
         buffers: {},
         textures: {},
         samplers: {},
-        colours: {
-            front: new Float32Array([0, 0, 0, 1]),
-            back: new Float32Array([0, 0, 0, 1]),
-        }
+        // colours: {
+        //     front: new Float32Array([0, 0, 0, 1]),
+        //     back: new Float32Array([0, 0, 0, 1]),
+        // }
     };
     this.parent = undefined;
     this.children = [];
 }
 
+// keeps track of the objects in a scene in a renderable context
+// doesn't have the authority to allocate/free resources like buffers
+export function SceneGraph() {
+    this.graph = [];
+    this.camera = [];
+    this.insertChild = function(renderableObject, parent) {
+        if (parent) {
+            renderableObject.parent = parent;
+            parent.children.push(renderableObject);
+        } else {
+            this.graph.push(renderableObject);
+        }
+    }
+    this.remove = function() {
+
+    }
+    this.traverse = function*() {
+        for (let obj of scene) {
+            // do children first
+            if (obj.children.length > 0) {
+                yield* traverseSceneGraph(obj.children);
+            }
+            // then yield the object
+            yield obj;
+        }
+    }
+}
+
+// recursive function for depth first traversal of scene graph
+export function* traverseSceneGraph (scene) {
+    for (let obj of scene) {
+        // do children first
+        if (obj.children.length > 0) {
+            yield* traverseSceneGraph(obj.children);
+        }
+        // then yield the object
+        yield obj;
+    }
+}
 
 export var checkForChild = (RenderableObject, childType, childUsage) => {
     for (let child of RenderableObject.children) {
@@ -282,14 +322,5 @@ export var cameraManager = {
     }
 }
 
-// recursive function for depth first traversal of scene graph
-export function* traverseSceneGraph (scene) {
-    for (let obj of scene) {
-        // do children first
-        if (obj.children.length > 0) {
-            yield* traverseSceneGraph(obj.children);
-        }
-        // then yield the object
-        yield obj;
-    }
-}
+
+

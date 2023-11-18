@@ -1,7 +1,7 @@
 // renderEngine.js
 // allows creation of a new rendering engine object
-import { WebGPURenderEngine } from "./webGPURenderEngine.js";
-import { WebGPUBase } from "./webGPUBase.js";
+import { WebGPURenderEngine } from "./webGPU/webGPURenderEngine.js";
+import { WebGPUBase } from "./webGPU/webGPUBase.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
 import { RenderableObjectTypes, traverseSceneGraph } from "./sceneObjects.js";
 
@@ -45,6 +45,7 @@ export async function createRenderEngine(canvas) {
         // use webgl
         module = "gl";
         console.log("webgpu is not supported, using webgl")
+        return new EmptyRenderEngine();
     }
 }
 

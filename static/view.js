@@ -6,7 +6,7 @@ import { VecMath } from "./core/VecMath.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
 
 import { cameraManager, RenderableObject, RenderableObjectTypes } from "./core/renderEngine/sceneObjects.js";
-import { marcherManager } from "./core/renderEngine/marchingCubes/marcher.js";
+import { marcherManager } from "./core/renderEngine/webGL/marcher.js";
 
 import {renderModes} from "./core/renderEngine/renderEngine.js";
 

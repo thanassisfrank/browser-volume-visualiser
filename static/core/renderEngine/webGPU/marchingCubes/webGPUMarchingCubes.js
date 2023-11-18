@@ -597,7 +597,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     const tablesLength = vertCoordTable.length + edgeTable.length + edgeToVertsTable.length + triTable.length + neighbourCellsTable.length;
     
     // shader programs ################################################################################################
-    const shaderPath = "core/renderEngine/marchingCubes/shaders/";
+    const shaderPath = "core/renderEngine/webGPU/marchingCubes/shaders/";
     var enumerateCode = webGPU.fetchShader(shaderPath + "enumerate.wgsl");
     var enumerateFineCode = webGPU.fetchShader(shaderPath + "enumerateFine.wgsl");
     
@@ -623,7 +623,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     var marchIndexReadBuffer;
     
     // holds all the global data, common to all marching operations
-    var marchData = {
+    var globalMarchData = {
         buffers: {},
         bindGroups: {},
         bindGroupLayouts: {},
@@ -633,7 +633,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
     this.setupMarchModule = async function() {  
         console.log(webGPU)
-        marchData.buffers.readBuffer = webGPU.device.createBuffer({
+        globalMarchData.buffers.readBuffer = webGPU.device.createBuffer({
             label: "read buffer",
             size: 7776 * Uint32Array.BYTES_PER_ELEMENT,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
@@ -653,9 +653,9 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             "WGVol": WGSize.x * WGSize.y * WGSize.z
         }
     
-        marchData.pipelines.prefix = [
-            webGPU.generateComputePipeline(prefixSumACode, formatObj, marchData.bindGroupLayouts.prefix),
-            webGPU.generateComputePipeline(prefixSumBCode, formatObj, marchData.bindGroupLayouts.prefix),
+        globalMarchData.pipelines.prefix = [
+            webGPU.generateComputePipeline(prefixSumACode, formatObj, globalMarchData.bindGroupLayouts.prefix),
+            webGPU.generateComputePipeline(prefixSumBCode, formatObj, globalMarchData.bindGroupLayouts.prefix),
         ]
     }
     
@@ -664,20 +664,20 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         // this global table buffer will be copied for each data object
     
         const tablesSize = tablesLength * Uint32Array.BYTES_PER_ELEMENT
-        marchData.buffers.tables = webGPU.makeBuffer(tablesSize, "s cd cs", "global tables", true)
+        globalMarchData.buffers.tables = webGPU.makeBuffer(tablesSize, "s cd cs", "global tables", true)
     
         console.log("tables length:", tablesLength);
     
-        var range = marchData.buffers.tables.getMappedRange();
+        var range = globalMarchData.buffers.tables.getMappedRange();
         var currOff = 0;
         for (let t of [vertCoordTable, edgeTable, edgeToVertsTable, triTable, neighbourCellsTable]) { 
             new Int32Array(range, currOff*4, t.length).set(t);
             currOff += t.length;
         };
     
-        marchData.buffers.tables.unmap();    
+        globalMarchData.buffers.tables.unmap();    
         
-        marchData.buffers.read = device.createBuffer({
+        globalMarchData.buffers.read = device.createBuffer({
             label: "global read buffer 2",
             size: 64 * Uint32Array.BYTES_PER_ELEMENT,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
@@ -688,13 +688,13 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     }
     
     this.createGlobalBindGroups = function() {
-        marchData.bindGroups.tables = device.createBindGroup({
-            layout: marchData.bindGroupLayouts.enumerateFine[0],
+        globalMarchData.bindGroups.tables = device.createBindGroup({
+            layout: globalMarchData.bindGroupLayouts.enumerateFine[0],
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: marchData.buffers.tables
+                        buffer: globalMarchData.buffers.tables
                     }
                 }
             ]
@@ -702,49 +702,49 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     }
     
     this.createBindGroupLayouts = function() {
-        marchData.bindGroupLayouts.enumerate = [
+        globalMarchData.bindGroupLayouts.enumerate = [
             webGPU.generateBGLayout("cbr ctn3df cbr", "enum0"),
             webGPU.generateBGLayout("cbs", "enum1"),
             webGPU.generateBGLayout("cbs cbs", "enum2"),
             webGPU.generateBGLayout("cbs cbs", "enum3")
         ];
     
-        marchData.bindGroupLayouts.enumerateFine = [
+        globalMarchData.bindGroupLayouts.enumerateFine = [
             webGPU.generateBGLayout("cbr"),
             webGPU.generateBGLayout("cbr ctn3df cbr cbr"),
             webGPU.generateBGLayout("cbs cbs")
         ];
     
-        marchData.bindGroupLayouts.prefix = [
+        globalMarchData.bindGroupLayouts.prefix = [
             webGPU.generateBGLayout("cbs cbs", "pref0"),
             webGPU.generateBGLayout("cbr", "pref1")
         ];
     
-        marchData.bindGroupLayouts.march = [
+        globalMarchData.bindGroupLayouts.march = [
             webGPU.generateBGLayout("cbr ctn3df cbr", "march0"),
             webGPU.generateBGLayout("cbs", "march1"),
             webGPU.generateBGLayout("cw3dr32float cw3dr32float cw3dr32uint", "march2"),
             webGPU.generateBGLayout("cbs cbs", "march3")
         ];
     
-        marchData.bindGroupLayouts.marchFine = [
+        globalMarchData.bindGroupLayouts.marchFine = [
             webGPU.generateBGLayout("cbr"),
             webGPU.generateBGLayout("cbr ctn3df cbr cbr"),
             webGPU.generateBGLayout("cw3dr32float cw3dr32float cw3dr32uint", "march2"),
             webGPU.generateBGLayout("cbs cbs")
         ];
     
-        marchData.bindGroupLayouts.updateFineData = [
+        globalMarchData.bindGroupLayouts.updateFineData = [
             webGPU.generateBGLayout("cw3dr32float ctn3df cbr cbr cbr", "update fine data bg 0"),
             webGPU.generateBGLayout("cbs cbr cbs", "update fine data bg 1")
         ]
     
-        marchData.bindGroupLayouts.updateFineDataSG = [
+        globalMarchData.bindGroupLayouts.updateFineDataSG = [
             webGPU.generateBGLayout("cw3drgba32float ctn3df cbr cbr cbr", "update fine data bg 0"),
             webGPU.generateBGLayout("cbs cbr cbs", "update fine data bg 1")
         ]
     
-        marchData.bindGroupLayouts.transformVerts = [
+        globalMarchData.bindGroupLayouts.transformVerts = [
             webGPU.generateBGLayout("cbr cbr"),
             webGPU.generateBGLayout("cbs cbs cbs"),
         ];
@@ -763,15 +763,34 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         dataObj.marchData.WGCount = WGCount;
     }
     
-    this.setupMarch = async function(dataObj) { 
+    this.setupMarch = async function(renderableDataObj) { 
         // temp, move to main when there is function to get device
-        if (Object.keys(marchData.buffers).length == 0) {
+        if (Object.keys(globalMarchData.buffers).length == 0) {
             this.setupMarchModule(); 
         }
     
-        dataObj.marchData.cellScale = 1;
+        
+    
+        this.getWGCount(renderableDataObj);
+
+        renderableDataObj.renderData.marchData = {
+            buffers: {},
+            pipelines: {},
+            textures: {},
+            samplers: {},
+            cellScale: 1,
+            packing: 1
+        }
+
+        var marchData = renderableDataObj.renderData.marchData;
+    
+        // renderableDataObj.marchData.buffers = {};
+        // renderableDataObj.marchData.pipelines = {};
+        // renderableDataObj.marchData.textures = {};
+        // renderableDataObj.marchData.samplers = {};
+        // renderableDataObj.marchData.cellScale = 1;
           
-        dataObj.marchData.packing = 1;
+        // renderableDataObj.marchData.packing = 1;
         // if (dataObj.data.constructor == Float32Array) {
         //     dataObj.marchData.packing = 1;
         // } else if (dataObj.data.constructor == Uint8Array) {
@@ -781,15 +800,8 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         //     return;
         // }
     
-        this.getWGCount(dataObj);
-    
-        dataObj.marchData.buffers = {};
-        dataObj.marchData.pipelines = {};
-        dataObj.marchData.textures = {};
-        dataObj.marchData.samplers = {};
-    
         const formatObj = {
-            "packing": dataObj.marchData.packing,
+            "packing": marchData.packing,
             "WGSizeX": WGSize.x,
             "WGSizeY": WGSize.y,
             "WGSizeZ": WGSize.z,
@@ -799,12 +811,13 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         enumerateCode = await enumerateCode;
         marchCode = await marchCode;
         
-        dataObj.marchData.pipelines.enumerate = webGPU.generateComputePipeline(enumerateCode, formatObj, marchData.bindGroupLayouts.enumerate);
-        dataObj.marchData.pipelines.march = webGPU.generateComputePipeline(marchCode, formatObj, marchData.bindGroupLayouts.march);
+        marchData.pipelines.enumerate = webGPU.generateComputePipeline(enumerateCode, formatObj, globalMarchData.bindGroupLayouts.enumerate);
+        marchData.pipelines.march = webGPU.generateComputePipeline(marchCode, formatObj, globalMarchData.bindGroupLayouts.march);
         
-        this.createBindGroups(dataObj);   
+        this.createBindGroups(renderableDataObj);   
     
         console.log("setup complete");
+        marchData.marchingCubesSetup = true;
         
     }
     
@@ -843,16 +856,16 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             "MaxWGSize": MaxWGSize,
             "StorageTexFormat": "r32float"
         }
-        var updateLayout = marchData.bindGroupLayouts.updateFineData;
+        var updateLayout = globalMarchData.bindGroupLayouts.updateFineData;
         if (dataObj.structuredGrid) {
             formatObj.StorageTexFormat = "rgba32float";
-            updateLayout = marchData.bindGroupLayouts.updateFineDataSG;
+            updateLayout = globalMarchData.bindGroupLayouts.updateFineDataSG;
         }
     
         // create the pipelines
         dataObj.marchData.pipelines = {
-            enumerateFine: webGPU.generateComputePipeline(enumerateFineCode, formatObj, marchData.bindGroupLayouts.enumerateFine),
-            marchFine: webGPU.generateComputePipeline(marchFineCode, formatObj, marchData.bindGroupLayouts.marchFine),
+            enumerateFine: webGPU.generateComputePipeline(enumerateFineCode, formatObj, globalMarchData.bindGroupLayouts.enumerateFine),
+            marchFine: webGPU.generateComputePipeline(marchFineCode, formatObj, globalMarchData.bindGroupLayouts.marchFine),
             updateFineData: webGPU.generateComputePipeline(updateFineDataCode, formatObj, updateLayout)
         }
         console.log("added")
@@ -886,7 +899,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         dataObj.marchData.buffers.bufferOffset = bufferOffsetBuffer;
     
         dataObj.marchData.bindGroups.bufferOffset = webGPU.generateBG(
-            marchData.bindGroupLayouts.prefix[1],
+            globalMarchData.bindGroupLayouts.prefix[1],
             [dataObj.marchData.buffers.bufferOffset],
             "buffer offset fine"
     
@@ -951,17 +964,21 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
     }
     
-    this.createBindGroups = function(dataObj) {
-        dataObj.marchData.bindGroups = {};
-        dataObj.marchData.buffers = {};
+    this.createBindGroups = function(renderableDataObj) {
+        
+        var dataObj = renderableDataObj.object;
+        var marchData = renderableDataObj.renderData.marchData;
+
+        marchData.bindGroups = {};
+        marchData.buffers = {};
         // set the data and its dimensions
-        const packing = dataObj.marchData.packing;
-        const WGCount = dataObj.marchData.WGCount;
+        const packing = marchData.packing;
+        const WGCount = marchData.WGCount;
     
         
-        dataObj.marchData.buffers.dataInfo = webGPU.makeBuffer(16 + 4, "s cd", dataObj.id + ":data info buffer", true);
+        marchData.buffers.dataInfo = webGPU.makeBuffer(16 + 4, "s cd", dataObj.id + ":data info buffer", true);
         
-        var range = dataObj.marchData.buffers.dataInfo.getMappedRange();
+        var range = marchData.buffers.dataInfo.getMappedRange();
     
         new Float32Array(range, 0, 3).set(dataObj.cellSize);
         if (dataObj.structuredGrid) {
@@ -970,7 +987,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             new Uint32Array(range, 16, 1).set([0]);
         }
         console.log(new Float32Array(range));
-        dataObj.marchData.buffers.dataInfo.unmap();
+        marchData.buffers.dataInfo.unmap();
     
         // data texture version
         {   
@@ -994,7 +1011,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                     dataBuffer[4*i + 3] = dataObj.points[3*i + 2];
                 }
     
-                dataObj.marchData.textures.data = device.createTexture({
+                marchData.textures.data = device.createTexture({
                     label: "whole data texture",
                     size: textureSize,
                     dimension: "3d",
@@ -1005,7 +1022,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 // console.log()
                 device.queue.writeTexture(
                     {
-                        texture: dataObj.marchData.textures.data
+                        texture: marchData.textures.data
                     },
                     dataBuffer,
                     {
@@ -1016,7 +1033,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                     textureSize
                 )
             } else {
-                dataObj.marchData.textures.data = device.createTexture({
+                marchData.textures.data = device.createTexture({
                     label: "whole data texture",
                     size: textureSize,
                     dimension: "3d",
@@ -1026,7 +1043,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
                 device.queue.writeTexture(
                     {
-                        texture: dataObj.marchData.textures.data
+                        texture: marchData.textures.data
                     },
                     Float32Array.from(dataObj.data),
                     {
@@ -1049,10 +1066,10 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             });
     
             var commandEncoder = device.createCommandEncoder();
-            commandEncoder.copyBufferToBuffer(marchData.buffers.tables, 0, tablesBuffer, 0, tablesLength * Uint32Array.BYTES_PER_ELEMENT);
+            commandEncoder.copyBufferToBuffer(globalMarchData.buffers.tables, 0, tablesBuffer, 0, tablesLength * Uint32Array.BYTES_PER_ELEMENT);
             device.queue.submit([commandEncoder.finish()]);
     
-            dataObj.marchData.buffers.tables = tablesBuffer;
+            marchData.buffers.tables = tablesBuffer;
             
         }
     
@@ -1064,7 +1081,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
             });
         
-            dataObj.marchData.buffers.marchVars = marchVarsBuffer;
+            marchData.buffers.marchVars = marchVarsBuffer;
         
             
             const offsetTotalsBufferLength = 2 + WGPrefixSumCount*2;
@@ -1094,12 +1111,12 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
         
         
-            dataObj.marchData.buffers.vertexOffsetTotals = vertexOffsetTotalsBuffer;
-            dataObj.marchData.buffers.indexOffsetTotals = indexOffsetTotalsBuffer;
-            dataObj.marchData.buffers.bufferOffset = bufferOffsetBuffer;
-            dataObj.marchData.buffers.countReadBuffer = countReadBuffer;
+            marchData.buffers.vertexOffsetTotals = vertexOffsetTotalsBuffer;
+            marchData.buffers.indexOffsetTotals = indexOffsetTotalsBuffer;
+            marchData.buffers.bufferOffset = bufferOffsetBuffer;
+            marchData.buffers.countReadBuffer = countReadBuffer;
     
-            dataObj.marchData.bindGroups.marchVars = device.createBindGroup({
+            marchData.bindGroups.marchVars = device.createBindGroup({
                 layout: marchData.bindGroupLayouts.enumerate[1],
                 entries: [
                     {
@@ -1111,7 +1128,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 ]
             });
         
-            dataObj.marchData.bindGroups.bufferOffset = device.createBindGroup({
+            marchData.bindGroups.bufferOffset = device.createBindGroup({
                 layout: marchData.bindGroupLayouts.prefix[1],
                 entries: [
                     {
@@ -1124,7 +1141,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             });
     
         }
-        dataObj.marchData.bindGroups.constants = webGPU.generateBG(
+        marchData.bindGroups.constants = webGPU.generateBG(
             dataObj.marchData.pipelines.enumerate.getBindGroupLayout(0),
             [
                 dataObj.marchData.buffers.dataInfo,
@@ -1183,7 +1200,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
         return [
             webGPU.generateBG(
-                marchData.bindGroupLayouts.march[2],
+                globalMarchData.bindGroupLayouts.march[2],
                 [
                     marchVertTexture.createView(),
                     marchNormalTexture.createView(),
@@ -1213,9 +1230,10 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         });
     }
     
-    this.createOffsetBindGroups = function(dataObj) {
+    this.createOffsetBindGroups = function(renderableDataObj) {
+        var marchData = renderableDataObj.renderData.marchData;
         //console.log(dataObj);
-        const WGCount = dataObj.marchData.WGCount;
+        const WGCount = marchData.WGCount;
         const offsetBufferLength = Math.ceil(WGCount.val/(WGPrefixSumCount*2)) * WGPrefixSumCount*2;
         //console.log("WGCount: "+ WGCount.val);
         
@@ -1231,27 +1249,27 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
     
-        dataObj.marchData.buffers.vertexOffset = vertexOffsetBuffer;
-        dataObj.marchData.buffers.indexOffset = indexOffsetBuffer;        
+        marchData.buffers.vertexOffset = vertexOffsetBuffer;
+        marchData.buffers.indexOffset = indexOffsetBuffer;        
     
-        dataObj.marchData.bindGroups.vertexOffset = webGPU.generateBG(
-            dataObj.marchData.pipelines.enumerate.getBindGroupLayout(2),
+        marchData.bindGroups.vertexOffset = webGPU.generateBG(
+            marchData.pipelines.enumerate.getBindGroupLayout(2),
             [
                 vertexOffsetBuffer,
-                dataObj.marchData.buffers.vertexOffsetTotals
+                marchData.buffers.vertexOffsetTotals
             ]
         );
     
         dataObj.marchData.bindGroups.indexOffset = webGPU.generateBG(
-            dataObj.marchData.pipelines.enumerate.getBindGroupLayout(3),
+            marchData.pipelines.enumerate.getBindGroupLayout(3),
             [
                 indexOffsetBuffer,
-                dataObj.marchData.buffers.indexOffsetTotals
+                marchData.buffers.indexOffsetTotals
             ]
         )
         // combined offset buffers into one bg
-        dataObj.marchData.bindGroups.combinedOffset = webGPU.generateBG(
-            dataObj.marchData.pipelines.march.getBindGroupLayout(3),
+        marchData.bindGroups.combinedOffset = webGPU.generateBG(
+            marchData.pipelines.march.getBindGroupLayout(3),
             [
                 vertexOffsetBuffer,
                 indexOffsetBuffer
@@ -1326,7 +1344,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             
             // prefix sum on verts
             passEncoder = commandEncoder.beginComputePass();
-            passEncoder.setPipeline(marchData.pipelines.prefix[0]);
+            passEncoder.setPipeline(globalMarchData.pipelines.prefix[0]);
             passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.vertexOffset);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
             passEncoder.dispatchWorkgroups(thisNumBlocks);
@@ -1334,7 +1352,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
             // prefix sum on indices
             passEncoder = commandEncoder.beginComputePass();
-            passEncoder.setPipeline(marchData.pipelines.prefix[0]);
+            passEncoder.setPipeline(globalMarchData.pipelines.prefix[0]);
             passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.indexOffset);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -1351,7 +1369,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             
             if (numBlocks > 0) {
                 passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(marchData.pipelines.prefix[1]);
+                passEncoder.setPipeline(globalMarchData.pipelines.prefix[1]);
                 passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.vertexOffset);
                 passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -1359,7 +1377,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 passEncoder.end();
                 // for indices
                 passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(marchData.pipelines.prefix[1]);
+                passEncoder.setPipeline(globalMarchData.pipelines.prefix[1]);
                 passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.indexOffset);
                 passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -1544,8 +1562,14 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         marchIndexReadBuffer.destroy();
     }
     
-    this.march = async function(dataObj, meshObj, threshold) {
-        
+    this.march = async function(renderableDataObj, meshObj, threshold) {
+        var marchData = renderableDataObj.renderData.marchData;
+        if (!marchData?.marchingCubesSetup) {
+            await this.setupMarch(renderableDataObj);
+        }
+
+        var dataObj = renderableDataObj.object;
+
         var passEncoder;
     
         // enumeration pass =====================================================================
@@ -1560,7 +1584,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         var maxStorage = device.limits.maxStorageBufferBindingSize;
         
         while (true) {
-            currScale = dataObj.marchData.cellScale
+            currScale = marchData.cellScale
             //console.log(currScale);
             triedScales.add(currScale);
     
@@ -1574,8 +1598,8 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 // increase the scale for more room
                 dataObj.marchData.cellScale++;
     
-                dataObj.marchData.buffers.vertexOffset.destroy();
-                dataObj.marchData.buffers.indexOffset.destroy();
+                marchData.buffers.vertexOffset.destroy();
+                marchData.buffers.indexOffset.destroy();
                 this.getWGCount(dataObj);
                 this.createOffsetBindGroups(dataObj);
             } else if (currScale > 1 && maxSize <= maxStorage*Math.pow((currScale-1)/currScale, 2)) {
@@ -1587,10 +1611,10 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                     //console.log("already tried ", newScale)
                     break;
                 } else {
-                    dataObj.marchData.cellScale = newScale;
+                    marchData.cellScale = newScale;
     
-                    dataObj.marchData.buffers.vertexOffset.destroy();
-                    dataObj.marchData.buffers.indexOffset.destroy();
+                    marchData.buffers.vertexOffset.destroy();
+                    marchData.buffers.indexOffset.destroy();
                     this.getWGCount(dataObj);
                     this.createOffsetBindGroups(dataObj);
                 }
@@ -1632,12 +1656,12 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
         await commandEncoder;
         passEncoder = commandEncoder.beginComputePass();
-        passEncoder.setPipeline(dataObj.marchData.pipelines.march);
+        passEncoder.setPipeline( marchData.pipelines.march);
     
-        passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.constants);
-        passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.marchVars);
+        passEncoder.setBindGroup(0, marchData.bindGroups.constants);
+        passEncoder.setBindGroup(1, marchData.bindGroups.marchVars);
         passEncoder.setBindGroup(2, marchOutBindGroup);
-        passEncoder.setBindGroup(3, dataObj.marchData.bindGroups.combinedOffset);
+        passEncoder.setBindGroup(3, marchData.bindGroups.combinedOffset);
         passEncoder.dispatchWorkgroups(
             Math.ceil(dataObj.size[0]/WGSize.x),
             Math.ceil(dataObj.size[1]/WGSize.y),
@@ -1697,7 +1721,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             dataObj.marchData.buffers.indexOffsetFine = indexOffsetBuffer;        
             
             dataObj.marchData.bindGroups.vertexOffsetFine = webGPU.generateBG(
-                marchData.pipelines.prefix[0].getBindGroupLayout(0),
+                globalMarchData.pipelines.prefix[0].getBindGroupLayout(0),
                 [
                     vertexOffsetBuffer,
                     dataObj.marchData.buffers.vertexOffsetTotals
@@ -1707,7 +1731,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             );
             
             dataObj.marchData.bindGroups.indexOffsetFine = webGPU.generateBG(
-                marchData.pipelines.prefix[0].getBindGroupLayout(0),
+                globalMarchData.pipelines.prefix[0].getBindGroupLayout(0),
                 [
                     indexOffsetBuffer,
                     dataObj.marchData.buffers.indexOffsetTotals
@@ -1981,7 +2005,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             passEncoder = commandEncoder.beginComputePass();
         
             passEncoder.setPipeline(dataObj.marchData.pipelines.enumerateFine);
-            passEncoder.setBindGroup(0, marchData.bindGroups.tables);
+            passEncoder.setBindGroup(0, globalMarchData.bindGroups.tables);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.dataFine);
             passEncoder.setBindGroup(2, dataObj.marchData.bindGroups.combinedOffsetFine);
             passEncoder.dispatchWorkgroups(thisNumBlocks);
@@ -2026,7 +2050,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             
             // prefix sum on verts
             passEncoder = commandEncoder.beginComputePass();
-            passEncoder.setPipeline(marchData.pipelines.prefix[0]);
+            passEncoder.setPipeline(globalMarchData.pipelines.prefix[0]);
             passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.vertexOffsetFine);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
             passEncoder.dispatchWorkgroups(thisNumBlocks);
@@ -2034,7 +2058,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     
             // prefix sum on indices
             passEncoder = commandEncoder.beginComputePass();
-            passEncoder.setPipeline(marchData.pipelines.prefix[0]);
+            passEncoder.setPipeline(globalMarchData.pipelines.prefix[0]);
             passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.indexOffsetFine);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -2043,7 +2067,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             
             if (numBlocks > 0) {
                 passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(marchData.pipelines.prefix[1]);
+                passEncoder.setPipeline(globalMarchData.pipelines.prefix[1]);
                 passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.vertexOffsetFine);
                 passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -2051,7 +2075,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
                 passEncoder.end();
                 // for indices
                 passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(marchData.pipelines.prefix[1]);
+                passEncoder.setPipeline(globalMarchData.pipelines.prefix[1]);
                 passEncoder.setBindGroup(0, dataObj.marchData.bindGroups.indexOffsetFine);
                 passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.bufferOffset);
     
@@ -2124,7 +2148,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
             passEncoder = commandEncoder.beginComputePass();
             
             passEncoder.setPipeline(dataObj.marchData.pipelines.marchFine);
-            passEncoder.setBindGroup(0, marchData.bindGroups.tables);
+            passEncoder.setBindGroup(0, globalMarchData.bindGroups.tables);
             passEncoder.setBindGroup(1, dataObj.marchData.bindGroups.dataFine);
             passEncoder.setBindGroup(2, marchOutBindGroup);
             passEncoder.setBindGroup(3, dataObj.marchData.bindGroups.combinedOffsetFine);
