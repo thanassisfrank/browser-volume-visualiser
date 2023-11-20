@@ -4,11 +4,19 @@ struct VertexOut {
     @location(1) eye : vec3<f32>,    
 };
 
-// common to all passes
-struct GlobalUniform {
+struct Camera {
     pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
     mvMat : mat4x4<f32>, // camera view matrix
-    @size(16) cameraPos : vec3<f32>,
+    @size(16) position : vec3<f32>,
+    @size(16) upDirection : vec3<f32>,
+    @size(16) rightDirection : vec3<f32>,
+    verticalFOV : f32,
+    horizontalFOV : f32,
+};
+
+// common to all passes
+struct GlobalUniform {
+    camera : Camera,
     time : u32, // time in ms
 };
 
@@ -378,6 +386,18 @@ fn pixelOnVolume(x : u32, y : u32) -> bool {
     return pixVal > 0u;
 }
 
+// takes camera and x
+fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
+    // jobs petrol yee shugar treez glorious food hot sausage and mustard while were in the mood something in the custard.
+    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
+    var ray : Ray;
+    ray.direction = normalize(raySegment);
+    ray.tip = cameraPos;
+    ray.length = 0;
+
+    return ray
+}
+
 
 // workgroups work on 2d tiles of the input image
 @compute @workgroup_size({{WGSizeX}}, {{WGSizeY}}, 1)
@@ -387,7 +407,7 @@ fn main(
     @builtin(workgroup_id) wgid : vec3<u32>,
     @builtin(num_workgroups) wgnum : vec3<u32>
 ) {  
-    var imageSize = textureDimensions(fragmentPositions);
+    var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image
     if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
         // outside the image
@@ -413,23 +433,9 @@ fn main(
         cameraPos = globalInfo.cameraPos;
     }
 
-    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
-    var ray : Ray;
-    ray.direction = normalize(raySegment);
-    var enteredDataset : bool;
-    if (front_facing) {
-        // marching from the outside
-        ray.tip = fragInfo.worldPosition.xyz;
-        ray.length = length(raySegment);
-        enteredDataset = true;
-    } else {
-        // marching from the inside
-        ray.tip = cameraPos;
-        ray.length = 0;
-        // ray = extendRay(ray, nearPlaneDist);
-        // guess that we started outside to prevent issues with the near clipping plane
-        enteredDataset = false;
-    }    
+    // calculate the world position of the starting fragment
+    var ray = getRay()
+
 
     var light = DirectionalLight(vec3<f32>(1), ray.direction);
 

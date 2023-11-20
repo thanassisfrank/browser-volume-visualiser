@@ -34,25 +34,27 @@ export var viewManager = {
         var camera = config.camera;
         var data = config.data;
 
-        var marcher = await marcherManager.create(data); // FOR NOW CREATE NEW FOR EACH VIEW
+        // var marcher = await marcherManager.create(data); // FOR NOW CREATE NEW FOR EACH VIEW
+        var marcher;
         
 
         const modelMat = mat4.create();
         // mat4.rotateX(modelMat, modelMat, toRads(-90));
         // mat4.translate(modelMat, modelMat, VecMath.scalMult(-1, data.midPoint));
 
-        camera.setModelMat(modelMat);
+        // camera.setModelMat(modelMat);
         camera.setProjMat();
-        camera.setDist(1.5*data.maxSize*data.maxCellSize);
+        camera.setDist(1.5*data.getMaxLength());
+        camera.setTarget(data.getMidPoint());
 
         // register a new user of the used objects
         cameraManager.addUser(camera);
-        marcherManager.addUser(marcher);
+        // marcherManager.addUser(marcher);
 
 
         // generate id
         const id = newId(this.views);
-        var newView = new this.View(id, camera, marcher, config.renderMode || renderModes.ISO_SURFACE, (data.limits[0] + data.limits[1])/2);
+        var newView = new this.View(id, camera, data, config.renderMode || renderModes.ISO_SURFACE, (data.limits[0] + data.limits[1])/2);
         this.createViewDOM(id, newView);
         this.views[id] = newView;
         return newView;
@@ -66,11 +68,11 @@ export var viewManager = {
         var frame = viewContainer.getElementsByTagName("DIV")[0];
         var closeBtn = viewContainer.getElementsByTagName("BUTTON")[0];
 
-        slider.min = view.marcher.data.limits[0];//Math.max(view.data.limits[0], 0);
-        slider.max = view.marcher.data.limits[1];
-        slider.step = (view.marcher.data.limits[1] - view.marcher.data.limits[0]) / 200;
+        slider.min = view.data.limits[0]; // Math.max(view.data.limits[0], 0);
+        slider.max = view.data.limits[1];
+        slider.step = (view.data.limits[1] - view.data.limits[0]) / 200;
 
-        slider.value = (view.marcher.data.limits[0] + view.marcher.data.limits[1]) / 2;
+        slider.value = (view.data.limits[0] + view.data.limits[1]) / 2;
 
         closeBtn.onclick = () => {
             this.deleteView(view);
@@ -164,7 +166,7 @@ export var viewManager = {
             this.views[key].update(dt, marchingCubesEngine);
         }
     },
-    View: function(id, camera, marcher, renderMode, threshold) {
+    View: function(id, camera, data, renderMode, threshold) {
         this.id = id;
 
         this.scene = [];
@@ -173,8 +175,7 @@ export var viewManager = {
 
         this.camera = camera;
 
-        // handles both data and meshes
-        this.marcher = marcher;
+        this.data = data;
 
         this.threshold = threshold;
         this.marchedThreshold = undefined;
@@ -191,7 +192,7 @@ export var viewManager = {
         this.init = function() {
             // setup the scene
             var cameraRenderObj = new RenderableObject(RenderableObjectTypes.CAMERA, this.camera);
-            this.dataRenderObj = new RenderableObject(RenderableObjectTypes.DATA, this.marcher.data);
+            this.dataRenderObj = new RenderableObject(RenderableObjectTypes.DATA, this.data);
             var axesRenderObj = new RenderableObject(RenderableObjectTypes.MESH);
 
             // set the render mode, default is iso surface
@@ -217,6 +218,8 @@ export var viewManager = {
             if (this.dataRenderObj.renderMode == renderModes.DATA_POINTS) return;
 
             this.dataRenderObj.renderData.threshold = this.threshold;
+
+            
 
             // if (this.)
             // if (this.marchedThreshold != this.threshold) {

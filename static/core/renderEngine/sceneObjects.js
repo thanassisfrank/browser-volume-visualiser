@@ -186,8 +186,12 @@ export var cameraManager = {
         this.th = 0;
         // vertical angle
         this.phi = 0;
-        // vertical field of view
-        this.fov = 80;
+
+        // field of view
+        this.aspect = 1;
+        this.fovY = 80;
+        this.fovX = this.fovY/this.aspect
+
         this.modelMat;
         this.modelViewMat;
         this.projMat;
@@ -202,16 +206,34 @@ export var cameraManager = {
         // tracks the current movement mode
         // can be : pan, orbit or undefined when not moving
         this.mode;
+
+        // returns the camera variables in a float32array
+        // consistent with the Camera struct in WGSL
+        this.serialise = function() {
+            // pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
+            // mvMat : mat4x4<f32>, // camera view matrix
+            // @size(16) position : vec3<f32>,
+            // @size(16) upDirection : vec3<f32>,
+            // @size(16) rightDirection : vec3<f32>,
+            // verticalFOV : f32,
+            // horizontalFOV : f32,
+
+            return new Float32Array([
+                ...this.projMat, 
+                ...this.getModelViewMat(), 
+                ...this.getEyePos(), 0,
+                this.fovY, this.fovX, 0, 0
+            ])
+        }
         this.setModelMat = function(mat) {
             this.modelMat = mat;
         }
         this.setProjMat = function() {
             let projMat = mat4.create();
-            const aspect = 1;
-            const zNear = 2;
+            const zNear = 1;
             const zFar = 1000.0;
         
-            mat4.perspective(projMat,toRads(this.fov),aspect,zNear,zFar);
+            mat4.perspective(projMat, toRads(this.fovY), this.aspect, zNear, zFar);
             this.projMat = projMat;
         }
         this.getEyePos = function() {
@@ -224,18 +246,20 @@ export var cameraManager = {
             
         }
         this.getModelViewMat = function() {
-            if (!this.modelViewMatValid) {
-                this.modelViewMat = mat4.create();
-                let viewMat = mat4.create();
+            this.modelViewMat = mat4.create();
+            mat4.lookAt(this.modelViewMat, this.getEyePos(), this.target, [0, 1, 0])
+
+            // if (!this.modelViewMatValid) {
+            //     let viewMat = mat4.create();
             
-                // calculate eye position in world space from distance and angle values
+            //     // calculate eye position in world space from distance and angle values
                 
-                mat4.lookAt(viewMat, this.getEyePos(), this.target, [0, 1, 0])
                 
-                mat4.multiply(this.modelViewMat, viewMat, this.modelMat);
+            //     mat4.multiply(this.modelViewMat, viewMat, this.modelMat);
     
-                this.modelViewMatValid = true;
-            };
+            //     this.modelViewMatValid = true;
+            //     // console.log(this.modelViewMat);
+            // };
         
             return this.modelViewMat;
         }

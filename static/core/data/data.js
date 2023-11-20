@@ -2,13 +2,20 @@
 // handles the storing of the data object, normals etc
 
 import {VecMath} from "../VecMath.js";
-import {vec3, mat4} from "https://cdn.skypack.dev/gl-matrix";
+import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
 
 export {dataManager};
 
-const blockSize = [4, 4, 4]
+const blockSize = [4, 4, 4];
+
+const DATA_FORMATS = {
+    EMPTY:           0,  // undefined/empty
+    STRUCTURED:      1,  // data points are arranged as a contiguous texture
+    STRUCTURED_GRID: 2,  // data is arranged as a contiguous 3d texture, each point has a sumplemental position
+    UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
+}
 
 // object that manages data object instances
 // types of data object creatable:
@@ -49,16 +56,12 @@ var dataManager = {
     //     "f": some function
     //     "accessType": "whole"/"complex"
     // }
-    marchEngine: undefined,
     setConfigSet: function(configSet) {
         this.configSet = configSet;
         for (let id in configSet) {
             this.configSet[id].id = id;
             this.directory[id] = null;
         }
-    },
-    setMarchEngine: function(marchEngine) {
-        this.marchEngine = marchEngine;
     },
     getDataObj: async function(configId) {
         // returns already created data object if it exists
@@ -68,39 +71,18 @@ var dataManager = {
         // else, creates a new one
         var newDataObj = await this.createData(this.configSet[configId]);
         this.directory[configId] = newDataObj;
-        await this.setupDataObj(newDataObj);
+        // await this.setupDataObj(newDataObj);
         return newDataObj; 
-    },
-    setupDataObj: async function(newData) {
-        if (newData.multiBlock) {
-            var results = [];
-            for (let i = 0; i < newData.pieces.length; i++) {
-                results.push(this.marchEngine.setupMarch(newData.pieces[i]));
-            }
-            await Promise.all(results);
-            
-        } else {
-            // await this.marchEngine.setupMarch(newData);
-        }
     },
     createData: async function(config) {
         const id = newId(this.datas);
         var newData = new this.Data(id);
-        console.log(config.name);
+        console.log(config);
         newData.dataName = config.name;
 
-        if (false) {//config.complexAvailable) {
-            // handle complex data setup
-            await newData.createComplex(config);
-        } else {
-            // create dataset that isnt complex
-            await newData.createSimple(config);
-        }
+        // create dataset that isnt complex
+        await newData.createSimple(config);
 
-        newData.config = config;
-        newData.dataType = DATA_TYPES[config.dataType];
-        newData.pointsDataType = Float32Array;
-        
         this.datas[id] = newData;
 
         return newData;
@@ -120,104 +102,67 @@ var dataManager = {
         this.id = id;
         this.users = 0;
         this.config;
-        // a set of data associated with points
-        // complex:
-        // - a low resolution of whole dataset for fast scrolling
-        // simple:
-        // - the whole dataset
-        this.data = [];
-        this.dataType;
-        this.pointsDataType;
+
+        // what kind of data file this contains
+        this.dataFormat = DATA_FORMATS.EMPTY;
+
         // what this.data represents
         this.dataName = "";
-        // used by the .vts format to place points in space
-        this.points = [];
-        // will contain new instances of data objects
-        this.pieces = [];
-        this.multiBlock = false;
-        // used to store the limit values of each block if in complex mode
-        this.blockLimits = [];
-        // used to store fine data for complex mode
-        this.fineData = [];
-        // stores the dimensions of the dataset in blocks
-        this.blocksSize = [];
-        // flag for if this is a complex data object
-        this.complex = false;
-        // flag for if this is a structuredgrid object (.vts)
-        this.structuredGrid = false;
-        this.normals = [];
-        this.normalsInitialised = false;
-        this.normalsPopulated = false;
-
-        // these following attributes apply to the data stored in this.data
-        // simple:
-        // - these reflect the values for the actual dataset
-        // complex:
-        // - these reflect the values for the coarse, whole view
-        this.maxSize = 0;
-        this.maxCellSize = 1;
-        this.volume = 0;
-        this.fullSize = [];
-        this.fullVolume = 0;
-        this.midPoint = [0, 0, 0];
-        this.size = [];
-        this.cellSize = [1, 1, 1];
-        this.blockSize = blockSize;
-
-        // min, max
-        this.limits = [undefined, undefined];
-        // holds any information the marching implementation needs e.g. the data buffer on gpu
-        this.marchData = {};
-        this.index = function(i, j, k) {
-            return this.data[i * this.size[1] * this.size[2] + j * this.size[2] + k];
+        
+        // the actual data store of the object
+        // all entries should be typedarray objects
+        this.data = {
+            // only 1 time step supported for now
+            values: null,
+            positions: null,
+            cellConnectivity: null,
+            cellOffsets: null,
+            cellTypes: null,
         };
 
-        this.initialise = function(config, scale = 1, pieceNum = 0) {
-            if (config.type == "structuredGrid") {
-                if (pieceNum != -1) {
-                    this.fullSize = xyzToA(config.pieces[pieceNum].size);
-                    this.fullVolume = volume(this.fullSize);
-                    this.size = [
-                        Math.floor(config.pieces[pieceNum].size.x/scale), 
-                        Math.floor(config.pieces[pieceNum].size.y/scale), 
-                        Math.floor(config.pieces[pieceNum].size.z/scale)
-                    ];
-                    this.maxSize = Math.max(...this.size);
-                    this.volume = volume(this.size);
+        // supplemental attributes
+        // the dimensions in data space
+        this.size = [];
+        // min, max of all data values
+        this.limits = [undefined, undefined];
+
+        // matrix that captures data space -> object space
+        // includes scaling of the grid
+        this.dataTransformMat = mat4.create();
+
+        this.createSimple = async function(config) {
+            this.config = config;
+            if (config.f) {
+                this.generateData(config);
+            } else if (config.type == "raw") {
+                this.dataFormat = DATA_FORMATS.STRUCTURED;
+                const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
+                this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
+                this.limits = config.limits;
+
+                this.size = xyzToA(config.size);
+                if (config.cellSize) {
+                    this.dataTransformMat = mat4.fromScaling(mat4.create(), xyzToA(config.cellSize))
+                    this.dataTransformMat = mat4.fromValues(
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                        0, 0, 0, 1,
+                    )
                 } else {
-                    this.maxSize = Math.max(...xyzToA(config.pieces[0].size));
-                    this.midPoint = config.origin;           // for now, set the origin of every 
+                    
                 }
-                this.initialised = true;
-            } else {
-                this.fullSize = xyzToA(config.size);
-                this.fullVolume = volume(this.fullSize);
-                this.size = [
-                    Math.floor(config.size.x/scale), 
-                    Math.floor(config.size.y/scale), 
-                    Math.floor(config.size.z/scale)
-                ];
-                this.maxSize = Math.max(...this.size);
-                this.volume = volume(xyzToA(config.size));
-                if (config.cellScale) {
-                    this.cellSize = [
-                        scale*config.cellSize.x,
-                        scale*config.cellSize.y,
-                        scale*config.cellSize.z
-                    ];
-                } else {
-                    this.cellSize = [scale, scale, scale];
-                }
+                console.log("made structured data obj")
+    
                 
-                this.maxCellSize = Math.max(...this.cellSize);
-                this.midPoint = [
-                    (this.size[0]-1)/2*this.cellSize[0], 
-                    (this.size[1]-1)/2*this.cellSize[1], 
-                    (this.size[2]-1)/2*this.cellSize[2]
-                ]
-                this.initialised = true;
+            } else if (config.type == "structuredGrid") {
+                this.dataFormat = DATA_FORMATS.STRUCTURED_GRID;
+            } else if (config.type == "unstructured") {
+                this.dataFormat = DATA_FORMATS.UNSTRUCTURED;
             }
-        }
+            
+            this.initialised = true;
+        };
 
         this.generateData = async function(config) {
             if (config.type == "structuredGrid") {
@@ -269,7 +214,6 @@ var dataManager = {
                     }
                 }
                 console.log(this.limits);
-                this.initialise(config);
             }
         };
         this.setCellSize = function(size) {
@@ -287,362 +231,80 @@ var dataManager = {
             }
             console.log(this.limits);
         };
-
-        this.createSimple = async function(config) {
-            if (config.f) {
-                this.generateData(config);
-            } else if (config.type == "raw") {
-                const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
-                this.data = new DATA_TYPES[config.dataType](responseBuffer);
-                this.limits = config.limits;
-                this.initialise(config);
-                console.log("init")
-            } else if (config.type == "structuredGrid") {
-                this.structuredGrid = true;
-
-                var totalPieces = 0;
-
-                var extents = [];
-                var limits = [];
-
-                var fileDOMs = [];
-                var numPiecesList = [];
-                // go through all the files that make up this dataset and get total piece num
-                for (let i = 0; i < config.originalFiles.length; i++) {
-                    fileDOMs.push(
-                        await fetch(config.path + config.originalFiles[i])
-                        .then(res => res.text())
-                        .then(text => parseXML(text))
-                    )
-                    
-                    const numPieces = getNumPiecesFromVTS(fileDOMs[i]);
-                    totalPieces += numPieces;
-                    numPiecesList.push(numPieces);
-                    console.log(numPieces);
-                }
-
-                var currPieceIndex = 0;
-                // go through all pieces and initialise them
-                for (let i = 0; i < fileDOMs.length; i++) {
-                    // go through any pieces each file may have
-                    for (let j = 0; j < numPiecesList[i]; j++) {
-                        var p;
-                        if (totalPieces == 1) {
-                            p = this;
-                        } else {
-                            this.pieces.push(await dataManager.createData({name: this.dataName + " " + String(i)}));
-                            var index = this.pieces.length - 1;
-                            // register as a new user of this data
-                            dataManager.addUser(this.pieces[index]);
-                            this.pieces[index].structuredGrid = true;
-                            var p = this.pieces[index];
-                            this.multiBlock = true;
-                        }
-                        
-                        p.points = getPointsFromVTS(fileDOMs[i], j);
-                        // get the first dataset
-                        var pointDataNames = getDataNamesFromVTS(fileDOMs[i], j);
-                        p.data = getPointDataFromVTS(fileDOMs[i], j, pointDataNames[0]);
-
-                        extents.push(getExtentFromVTS(fileDOMs[i], j));
-                        limits.push(getDataLimitsFromVTS(fileDOMs[i], j, getDataNamesFromVTS(fileDOMs[i], j)[0]));
-                        
-                        // set limits and initialise piece
-                        p.limits = config.data[pointDataNames[0]].limits;
-                        p.initialise(config, 1, currPieceIndex);
-
-                        currPieceIndex++;
-                    }
-                }
-                // set limits and origin on main
-                this.limits = config.data[pointDataNames[0]].limits;
-                this.initialise(config, 1, -1);
-                
-                console.log(extents, limits)
-                // this.initialiseVTS(totalPieces, extents, limits);
-                
-            }
-        };
-
-        this.createComplex = async function(config) {
-            // first, save the config object
-            this.config = config;
-            this.complex = true;
-            const pointsTarget = 200000;
-
-            if (config.type == "raw") {
-                // extract information from it
-                this.blocksSize = xyzToA(config.blocksSize);
-                this.blocksVol = volume(this.blocksSize);
-
-                this.limits = config.limits;
-                console.log(this.limits)
-
-                // assess what resolution the coarse representation should be
-                const totalPoints = this.config.size.x*this.config.size.y*this.config.size.z;
-                // const scale = Math.ceil(Math.pow(totalPoints/pointsTarget, 1/3));
-                const scale = 1;
-                console.log("scale:", scale);
-                
-                const request = {
-                    name: config.id,
-                    mode: "whole",
-                    // will be determined by benchmarking
-                    cellScale: scale
-                }
-
-                // console.log(request);
-
-                // wait for the response
-                const responseBuffer = await fetch("/data", {
-                    method: "POST",
-                    body: JSON.stringify(request)
-                }).then((resp) => resp.arrayBuffer());
-
-                // create an array of correct type and store in this.data
-                this.data = new DATA_TYPES[config.dataType](responseBuffer);
-
-                // get the block limits data from the server
-                var pathSplit = config.path.split(".");
-                const limitsResponse = await fetch(pathSplit[0] + "_limits." + pathSplit[1]);
-                const limitsBuffer = await limitsResponse.arrayBuffer();
-                this.blockLimits = new DATA_TYPES[config.dataType](limitsBuffer)
-
-                // this.logBlockDensity(32);
-
-                this.limits = config.limits;
-                this.initialise(config, scale);
-            } else if (config.type == "structuredGrid") {
-                this.structuredGrid = true;
-                const totalPieces = config.pieces.length;
-
-                var totalPoints = 0;
-                for (let i = 0; i < totalPieces; i++) {
-                    totalPoints += config.pieces[i].size.x*config.pieces[i].size.y*config.pieces[i].size.z;
-                }
-                const scale = Math.ceil(Math.pow(totalPoints/pointsTarget, 1/3));
-                console.log("scale:", scale);
-
-                const chosenAttributeName = Object.keys(config.data)[0];
-
-                for (let i = 0; i < totalPieces; i++) {
-                    var p;
-                    if (totalPieces == 1) {this
-                        p = this;
-                    } else {
-                        this.pieces.push(await dataManager.createData({name: this.dataName + " " + String(i)}));
-                        var index = this.pieces.length - 1;
-                        // register as a new user of this data
-                        dataManager.addUser(this.pieces[index]);
-                        this.pieces[index].structuredGrid = true;
-                        this.pieces[index].fileName = config.pieces[i].fileName;
-                        this.pieces[index].attributeName = chosenAttributeName;
-                        this.pieces[index].config = config;
-                        p = this.pieces[index];
-                        this.multiBlock = true;
-                    }
-
-                    // request the points data
-                    const pointsRequest = {
-                        name: config.id,
-                        fileName: config.pieces[i].fileName,
-                        points: true,
-                        mode: "whole",
-                        // will be determined by benchmarking
-                        cellScale: scale
-                    }
-
-                    p.points = await fetch("/data", {
-                        method: "POST",
-                        body: JSON.stringify(pointsRequest)
-                    })
-                    .then((resp) => resp.arrayBuffer())
-                    .then(buff => new Float32Array(buff));
-
-
-                    // request data
-                    const dataRequest = {
-                        name: config.id,
-                        fileName: config.pieces[i].fileName,
-                        data: p.attributeName,
-                        mode: "whole",
-                        // will be determined by benchmarking
-                        cellScale: scale
-                    }
-
-                    p.data = await fetch("/data", {
-                        method: "POST",
-                        body: JSON.stringify(dataRequest)
-                    })
-                        .then((resp) => resp.arrayBuffer())
-                        .then(buff => new DATA_TYPES[config.data[p.attributeName].dataType](buff));
-
-                    // get the block limits data from the server
-                    const limPath = config.path + config.pieces[i].fileName + "_" +  p.attributeName + "_limits.raw";
-                    p.blockLimits = await fetch(limPath)
-                        .then((resp) => resp.arrayBuffer())
-                        .then(buff => new DATA_TYPES[config.data[p.attributeName].dataType](buff));
-
-                    // console.log(p.data);
-                    // console.log(p.points);
-                    // console.log(p.blockLimits);
-                    // this.logBlockDensity(32);
-                    p.complex = true;
-                    p.structuredGrid = true;
-                    p.blocksSize = xyzToA(config.pieces[i].blocksSize);
-                    p.blockVol = volume(this.blocksSize);
-
-                    p.limits = config.data[p.attributeName].limits;
-                    p.initialise(config, scale, i);
-                }
-                this.complex = true;
-                // init the main object too
-                this.structuredGrid = true;
-                this.attributeName = chosenAttributeName;
-                this.limits = config.data[p.attributeName].limits;
-                this.initialise(config, scale, -1);
-            }
-        };
-
-
-
-        // allows a query of which blocks intersect with the given range
-        this.queryBlocks = function(range, exclusive = [false, false]) {
-            var intersecting = [];
-            // block locations is a list of all blocks and where they are in this.data if they are there
-            var l, r;
-            for (let i = 0; i < this.blockLimits.length/2; i++) {
-                l = this.blockLimits[2*i];
-                r = this.blockLimits[2*i + 1];
-                if (l <= range[1] && range[0] <= r) {
-                    if (exclusive[0] && l <= range[0]) continue;
-                    if (exclusive[1] && r >= range[1]) continue;
-                    intersecting.push(i);
-                }
+        // returns the byte length of the values array
+        this.getValuesByteLength = function() {
+            return this.data.values.byteLength;
+        }
+        // returns the positions of the boundary points
+        this.getDatasetBoundaryPoints = function() {
+            var size = this.getDataSize();
+            var points = new Float32Array([
+                0,       0,       0,       // 0
+                size[0], 0,       0,       // 1
+                0,       size[1], 0,       // 2
+                size[0], size[1], 0,       // 3
+                0,       0,       size[2], // 4
+                size[0], 0,       size[2], // 5
+                0,       size[1], size[2], // 6
+                size[0], size[1], size[2]  // 7
+            ])
+            var transformedPoint = [0, 0, 0, 0];
+            for (let i = 0; i < points.length; i += 3) {
+                vec4.transformMat4(
+                    transformedPoint, 
+                    [points[i], points[i + 1], points[i + 2], 1],
+                    this.dataTransformMat
+                )
+                points.set([
+                    transformedPoint[0],
+                    transformedPoint[1],
+                    transformedPoint[2]
+                ], i);
             } 
-            return intersecting;
-        }
-        this.queryDeltaBlocks = function(oldRange, newRange) {
-            console.log(oldRange, newRange);
-            var out = {add:[], remove:[]};
-            var thisRange = [];
-            for (let i = 0; i < this.blockLimits.length/2; i++) {
-                thisRange[0] = this.blockLimits[2*i];
-                thisRange[1] = this.blockLimits[2*i + 1];
-                // four cases:
-                // only in new range -> goes into add
-                // only in old range -> goes into remove
-                // in both ranges -> nothing
-                // in neither ranges -> nothing
-                
-                if (rangesOverlap(thisRange, oldRange) && rangesOverlap(thisRange, newRange)) {
-                    // in both so don't do anything
-                    continue
-                } else if (rangesOverlap(thisRange, newRange)) {
-                    // only in new range
-                    out.add.push(i);
-                } else if (rangesOverlap(thisRange, oldRange)) {
-                    // only in old range
-                    out.remove.push(i);
-                }
-            }
-            // console.log(out);
-            return out;
-        }
-        // same as above but returns a number
-        this.queryBlocksCount = function(range, exclusive = [false, false]) {
-            var num = 0;
-            // block locations is a list of all blocks and where they are in this.data if they are there
-            var l, r;
-            for (let i = 0; i < this.blockLimits.length/2; i++) {
-                l = this.blockLimits[2*i];
-                r = this.blockLimits[2*i + 1];
-                if (l <= range[1] && range[0] <= r) {
-                    if (exclusive[0] && l <= range[0]) continue;
-                    if (exclusive[1] && r >= range[1]) continue;
-                    num++;
-                }
-            } 
-            return num;
-        }
 
-        // fetches the supplied blocks
-        this.fetchBlocks = function(blocks, points = false) {
-            var request = {
-                name: this.config.id,
-                mode: "blocks",
-                blocks: blocks
-            }
-            if (this.structuredGrid) {
-                request.fileName = this.fileName;
-                if (points) {
-                    request.points = true;
-                } else {
-                    request.data = this.attributeName;
-                }
-            }
-            console.log(request);
-
-            var that = this;
-
-            return fetch("/data", {
-                method: "POST",
-                body: JSON.stringify(request)
-            })
-            .then(response => response.arrayBuffer())
-            .then(buffer => new (that.getDataType())(buffer))
+            return points;
         }
+        this.getMidPoint = function() {
+            var points = this.getDatasetBoundaryPoints();
+            var min = points.slice(0, 3);
+            var max = points.slice(21, 24);
 
-        this.bytesPerBlockData = function() {
-            return volume(blockSize)*this.getDataType().BYTES_PER_ELEMENT;
+            return [
+                (min[0] + max[0])/2,
+                (min[1] + max[1])/2,
+                (min[2] + max[2])/2,
+            ]
         }
+        this.getMaxLength = function() {
+            var points = this.getDatasetBoundaryPoints();
+            var min = points.slice(0, 3);
+            var max = points.slice(21, 24);
 
-        this.getDataType = function() {
-            // console.log(this.config, this.attributeName)
-            if (this.structuredGrid) {
-                return DATA_TYPES[this.config.data[this.attributeName].dataType];
+            return vec3.length([
+                min[0] - max[0],
+                min[1] - max[1],
+                min[2] - max[2],
+            ])
+        }
+        // for structured formats, this returns the dimensions of the data grid in # data points
+        this.getDataSize = function() {
+            if (this.dataFormat == DATA_FORMATS.STRUCTURED || this.dataFormat == DATA_FORMATS.STRUCTURED_GRID) {
+                // swizel dimensions so they're accurate
+                return [this.size[2], this.size[1], this.size[0]];
             } else {
-                return DATA_TYPES[this.config.dataType];
+                return [0, 0, 0];
             }
         }
-
-        this.bytesPerBlockPoints = function() {
-            return volume(blockSize)*3*4; // assume positions are float32 for now
-        }
-        
-
-        this.logBlockDensity = function(n) {
-            const density = this.getBlockDensity(n);
-            // console.log(density);
-            // find the max to scale by
-            var maxVal = 0;
-            for (let i = 0; i < density.length; i++) {
-                maxVal = Math.max(density[i], maxVal);
-            }
-            const rowLength = 32;
-            var outStr = "";
-            for (let i = 0; i < density.length; i++) {
-                outStr += "#".repeat(Math.round(density[i]*rowLength/maxVal)) + "\n";
-            }
-            console.log(outStr);
-        }
-
-        this.getBlockDensity = function(n) {
-            var density = [];
-            for (let i = 0; i <= n; i++) {
-                const val = i*(this.limits[1] - this.limits[0])/n + this.limits[0];
-                density.push(this.queryBlocksCount([val, val]));
-            }
-            return density;
+        this.getValues = function() {
+            return this.data.values;
         }
 
         // returns a mat4 encoding object space -> data space
         // includes 
         this.getdMatInv = function() {
-            var dMat = mat4.fromScaling(mat4.create(), [1, 1, 1]);
-            mat4.rotateY(dMat, dMat, Math.PI/2);
-            // mat4.invert(dMat, dMat);
-            return dMat;
+            var dMatInv = mat4.create();
+            mat4.invert(dMatInv, this.dataTransformMat);
+            return dMatInv;
         }
     },
     deleteData: function(data) {
@@ -661,11 +323,3 @@ var dataManager = {
         delete this.datas[data.id];
     }
 }
-
-
-
-
-// need to intialise the coarse, whole data in the march module as part of init
-// then delete its copy of the data as it is only needed in the march module
-
-// needs method for getting the block # to add and remove given an old and new value range

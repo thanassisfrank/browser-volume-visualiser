@@ -632,7 +632,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
     }
     
     this.setupMarchModule = async function() {  
-        console.log(webGPU)
+        // console.log(webGPU)
         globalMarchData.buffers.readBuffer = webGPU.device.createBuffer({
             label: "read buffer",
             size: 7776 * Uint32Array.BYTES_PER_ELEMENT,
@@ -666,7 +666,7 @@ export function WebGPUMarchingCubesEngine(webGPUBase) {
         const tablesSize = tablesLength * Uint32Array.BYTES_PER_ELEMENT
         globalMarchData.buffers.tables = webGPU.makeBuffer(tablesSize, "s cd cs", "global tables", true)
     
-        console.log("tables length:", tablesLength);
+        // console.log("tables length:", tablesLength);
     
         var range = globalMarchData.buffers.tables.getMappedRange();
         var currOff = 0;

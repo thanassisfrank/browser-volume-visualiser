@@ -4,11 +4,20 @@ struct VertexOut {
     @location(1) eye : vec3<f32>,    
 };
 
-// common to all passes
-struct GlobalUniform {
+struct Camera {
     pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
     mvMat : mat4x4<f32>, // camera view matrix
-    @size(16) cameraPos : vec3<f32>,
+    @size(16) position : vec3<f32>,
+    @size(16) upDirection : vec3<f32>,
+    @size(16) rightDirection : vec3<f32>,
+    verticalFOV : f32,
+    horizontalFOV : f32,
+};
+
+// common to all passes
+struct GlobalUniform {
+    camera : Camera,
+    time : u32, // time in ms
 };
 
 // specific info for this object
@@ -16,7 +25,6 @@ struct ObjectInfo {
     otMat : mat4x4<f32>, // object transform matrix
     frontMaterial : Material,
     backMaterial : Material,
-    time : u32, // time in ms
     // frontCol : vec4<f32>,
     // backCol : vec4<f32>
 };
@@ -182,6 +190,9 @@ fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit
     return prevCol + sampleCol;
 }
 
+fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
+    return (vec4<f32>(pos, 1) * passInfo.dMatInv).xyz;
+}
 
 
 
@@ -192,11 +203,11 @@ fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit
 fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
 {
     var out : VertexOut;
-    var vert : vec4<f32> = globalInfo.mvMat * vec4<f32>(position, 1.0);
+    var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
 
     out.worldPosition = objectInfo.otMat * vec4<f32>(position, 1.0);
     out.eye = vert.xyz;
-    out.clipPosition = globalInfo.pMat * globalInfo.mvMat * out.worldPosition;
+    out.clipPosition = globalInfo.camera.pMat * globalInfo.camera.mvMat * out.worldPosition;
 
     return out;
 }
@@ -220,7 +231,7 @@ fn fragment_main(
     if (passFlags.fixedCamera) {
         cameraPos = vec3<f32>(600, 600, 600); 
     } else {
-        cameraPos = globalInfo.cameraPos;
+        cameraPos = globalInfo.camera.position;
     }
 
     var raySegment = fragInfo.worldPosition.xyz - cameraPos;
@@ -259,12 +270,12 @@ fn fragment_main(
         if (ray.length > passInfo.maxLength) {
             break;
         }
-        var tipDataPos = ray.tip;//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
+        var tipDataPos = toDataSpace(ray.tip);//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
         // check if tip has left data
         if (
-            ray.tip.x > dataSize.x || ray.tip.x < 0 ||
-            ray.tip.y > dataSize.y || ray.tip.y < 0 ||
-            ray.tip.z > dataSize.z || ray.tip.z < 0
+            tipDataPos.x > dataSize.x || tipDataPos.x < 0 ||
+            tipDataPos.y > dataSize.y || tipDataPos.y < 0 ||
+            tipDataPos.z > dataSize.z || tipDataPos.z < 0
         ) {
             // have gone all the way through the dataset
             if (enteredDataset) {
@@ -286,7 +297,7 @@ fn fragment_main(
                         // find where exactly by lerp
                         var backStep = lastStepSize/(sampleVal-lastSampleVal) * (sampleVal - passInfo.threshold);
                         ray = extendRay(ray, -backStep);
-                        tipDataPos = ray.tip;
+                        tipDataPos = toDataSpace(ray.tip);
                     }
 
                     // set the material
@@ -321,7 +332,7 @@ fn fragment_main(
         }
         
         continuing {
-            var thisStepSize = passInfo.stepSize;
+            var thisStepSize = passInfo.stepSize*ray.length/10;
             ray = extendRay(ray, passInfo.stepSize);
             lastAbove = thisAbove;
             lastSampleVal = sampleVal;

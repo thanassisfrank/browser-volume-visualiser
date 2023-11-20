@@ -4,6 +4,22 @@ struct Uniform {
     @size(16) cameraPos : vec3<f32>, // camera position in world space
 };
 
+struct Camera {
+    pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
+    mvMat : mat4x4<f32>, // camera view matrix
+    @size(16) position : vec3<f32>,
+    @size(16) upDirection : vec3<f32>,
+    @size(16) rightDirection : vec3<f32>,
+    verticalFOV : f32,
+    horizontalFOV : f32,
+};
+
+// common to all passes
+struct GlobalUniform {
+    camera : Camera,
+    time : u32, // time in ms
+};
+
 // specific info for this object
 struct ObjectInfo {
     otMat : mat4x4<f32>, // object transform matrix
@@ -23,7 +39,9 @@ struct DirectionalLight {
     direction : vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> u : Uniform;
+// data common to all rendering
+// camera mats, position
+@group(0) @binding(0) var<uniform> globalInfo : GlobalUniform;
 
 @group(0) @binding(1) var<uniform> objectInfo : ObjectInfo;
 
@@ -61,9 +79,9 @@ fn vertex_main(
 ) -> VertexOut
 {
     var out : VertexOut;
-    var vert : vec4<f32> = u.mvMat * vec4<f32>(position, 1.0);
+    var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
     
-    out.position = u.pMat * vert;
+    out.position = globalInfo.camera.pMat * vert;
     out.normal = normal;
     out.eye = -vec3<f32>(vert.xyz);
     out.worldPos = vert.xyz;

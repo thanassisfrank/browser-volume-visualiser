@@ -92,7 +92,7 @@ async function main() {
         .then(d => {return {...d, ...functionalDatasets}});
     // setup data manager with these
     dataManager.setConfigSet(datasets);
-    dataManager.setMarchEngine(renderEngine.marchingCubes);
+    // dataManager.setMarchEngine(renderEngine.marchingCubes);
 
     // await setupMarchModule();
     // var ctx = await setupRenderer(canvas); 
@@ -172,7 +172,7 @@ async function main() {
         });
 
         // make wireframe
-        newView.dataRenderObj.children.push(renderEngine.createWireframeBox(newData.size));
+        newView.dataRenderObj.children.push(renderEngine.createWireframeBox(newData.getDatasetBoundaryPoints()));
         newView.scene.unshift(renderEngine.createAxes(20));
 
         // hide the window
@@ -207,6 +207,7 @@ async function main() {
 
         // next frame
         requestAnimationFrame(renderLoop);
+        // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);
     };
     renderLoop();
 }

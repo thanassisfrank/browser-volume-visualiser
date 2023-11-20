@@ -64,6 +64,10 @@ export function WebGPUBase (verbose) {
         COMPUTE: 2,
     }
 
+    this.globalWGSLStructs = `
+        
+    `
+
     this.getNewBufferId = function(){
         var id = Object.keys(buffers).length;
             while (buffers.hasOwnProperty(String(id))) {
@@ -76,7 +80,7 @@ export function WebGPUBase (verbose) {
         this.adapter = await navigator.gpu.requestAdapter({
             powerPreference: "high-performance"
         });
-        console.log(this.adapter.limits);
+        // console.log(this.adapter.limits);
         if (!this.adapter.features.has("float32-filterable")) {
             console.warn("Filterable 32-bit float textures support is not available");
         }
@@ -86,7 +90,7 @@ export function WebGPUBase (verbose) {
                 maxBufferSize: this.adapter.limits.maxBufferSize
             }
         });
-        console.log(this.device.limits);
+        // console.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
 
         this.createDefaultObjects();

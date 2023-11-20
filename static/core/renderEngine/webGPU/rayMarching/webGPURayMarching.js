@@ -68,13 +68,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             {str: rayMarchCode, formatObj: {}}
         );
         
-
-        this.depthRenderPass = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER,
-            {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
-            [webGPU.bindGroupLayouts.render0],
-            {str: rayMarchCode, formatObj: {}}
-        );
+        // var depthPassCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarch.wgsl");
+        // this.depthRenderPass = webGPU.createPassDescriptor(
+        //     webGPU.PassTypes.RENDER,
+        //     {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
+        //     [webGPU.bindGroupLayouts.render0],
+        //     {str: rayMarchCode, formatObj: {}}
+        // );
 
     };
 
@@ -85,11 +85,12 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         if(!renderData.buffers) renderData.buffers = {};
         if(!renderData.samplers) renderData.samplers = {};
 
+        var datasetSize = dataObj.getDataSize();
         // copy the data to a texture
         const textureSize = {
-            width: dataObj.size[2],
-            height: dataObj.size[1],
-            depthOrArrayLayers: dataObj.size[0]
+            width: datasetSize[0],
+            height: datasetSize[1],
+            depthOrArrayLayers: datasetSize[2]
         }
 
         renderData.textures.data = device.createTexture({
@@ -100,7 +101,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
         });
 
-        await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.data).buffer);
+        await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.getValues()).buffer);
 
         //create sampler for data texture
         renderData.samplers.data = device.createSampler({
@@ -157,11 +158,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         device.queue.writeBuffer(
             constsBuffer, 
             0, 
-            new Float32Array([
-                ...camera.projMat, 
-                ...camera.getModelViewMat(), 
-                ...camera.getEyePos(), 0,
-            ])
+            camera.serialise()
         );
 
         // write obect info buffer

@@ -152,7 +152,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
    
 
-    // TODO: support structured and multiblock
+    // OLD
     this.createMeshFromDataPoints = async function(renderableDataObj) {
         // first, search direct children for if the meshes have already been created
         for (let child of renderableDataObj.children) {
@@ -199,32 +199,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         webGPU.readBuffer(dataPointsMesh.buffers.vertex, 0, 100).then(
             (arrayBuffer) => {console.log(new Float32Array(arrayBuffer))}
         );
-
-        // create test mesh too
-        var verts = new Float32Array([
-            0, 0, 0, 
-            0, 0, 500, 
-            0, 500, 0,
-        ]);
-        var norms = new Float32Array([
-            1, 0, 0,
-            1, 0, 0,
-            1, 0, 0,
-        ]);
-        var inds = new Uint32Array([
-            0, 1, 2
-        ]);
-        
-        var testMesh = meshManager.createMesh();
-        testMesh.buffers.vertex = webGPU.createFilledBuffer("f32", verts, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        testMesh.buffers.normal = webGPU.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        testMesh.buffers.index = webGPU.createFilledBuffer("u32", inds, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC);
-        testMesh.vertsNum = 3;
-        testMesh.indicesNum = 3;
-        var renderableTestMesh = new RenderableObject(RenderableObjectTypes.MESH, testMesh);
-        renderableTestMesh.renderMode = renderModes.SURFACE;
-
-        renderableDataObj.children.push(renderableTestMesh);
 
 
         // old code from marcher.js
@@ -273,22 +247,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return mesh;
     }
 
-    // FLIPS X AND Z
     this.createBoundingBox = function(renderableDataObj) {
         // check if bounding box if already generated
         if (checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)) return;
         // make points
         var size = renderableDataObj.object.size;
-        var points = new Float32Array([
-            0,       0,       0,       // 0
-            size[2], 0,       0,       // 1
-            0,       size[1], 0,       // 2
-            size[2], size[1], 0,       // 3
-            0,       0,       size[0], // 4
-            size[2], 0,       size[0], // 5
-            0,       size[1], size[0], // 6
-            size[2], size[1], size[0]  // 7
-        ])
+        var points = renderableDataObj.object.getDatasetBoundaryPoints();
+
         var norms = new Float32Array(points.length);
         var indices = new Uint32Array([
             // bottom face
@@ -327,18 +292,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return renderableMesh;
     }
 
-    // FLIPS X AND Z
-    this.createWireframeBox = function(size) {
-        var points = new Float32Array([
-            0,       0,       0,       // 0
-            size[2], 0,       0,       // 1
-            0,       size[1], 0,       // 2
-            size[2], size[1], 0,       // 3
-            0,       0,       size[0], // 4
-            size[2], 0,       size[0], // 5
-            0,       size[1], size[0], // 6
-            size[2], size[1], size[0]  // 7
-        ]);
+    this.createWireframeBox = function(points) {
         var norms = new Float32Array(points.length);
         var indices = new Uint32Array([
             0, 1,
@@ -415,6 +369,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     }
 
     this.renderMesh = async function(renderableMeshObj, camera, renderPassDescriptor, box) {
+        if (renderableMeshObj.renderMode == renderModes.NONE) return;
         if (!renderableMeshObj.renderData?.buffers?.objectInfo) {
             renderableMeshObj.renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info buffer");
         }
@@ -425,14 +380,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             return;
         }
 
-        if (renderableMeshObj.renderMode == renderModes.NONE) return;
 
-        var commandEncoder = webGPU.device.createCommandEncoder();
-
-        var bindGroup0 = webGPU.generateBG(webGPU.bindGroupLayouts.render0, [
-            this.uniformBuffer,
-            renderableMeshObj.renderData.buffers.objectInfo
-        ]);        
+        var commandEncoder = webGPU.device.createCommandEncoder();     
 
         await commandEncoder;
 
@@ -457,19 +406,11 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             boundingBox: this.ctx.canvas.getBoundingClientRect(),
         }
 
-        commandEncoder = webGPU.encodeGPUPass(commandEncoder, renderPass);
+        webGPU.encodeGPUPass(commandEncoder, renderPass);
 
-        // write uniforms to buffer
         // write global info buffer
-        webGPU.device.queue.writeBuffer(
-            this.uniformBuffer, 
-            0, 
-            new Float32Array([
-                ...camera.projMat, 
-                ...camera.getModelViewMat(), 
-                ...camera.getEyePos(), 0,
-            ])
-        );
+        webGPU.device.queue.writeBuffer(this.uniformBuffer, 0, camera.serialise());
+        // console.log(camera.serialise());
 
         // write object info buffer
         webGPU.device.queue.writeBuffer(
