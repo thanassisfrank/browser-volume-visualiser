@@ -1,44 +1,9 @@
-struct VertexOut {
-    @builtin(position) clipPosition : vec4<f32>,
-    @location(0) worldPosition : vec4<f32>,
-    @location(1) eye : vec3<f32>,    
-};
+// rayMarch.wgsl
+// this is a vertex + fragment shader combo that will perform ray marching
 
-struct Camera {
-    pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
-    mvMat : mat4x4<f32>, // camera view matrix
-    @size(16) position : vec3<f32>,
-    @size(16) upDirection : vec3<f32>,
-    @size(16) rightDirection : vec3<f32>,
-    verticalFOV : f32,
-    horizontalFOV : f32,
-};
-
-// common to all passes
-struct GlobalUniform {
-    camera : Camera,
-    time : u32, // time in ms
-};
-
-// specific info for this object
-struct ObjectInfo {
-    otMat : mat4x4<f32>, // object transform matrix
-    frontMaterial : Material,
-    backMaterial : Material,
-    // frontCol : vec4<f32>,
-    // backCol : vec4<f32>
-};
-
-struct PassInfo {
-    flags : u32,
-    threshold : f32,
-    dataLowLimit : f32,
-    dataHighLimit : f32,
-    stepSize : f32,
-    maxLength : f32,
-    @align(16) dMatInv : mat4x4<f32>, // from world space -> data space
-};
-
+// import structs/functions
+{{utils.wgsl}}
+{{rayMarchUtils.wgsl}}
 
 // data common to all rendering
 // camera mats, position
@@ -48,48 +13,15 @@ struct PassInfo {
 
 // ray marching data
 // threshold, data matrix, march parameters
-@group(1) @binding(0) var<uniform> passInfo : PassInfo;
+@group(1) @binding(0) var<uniform> passInfo : RayMarchPassInfo;
 //  data texture
 @group(1) @binding(1) var data : texture_3d<f32>;
 
-struct PassFlags {
-    phong : bool,
-    backStep : bool,
-    showNormals : bool,
-    showVolume : bool,
-    fixedCamera : bool
+struct VertexOut {
+    @builtin(position) clipPosition : vec4<f32>,
+    @location(0) worldPosition : vec4<f32>,
+    @location(1) eye : vec3<f32>,    
 };
-
-struct Ray {
-    tip : vec3<f32>,
-    direction : vec3<f32>,
-    length : f32,
-};
-
-struct Material {
-    @size(16) diffuseCol : vec3<f32>,
-    @size(16) specularCol : vec3<f32>,
-    shininess : f32,
-};
-
-struct DirectionalLight {
-    colour : vec3<f32>,
-    direction : vec3<f32>,
-};
-
-fn normalFlagSet(flagUint : u32) -> bool {
-    return (flagUint & 1u) == 1u;
-}
-
-fn getFlags(flagUint : u32) -> PassFlags {
-    return PassFlags(
-        (flagUint & 1u) == 1u,
-        (flagUint & 2u) == 2u,
-        (flagUint & 4u) == 4u,
-        (flagUint & 8u) == 8u,
-        (flagUint & 16u) == 16u,
-    );
-}
 
 // load a specific value
 fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
@@ -144,43 +76,6 @@ fn getDataNormal (x : f32, y : f32, z : f32) -> vec3<f32> {
     return normalize(gradient);
 }
 
-fn phong (material: Material, normal: vec3<f32>, eye: vec3<f32>, light: DirectionalLight) -> vec3<f32> {
-    var diffuseFac = max(dot(normal, -light.direction), 0.0);
-    
-    var diffuse : vec3<f32>;
-    var specular : vec3<f32>;
-    var ambient : vec3<f32> = material.diffuseCol*0.1;
-    
-    var reflected : vec3<f32>;
-
-    if (diffuseFac > 0.0) {
-        // facing towards the light
-        diffuse = material.diffuseCol * light.colour * diffuseFac;
-
-        reflected = reflect(light.direction, normal);
-        var specularFac : f32 = pow(max(dot(reflected, eye), 0.0), material.shininess);
-        specular = material.specularCol * light.colour * specularFac;
-    }
-    return diffuse + specular + ambient;
-}
-
-fn extendRay (ray : Ray, step : f32) -> Ray {
-    var newRay = ray;
-    newRay.length += step;
-    newRay.tip += newRay.direction*step;
-    return newRay;
-}
-
-fn over (colA : vec4<f32>, colB : vec4<f32>) -> vec4<f32> {
-    var outCol : vec4<f32>;
-    outCol.a = colA.a + colB.a * (1 - colA.a);
-    outCol.r = (colA.r * colA.a + colB.r * colB.a * (1 - colA.a))/outCol.a;
-    outCol.g = (colA.g * colA.a + colB.g * colB.a * (1 - colA.a))/outCol.a;
-    outCol.b = (colA.b * colA.a + colB.b * colB.a * (1 - colA.a))/outCol.a;
-
-    return outCol;
-}
-
 fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit : f32, highLimit : f32, threshold : f32) -> vec3<f32> {
     var normalisedSample = (sample - lowLimit)/(highLimit - lowLimit);
     var normalisedThreshold = (threshold - lowLimit)/(highLimit - lowLimit);
@@ -193,10 +88,6 @@ fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit
 fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
     return (vec4<f32>(pos, 1) * passInfo.dMatInv).xyz;
 }
-
-
-
-
 
 
 @vertex

@@ -17,7 +17,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.passFlags = {
         phong: true,
         backStep: true,
-        showNormals: true,
+        showNormals: false,
         showVolume: true,
         fixedCamera: false,
     }

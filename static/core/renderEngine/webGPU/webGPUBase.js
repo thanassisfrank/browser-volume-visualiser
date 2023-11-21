@@ -64,9 +64,7 @@ export function WebGPUBase (verbose) {
         COMPUTE: 2,
     }
 
-    this.globalWGSLStructs = `
-        
-    `
+    this.wgslLibs = {};
 
     this.getNewBufferId = function(){
         var id = Object.keys(buffers).length;
@@ -93,10 +91,6 @@ export function WebGPUBase (verbose) {
         // console.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
 
-        this.createDefaultObjects();
-    }
-
-    this.createDefaultObjects = function() {
         this.bindGroupLayouts = {
             render0 : this.createBindGroupLayout([
                 {
@@ -109,6 +103,10 @@ export function WebGPUBase (verbose) {
                 }
             ], "render0"),
         }
+
+        // load utils.wgsl as a string
+        this.wgslLibs["utils.wgsl"] =  await this.fetchShader("core/renderEngine/webGPU/shaders/utils.wgsl");
+        this.wgslLibs["rayMarchUtils.wgsl"] =  await this.fetchShader("core/renderEngine/webGPU/shaders/rayMarchUtils.wgsl");
     }
 
     this.fetchShader = function(name) {
@@ -261,7 +259,15 @@ export function WebGPUBase (verbose) {
     }
 
     this.createFormattedShaderModule = function(codeStr, formatObj) {
-        const codeFormatted = stringFormat(codeStr, formatObj)
+        // format any constants and imports
+        const codeFormatted = stringFormat(
+            codeStr, 
+            {
+                ...formatObj,     // constants
+                ...this.wgslLibs, // wgsl code imports
+            }
+        );
+
         return this.device.createShaderModule({
             code: codeFormatted
         });

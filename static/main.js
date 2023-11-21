@@ -164,6 +164,8 @@ async function main() {
         const selectedCameraElem = c.options[c.selectedIndex];
 
         var newData = await dataManager.getDataObj(selectedDataElem.value);
+        // var unstruct = dataManager.createUnstructuredFromStructured(newData);
+        // console.log(unstruct.data);
 
         var newView = await viewManager.createView({
             camera: cameraManager.createCamera(),
