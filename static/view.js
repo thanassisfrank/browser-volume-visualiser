@@ -44,7 +44,7 @@ export var viewManager = {
 
         // camera.setModelMat(modelMat);
         camera.setProjMat();
-        camera.setDist(1.5*data.getMaxLength());
+        camera.setDist(1*data.getMaxLength());
         camera.setTarget(data.getMidPoint());
 
         // register a new user of the used objects

@@ -5,7 +5,7 @@ import { clampBox } from "../../utils.js";
 import { EmptyRenderEngine, renderModes} from "../renderEngine.js";
 import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
-import { RenderableObjectTypes, RenderableObjectUsage, RenderableObject, meshManager, traverseSceneGraph, checkForChild } from "../sceneObjects.js";
+import { RenderableObjectTypes, RenderableObjectUsage, RenderableObject, meshManager, traverseSceneGraph, checkForChild, getTotalObjectTransform } from "../sceneObjects.js";
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 
 // the main rendering object that handles interacting with the GPU
@@ -380,6 +380,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             return;
         }
 
+        var transform = getTotalObjectTransform(renderableMeshObj);
+
 
         var commandEncoder = webGPU.device.createCommandEncoder();     
 
@@ -408,18 +410,14 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         webGPU.encodeGPUPass(commandEncoder, renderPass);
 
-        // write global info buffer
-        webGPU.device.queue.writeBuffer(this.uniformBuffer, 0, camera.serialise());
-        // console.log(camera.serialise());
-
-        // write object info buffer
-        webGPU.device.queue.writeBuffer(
-            renderableMeshObj.renderData.buffers.objectInfo,
-            0,
-            new Float32Array([
-                ...mat4.create(), 
-                ...renderableMeshObj.object.serialiseMaterials()
-            ])
+        // write buffers
+        webGPU.writeDataToBuffer(
+            this.uniformBuffer,
+            [camera.serialise(), new Uint32Array([performance.now()])]
+        );
+        webGPU.writeDataToBuffer(
+            renderableMeshObj.renderData.buffers.objectInfo, 
+            [new Float32Array(transform), meshObj.serialiseMaterials()]
         );
         webGPU.device.queue.submit([commandEncoder.finish()]);
     };
@@ -457,7 +455,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     // renders a view object, datasets
     // for now, all share a canvas
-    // TODO: transform accumulation
     this.renderView = async function (view) {
         this.clearScreen();
 

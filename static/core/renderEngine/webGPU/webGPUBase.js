@@ -75,10 +75,12 @@ export function WebGPUBase (verbose) {
     }
 
     this.setupWebGPU = async function() {
+        console.log(navigator.gpu.wgslLanguageFeatures);
         this.adapter = await navigator.gpu.requestAdapter({
             powerPreference: "high-performance"
         });
-        // console.log(this.adapter.limits);
+        console.log(await this.adapter.requestAdapterInfo());
+        console.log(this.adapter.limits);
         if (!this.adapter.features.has("float32-filterable")) {
             console.warn("Filterable 32-bit float textures support is not available");
         }
@@ -88,7 +90,7 @@ export function WebGPUBase (verbose) {
                 maxBufferSize: this.adapter.limits.maxBufferSize
             }
         });
-        // console.log(this.device.limits);
+        console.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
 
         this.bindGroupLayouts = {
@@ -446,7 +448,18 @@ export function WebGPUBase (verbose) {
         await this.device.queue.onSubmittedWorkDone();
         return;
     }
-
+    // enqueues operations on the given buffer to write the typed arrays
+    this.writeDataToBuffer = function(buffer, dataArrays, offset = 0) {
+        var currOffset = offset;
+        for (let i = 0; i < dataArrays.length; i++) {
+            this.device.queue.writeBuffer(
+                buffer, 
+                currOffset, 
+                dataArrays[i]
+            );
+            currOffset += dataArrays[i].byteLength;
+        }
+    }
     // copy a buffer to CPU side and return the contents as array buffer
     this.readBuffer = async function(buffer, start, byteLength) {
         if (!buffer) return;

@@ -97,6 +97,19 @@ export var checkForChild = (RenderableObject, childType, childUsage) => {
     return false;
 }
 
+export var getTotalObjectTransform = (renderableObject) => {
+    // need to get the transform of object it i.e. rotation and scale as mat4
+    var transform = mat4.create();
+    mat4.multiply(transform, renderableObject.transform, transform);
+    var parent = renderableObject.parent;
+    while (parent) {
+        mat4.multiply(transform, parent.transform, transform);
+        parent = parent.parent;
+    }
+
+    return transform;
+}
+
 export var meshManager = {
     meshes: {},
     createMesh: function() {

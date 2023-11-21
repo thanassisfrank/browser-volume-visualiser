@@ -2,7 +2,7 @@
 // implements the ray marching algorithm with webgpu
 
 import {mat4} from "https://cdn.skypack.dev/gl-matrix";
-import { RenderableObjectTypes, RenderableObjectUsage, checkForChild } from "../../sceneObjects.js";
+import { RenderableObjectTypes, RenderableObjectUsage, checkForChild, getTotalObjectTransform } from "../../sceneObjects.js";
 import { clampBox } from "../../../utils.js";
 
 export function WebGPURayMarchingEngine(webGPUBase) {
@@ -18,7 +18,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         phong: true,
         backStep: true,
         showNormals: false,
-        showVolume: false,
+        showVolume: true,
         fixedCamera: false,
         randStart: true,
     }
@@ -127,15 +127,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         var meshObj = checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)?.object;
 
-        // need to get the transform of object it i.e. rotation and scale as mat4
-        var transform = mat4.create();
-        // mat4.scale(transform, transform, renderableDataObj.object.cellSize);
-        mat4.multiply(transform, renderableDataObj.transform, transform);
-        var parent = renderableDataObj.parent;
-        while (parent) {
-            mat4.multiply(transform, parent.transform, transform);
-            parent = parent.parent;
-        }
+        var transform = getTotalObjectTransform(renderableDataObj);
 
         var commandEncoder = await device.createCommandEncoder();
         
@@ -156,47 +148,29 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // encode the render pass
         webGPU.encodeGPUPass(commandEncoder, rayMarchRenderPass);
 
-        // write global info buffer
-        device.queue.writeBuffer(
-            constsBuffer, 
-            0, 
-            camera.serialise()
+        // write buffers
+        webGPU.writeDataToBuffer(
+            constsBuffer,
+            [camera.serialise(), new Uint32Array([performance.now()])]
         );
-        device.queue.writeBuffer(
-            constsBuffer, 
-            192, 
-            new Uint32Array([performance.now()])
+        webGPU.writeDataToBuffer(
+            renderableDataObj.renderData.buffers.objectInfo, 
+            [new Float32Array(transform), meshObj.serialiseMaterials()]
         );
-
-        // write obect info buffer
-        device.queue.writeBuffer(
-            renderableDataObj.renderData.buffers.objectInfo,
-            0,
-            new Float32Array([
-                ...transform, 
-                ...meshObj.serialiseMaterials()
-            ])
-        );
-        // write pass info buffer
-        device.queue.writeBuffer(
-            renderableDataObj.renderData.buffers.passInfo,
-            0,
-            new Uint32Array([
-                this.getPassFlagsUint(),
-            ])
-        );
-        device.queue.writeBuffer(
-            renderableDataObj.renderData.buffers.passInfo,
-            4,
-            new Float32Array([
-                renderableDataObj.renderData.threshold, 
-                renderableDataObj.object.limits[0],
-                renderableDataObj.object.limits[1],
-                1, 
-                1000,
-                0, 0,
-                ...renderableDataObj.object.getdMatInv(),
-            ])
+        webGPU.writeDataToBuffer(
+            renderableDataObj.renderData.buffers.passInfo, 
+            [
+                new Uint32Array([this.getPassFlagsUint()]), 
+                new Float32Array([
+                    renderableDataObj.renderData.threshold, 
+                    renderableDataObj.object.limits[0],
+                    renderableDataObj.object.limits[1],
+                    1, 
+                    2000,
+                    0, 0,
+                    ...renderableDataObj.object.getdMatInv(),
+                ])
+            ]
         );
 
         device.queue.submit([commandEncoder.finish()]);
