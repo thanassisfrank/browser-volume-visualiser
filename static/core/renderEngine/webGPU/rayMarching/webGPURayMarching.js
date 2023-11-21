@@ -18,17 +18,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         phong: true,
         backStep: true,
         showNormals: false,
-        showVolume: true,
+        showVolume: false,
         fixedCamera: false,
+        randStart: true,
     }
 
     this.getPassFlagsUint = function() {
         var flags = 0;
-        flags |= this.passFlags.phong            & 0b00001;
-        flags |= this.passFlags.backStep    << 1 & 0b00010;
-        flags |= this.passFlags.showNormals << 2 & 0b00100;
-        flags |= this.passFlags.showVolume  << 3 & 0b01000;
-        flags |= this.passFlags.fixedCamera << 4 & 0b10000;
+        flags |= this.passFlags.phong            & 0b000001;
+        flags |= this.passFlags.backStep    << 1 & 0b000010;
+        flags |= this.passFlags.showNormals << 2 & 0b000100;
+        flags |= this.passFlags.showVolume  << 3 & 0b001000;
+        flags |= this.passFlags.fixedCamera << 4 & 0b010000;
+        flags |= this.passFlags.randStart   << 5 & 0b100000;
         return flags;
     }
 
@@ -159,6 +161,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             constsBuffer, 
             0, 
             camera.serialise()
+        );
+        device.queue.writeBuffer(
+            constsBuffer, 
+            192, 
+            new Uint32Array([performance.now()])
         );
 
         // write obect info buffer

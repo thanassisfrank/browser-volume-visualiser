@@ -31,6 +31,8 @@ struct DirectionalLight {
     direction : vec3<f32>,
 };
 
+// information about the scene's camera
+// 192 bytes in total
 struct Camera {
     pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
     mvMat : mat4x4<f32>, // camera view matrix
@@ -102,4 +104,19 @@ fn over (colA : vec4<f32>, colB : vec4<f32>) -> vec4<f32> {
     outCol.b = (colA.b * colA.a + colB.b * colB.a * (1 - colA.a))/outCol.a;
 
     return outCol;
+}
+
+// returns a random u32 starting from a seed value
+fn randomU32(seed : u32) -> u32 {
+    var x = seed;
+    var i = 0u;
+    // do xorshift 32 a few times on the seed
+    loop {
+        if (i > 2u) {break;}
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        i++;
+    }
+    return x;
 }

@@ -194,19 +194,20 @@ async function main() {
     });
     
     var renderLoop = async (lastFrameEnd) => {
-        const dt = performance.now() - lastFrameEnd;
-
+        
         // update the objects
         // does stuff like propagating threshold value, fetching required data
-        viewManager.update(dt, renderEngine.marchingCubes);
-
+        viewManager.update(0, renderEngine.marchingCubes);
+        
         // render the scenes
         // includes doing marching cubes/ray marching if required by object
         // renderEngine.clearScreen();
         for (let view of Object.values(viewManager.views)) {
             await renderEngine.renderView(view);
         }
-
+        
+        const dt = performance.now() - lastFrameEnd;
+        get("frameTime").innerText = Math.round(dt) + "ms";
         // next frame
         requestAnimationFrame(renderLoop);
         // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);

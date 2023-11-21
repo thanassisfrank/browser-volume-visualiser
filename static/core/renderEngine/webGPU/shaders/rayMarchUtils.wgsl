@@ -21,7 +21,8 @@ struct RayMarchPassFlags {
     backStep : bool,
     showNormals : bool,
     showVolume : bool,
-    fixedCamera : bool
+    fixedCamera : bool,
+    randStart: bool
 };
 
 // functions ======================================================================================
@@ -34,5 +35,6 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & 4u) == 4u,
         (flagUint & 8u) == 8u,
         (flagUint & 16u) == 16u,
+        (flagUint & 32u) == 32u,
     );
 };

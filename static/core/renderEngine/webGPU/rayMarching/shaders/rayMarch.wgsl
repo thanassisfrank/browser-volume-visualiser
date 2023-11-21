@@ -113,6 +113,16 @@ fn fragment_main(
     var nearPlaneDist = 0.0;
 
     var e = 2.71828;
+
+    // compute a random f32 value between 0 and 1
+    var randU32 = randomU32(
+        bitcast<u32>(fragInfo.worldPosition.x) ^ 
+        bitcast<u32>(fragInfo.worldPosition.y) ^
+        bitcast<u32>(fragInfo.worldPosition.z) ^
+        globalInfo.time
+    );
+    var randVal = f32(randU32)/exp2(32);
+
     
     var dataSize = vec3<f32>(textureDimensions(data, 0));
 
@@ -134,7 +144,7 @@ fn fragment_main(
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
         enteredDataset = true;
-        // return vec4<f32>(1, 0, 0, 1);
+        // return vec4<f32>(randVal, randVal, randVal, 1);
     } else {
         // marching from the inside
         ray.tip = cameraPos;
@@ -142,8 +152,11 @@ fn fragment_main(
         // ray = extendRay(ray, nearPlaneDist);
         // guess that we started outside to prevent issues with the near clipping plane
         enteredDataset = false;
-        // return vec4<f32>(0, 1, 0, 1);
-    }    
+        // return vec4<f32>(randVal, randVal, randVal, 1);
+    }   
+
+    // extend by a random amount
+    if (passFlags.randStart) {ray = extendRay(ray, randVal);}
 
     var light = DirectionalLight(vec3<f32>(1), ray.direction);
 
@@ -223,7 +236,7 @@ fn fragment_main(
         }
         
         continuing {
-            var thisStepSize = passInfo.stepSize*ray.length/10;
+            var thisStepSize = passInfo.stepSize*ray.length/100;
             ray = extendRay(ray, passInfo.stepSize);
             lastAbove = thisAbove;
             lastSampleVal = sampleVal;

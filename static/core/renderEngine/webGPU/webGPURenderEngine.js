@@ -115,7 +115,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             size: {
             width: this.canvas.width,
             height: this.canvas.height,
-            depth: 1
+            depthOrArrayLayers: 1
             },
             dimension: "2d",
             format: "depth32float",
@@ -468,7 +468,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             size: {
                 width: this.canvas.width,
                 height: this.canvas.height,
-                depth: 1
+                depthOrArrayLayers: 1
             },
             dimension: '2d',
             format: 'depth32float',
