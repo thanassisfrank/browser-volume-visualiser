@@ -171,11 +171,7 @@ async function main() {
             camera: cameraManager.createCamera(),
             data: newData,
             renderMode: renderModes.ISO_SURFACE
-        });
-
-        // make wireframe
-        newView.dataRenderObj.children.push(renderEngine.createWireframeBox(newData.getDatasetBoundaryPoints()));
-        newView.scene.unshift(renderEngine.createAxes(20));
+        }, renderEngine);
 
         // hide the window
         if (isVisible(get("add-view-popup"))) get("add-view").click();
@@ -193,11 +189,12 @@ async function main() {
         }
     });
     
+    var cameraUpVector;
     var renderLoop = async (lastFrameEnd) => {
         
         // update the objects
         // does stuff like propagating threshold value, fetching required data
-        viewManager.update(0, renderEngine.marchingCubes);
+        viewManager.update(0, renderEngine);
         
         // render the scenes
         // includes doing marching cubes/ray marching if required by object
@@ -207,7 +204,7 @@ async function main() {
         }
         
         const dt = performance.now() - lastFrameEnd;
-        get("frameTime").innerText = Math.round(dt) + "ms";
+        // get("frameTime").innerText = Math.round(dt) + "ms";
         // next frame
         requestAnimationFrame(renderLoop);
         // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);

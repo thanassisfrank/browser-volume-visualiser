@@ -102,6 +102,15 @@ export function stringFormat(s, replace) {
     return s;
 }
 
+export var stringifyMatrix = (mat, row) => {
+    var str = "";
+    for (let i = 0; i < mat.length; i++) {
+        if (i%row == 0 && i > 0) str += "\n";
+        str += mat[i].toPrecision(3) + " ";
+    }
+    return str;
+}
+
 export const DATA_TYPES = {
     "uint8": Uint8Array,
     "int32": Int32Array,

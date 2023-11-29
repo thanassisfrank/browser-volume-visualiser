@@ -22,30 +22,32 @@
 @group(1) @binding(3) var<storage> cellConnectivity : U32Buff;
 // where the vert index list starts for each cell, indexes into cellConnectivity
 @group(1) @binding(4) var<storage> cellOffsets : U32Buff;
-// the types of each cell i.e. how many verts it has
-@group(1) @binding(5) var<storage> cellTypes : U32Buff;
 // the data values associated with each vertex
-@group(1) @binding(6) var<storage> vertexData : F32Buff;
+@group(1) @binding(5) var<storage> vertexData : F32Buff;
+// the types of each cell i.e. how many verts it has
+// @group(1) @binding(6) var<storage> cellTypes : U32Buff;
 
 // images
-// input image f32, the distance to suface from the camera position, if outside, depth is -1
+// input image f32, the distance to suface from the camera position, if outside, depth is 0
+// if the depth is to the backside of a tri (viewing from inside) depth is negative
 @group(2) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
 // output image after ray marching into volume
 @group(2) @binding(1) var outputImage : texture_storage_2d<rgba32float, write>;
 
-struct VertexOut {
-    @builtin(position) clipPosition : vec4<f32>,
-    @location(0) worldPosition : vec4<f32>,
-    @location(1) eye : vec3<f32>,    
-};
 
 struct KDTreeNode {
     splitDimension : u32,
     splitVal : f32,
-    leaf : i32,           // -1 if not a leaf node
+    cellCount: u32,
+    leaf : u32,           // -1 if not a leaf node
     leftPtr : u32,
     rightPtr : u32,
-}
+};
+
+struct Sample {
+    value : f32,
+    valid : bool
+};
 
 fn allZero8(a : array<8, f32>) -> bool {
     if (
@@ -64,10 +66,6 @@ fn allZero8(a : array<8, f32>) -> bool {
     }
 }
 
-// load a specific value
-fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
-    return textureLoad(data, vec3<u32>(x, y, z), 0)[0];
-}
 
 fn getCellPointsCount(cellType : u32) -> u32 {
     switch cellType {
@@ -147,6 +145,8 @@ fn interpolateInCell(sampleFactors : array<8, f32>, cellID : i32) -> f32 {
         i++;
         if (i > 8u) {break;}
     }
+
+    return lerpValue;
 }
 
 
@@ -167,12 +167,13 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
         currNode = KDTreeNode(
                          treeBuffer[currNodePtr],
             bitcast<f32>(treeBuffer[currNodePtr + 1]),
-            bitcast<i32>(treeBuffer[currNodePtr + 2]),
+                         treeBuffer[currNodePtr + 2],
                          treeBuffer[currNodePtr + 3],
                          treeBuffer[currNodePtr + 4],
+                         treeBuffer[currNodePtr + 5],
 
         );
-        if (currNode.leaf == -1) {
+        if (currNode.cellCount == 0) {
             // have to carry on down the tree
             if (queryPoint[currNode.splitDimension] <= currNode.splitVal) {
                 currNodePtr = currNode.leftPtr;
@@ -192,10 +193,10 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     var cellID : i32;
     var i = 0u;
     loop {
+        if (i >= currNode.cellCount) {break;}
         // go through and check all the contained cells
         cellID = bitcast<i32>(treeBuffer[cellsPtr + i]);
-        if (cellID == -1) {break;} // there are less than the max # cells in this leaf
-        var pointsCount : u32 = getCellPointsCount(cellTypes.buffer[cellID]);
+        var pointsCount : u32 = 4; //getCellPointsCount(cellTypes.buffer[cellID]);
 
         sampleFactors = array<8, f32>(0);
         switch pointsCount {
@@ -219,47 +220,16 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
         }
         
         i++;
-        if (i > passInfo.cellsInLeaves) {break;}
     }
 
     // interpolate value
-    if (!foundCell) {return -1.0} 
-    return interpolateInCell(sampleFactors, cellID);
+    if (!foundCell) {
+        return Sample(-1, false)
+    };
+    return Sample(interpolateInCell(sampleFactors, cellID), true);
 
 }
 
-// recovers the normal (gradient) of the data at the given point
-fn getDataNormal (x : f32, y : f32, z : f32) -> vec3<f32> {
-    var epsilon : f32 = 0.1;
-    var gradient : vec3<f32>;
-    var p0 = sampleDataValue(x, y, z);
-    if (x > epsilon) {
-        gradient.x = -(p0 - sampleDataValue(x - epsilon, y, z))/epsilon;
-    } else {
-        gradient.x = (p0 - sampleDataValue(x + epsilon, y, z))/epsilon;
-    }
-    if (y > epsilon) {
-        gradient.y = -(p0 - sampleDataValue(x, y - epsilon, z))/epsilon;
-    } else {
-        gradient.y = (p0 - sampleDataValue(x, y + epsilon, z))/epsilon;
-    }
-    if (z > epsilon) {
-        gradient.z = -(p0 - sampleDataValue(x, y, z - epsilon))/epsilon;
-    } else {
-        gradient.z = (p0 - sampleDataValue(x, y, z + epsilon))/epsilon;
-    }
-    return normalize(gradient);
-}
-
-
-fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit : f32, highLimit : f32, threshold : f32) -> vec3<f32> {
-    var normalisedSample = (sample - lowLimit)/(highLimit - lowLimit);
-    var normalisedThreshold = (threshold - lowLimit)/(highLimit - lowLimit);
-    var absorptionCoeff = pow(normalisedSample/3, 1.3);
-    var sampleCol = absorptionCoeff * vec3<f32>(1.0) * length; // transfer function
-    
-    return prevCol + sampleCol;
-}
 
 fn setPixel(x : u32, y : u32, col : vec4<f32>) {
 
@@ -272,13 +242,19 @@ fn pixelOnVolume(x : u32, y : u32) -> bool {
 
 // takes camera and x
 fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
-    // jobs petrol yee shugar treez glorious food hot sausage and mustard while were in the mood something in the custard.
-    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
+    // get the forward vector
+    var fwd = cross(camera.upDirection, camera.rightDirection);
+    // get the x and y as proportions of the image Size
+    // 0 is centre, +1 is right and bottom edge
+    var imageDims = textureDimensions(outputImage);
+    var xProp : f32 = f32(x)/(f32(imageDims.x - 1)/2) - 1;
+    var yProp : f32 = f32(y)/(f32(imageDims.y - 1)/2) - 1;
+    // calculate the ray direction
     var ray : Ray;
-    ray.direction = normalize(raySegment);
-    ray.tip = cameraPos;
+    var unormRay = fwd + xProp*tan(camera.fovx/2)*camera.rightDirection - yProp*tan(camera.fovy/2)*camera.upDirection;
+    ray.direction = normalize(unormRay);
+    ray.tip = camera.pos;
     ray.length = 0;
-
     return ray
 }
 
@@ -337,7 +313,7 @@ fn main(
         if (ray.length > passInfo.maxLength) {
             break;
         }
-        var tipDataPos = ray.tip;//(passInfo.dMatInv * vec4<f32>(ray.tip, 1.0)).xyz; // the tip in data space
+        var tipDataPos = ray.tip; // tip in data space
         // check if tip has left data
         if (
             ray.tip.x > dataSize.x || ray.tip.x < 0 ||

@@ -33,15 +33,13 @@ export function RenderableObject(type, object) {
     this.visible = true;
     this.activeCamera = true; // for camera
     this.object = object;
+    // renderData is what is held by the render engine
+    // this needs to be explicitly deleted when an object is deleted
     this.renderData = {
         bindGroups: {},
         buffers: {},
         textures: {},
         samplers: {},
-        // colours: {
-        //     front: new Float32Array([0, 0, 0, 1]),
-        //     back: new Float32Array([0, 0, 0, 1]),
-        // }
     };
     this.parent = undefined;
     this.children = [];
@@ -60,7 +58,7 @@ export function SceneGraph() {
             this.graph.push(renderableObject);
         }
     }
-    this.remove = function() {
+    this.remove = function(renderableObject) {
 
     }
     this.traverse = function*() {
@@ -95,6 +93,11 @@ export var checkForChild = (RenderableObject, childType, childUsage) => {
         }
     }
     return false;
+}
+
+export var removeNode = (renderableObject) => {
+    var parent = renderableObject.parent;
+
 }
 
 export var getTotalObjectTransform = (renderableObject) => {
@@ -202,13 +205,16 @@ export var cameraManager = {
 
         // field of view
         this.aspect = 1;
-        this.fovY = 80;
+        this.fovY = 70;
         this.fovX = this.fovY/this.aspect
 
-        this.modelMat;
-        this.modelViewMat;
+        // near/far planes
+        this.zNear = 1;
+        this.zFar = 1000;
+
+        this.viewMat;
         this.projMat;
-        this.modelViewMatValid = false;
+        this.viewMatValid = false;
         this.mouseStart = [0, 0, 0];
         this.startTh = 0;
         this.startPhi = 0;
@@ -223,30 +229,27 @@ export var cameraManager = {
         // returns the camera variables in a float32array
         // consistent with the Camera struct in WGSL
         this.serialise = function() {
-            // pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
-            // mvMat : mat4x4<f32>, // camera view matrix
-            // @size(16) position : vec3<f32>,
-            // @size(16) upDirection : vec3<f32>,
-            // @size(16) rightDirection : vec3<f32>,
-            // verticalFOV : f32,
-            // horizontalFOV : f32,
-
+            // get the forward and up vectors from the view matrix
+            // assumes the projection matrix is axis aligned
+            var viewMat = this.getViewMat();
+            var fwd = VecMath.normalise(VecMath.vecMinus(this.target, this.getEyePos()));
+            
+            var up = [viewMat[1], viewMat[5], viewMat[9]];
+            var right = [viewMat[0], viewMat[4], viewMat[8]];
+            // console.log(fwd, up);
             return new Float32Array([
-                ...this.projMat, 
-                ...this.getModelViewMat(), 
-                ...this.getEyePos(), 0,
-                this.fovY, this.fovX, 0, 0
+                ...this.projMat,           // projection matrix
+                ...this.getViewMat(),      // view matrix
+                ...this.getEyePos(), 0,    // camera location
+                ...up, 0,                  // up vector
+                ...right, 0,               // right vector
+                this.fovY, this.fovX, 0, 0 // fovs
             ])
-        }
-        this.setModelMat = function(mat) {
-            this.modelMat = mat;
         }
         this.setProjMat = function() {
             let projMat = mat4.create();
-            const zNear = 1;
-            const zFar = 1000.0;
         
-            mat4.perspective(projMat, toRads(this.fovY), this.aspect, zNear, zFar);
+            mat4.perspective(projMat, toRads(this.fovY), this.aspect, this.zNear, this.zFar);
             this.projMat = projMat;
         }
         this.getEyePos = function() {
@@ -258,9 +261,9 @@ export var cameraManager = {
             return vec;
             
         }
-        this.getModelViewMat = function() {
-            this.modelViewMat = mat4.create();
-            mat4.lookAt(this.modelViewMat, this.getEyePos(), this.target, [0, 1, 0])
+        this.getViewMat = function() {
+            this.viewMat = mat4.create();
+            mat4.lookAt(this.viewMat, this.getEyePos(), this.target, [0, 1, 0]);
 
             // if (!this.modelViewMatValid) {
             //     let viewMat = mat4.create();
@@ -274,31 +277,31 @@ export var cameraManager = {
             //     // console.log(this.modelViewMat);
             // };
         
-            return this.modelViewMat;
+            return this.viewMat;
         }
         this.setDist = function(dist) {
-            this.dist = dist;
-            this.modelViewMatValid = false;
+            this.dist = Math.min(dist, this.zFar/2);
+            this.viewMatValid = false;
         }
         this.addToDist = function(dist) {
-            this.dist += dist;
-            this.modelViewMatValid = false;
+            this.setDist(this.dist + dist);
+            this.viewMatValid = false;
         }
         this.setTh = function(th) {
             this.th = th;
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.addToTh = function(th) {
             this.th += th;
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.setPhi = function(phi) {
             this.phi = phi;
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.addToPhi = function(phi) {
             this.phi = Math.max(Math.min(this.phi + phi, 89), -89);
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.startMove = function(x, y, z, mode) {
             this.mouseStart = [x, y, z];
@@ -334,11 +337,11 @@ export var cameraManager = {
         // vec is relative to the camera's current facing direction
         this.setTarget = function(vec) {
             this.target = vec;
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.addToTarget = function(vec) {
             this.target = VecMath.vecAdd(this.target, vec);
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
         }
         this.endMove = function() {
             this.mouseDown = false;
@@ -350,7 +353,7 @@ export var cameraManager = {
         this.centre = function() {
             this.endMove();
             this.target = [0, 0, 0];
-            this.modelViewMatValid = false;
+            this.viewMatValid = false;
             this.endMove();
         }
     },

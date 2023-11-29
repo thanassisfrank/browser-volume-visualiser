@@ -19,8 +19,9 @@
 
 struct VertexOut {
     @builtin(position) clipPosition : vec4<f32>,
-    @location(0) worldPosition : vec4<f32>,
-    @location(1) eye : vec3<f32>,    
+    @location(0) inPosition : vec3<f32>,
+    @location(1) worldPosition : vec4<f32>,
+    @location(2) eye : vec3<f32>,    
 };
 
 // load a specific value
@@ -76,17 +77,8 @@ fn getDataNormal (x : f32, y : f32, z : f32) -> vec3<f32> {
     return normalize(gradient);
 }
 
-fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit : f32, highLimit : f32, threshold : f32) -> vec3<f32> {
-    var normalisedSample = (sample - lowLimit)/(highLimit - lowLimit);
-    var normalisedThreshold = (threshold - lowLimit)/(highLimit - lowLimit);
-    var absorptionCoeff = pow(normalisedSample/3, 1.3);
-    var sampleCol = absorptionCoeff * vec3<f32>(1.0) * length; // transfer function
-    
-    return prevCol + sampleCol;
-}
-
 fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
-    return (vec4<f32>(pos, 1) * passInfo.dMatInv).xyz;
+    return (vec4<f32>(pos, 1) * transpose(passInfo.dMatInv)).xyz;
 }
 
 
@@ -95,7 +87,7 @@ fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
 {
     var out : VertexOut;
     var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
-
+    out.inPosition = position;
     out.worldPosition = objectInfo.otMat * vec4<f32>(position, 1.0);
     out.eye = vert.xyz;
     out.clipPosition = globalInfo.camera.pMat * globalInfo.camera.mvMat * out.worldPosition;
@@ -135,7 +127,7 @@ fn fragment_main(
         cameraPos = globalInfo.camera.position;
     }
 
-    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
+    var raySegment = fragInfo.inPosition.xyz - cameraPos;
     var ray : Ray;
     ray.direction = normalize(raySegment);
     var enteredDataset : bool;
@@ -161,12 +153,12 @@ fn fragment_main(
     var light = DirectionalLight(vec3<f32>(1), ray.direction);
 
     // accumulated ray casting colour from samples
-    var volCol : vec3<f32>;
+    var volCol = vec3<f32>(0, 0, 0);
 
     // march the ray
     var lastAbove = false;
     var lastSampleVal : f32;
-    var lastStepSize : f32;
+    var lastStepSize : f32 = 0;
     var sampleVal : f32;
     var thisAbove = false;
     var i = 0u;
@@ -195,7 +187,7 @@ fn fragment_main(
             }
             if (i > 0u) {
                 // check if the threshold has been crossed
-                if (thisAbove != lastAbove) {
+                if (thisAbove != lastAbove && passFlags.showSurface) {
                     // has been crossed
                     if (passFlags.backStep) {
                         // find where exactly by lerp
@@ -236,7 +228,7 @@ fn fragment_main(
         }
         
         continuing {
-            var thisStepSize = passInfo.stepSize*ray.length/100;
+            var thisStepSize = passInfo.stepSize*ray.length/10;
             ray = extendRay(ray, passInfo.stepSize);
             lastAbove = thisAbove;
             lastSampleVal = sampleVal;
@@ -246,19 +238,11 @@ fn fragment_main(
     }
 
     if (passFlags.showVolume) {
-        // do the over operation
-        var absorption = vec3<f32>(
-            pow(e, -volCol.r),
-            pow(e, -volCol.g),
-            pow(e, -volCol.b),
-        );
-        fragCol = vec4<f32>(
-            fragCol.r * absorption.r,
-            fragCol.g * absorption.g,
-            fragCol.b * absorption.b,
-            max(fragCol.a, max(1-absorption.r, max(1-absorption.g, 1-absorption.b)))
-        );
+        // attenuate col by the volume colour
+        fragCol = attenuateCol(fragCol, volCol);
     }
 
+
+    // output the updated frag depth too
     return fragCol;
 }   

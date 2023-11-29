@@ -21,16 +21,18 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showVolume: true,
         fixedCamera: false,
         randStart: true,
+        showSurface: true,
     }
 
     this.getPassFlagsUint = function() {
         var flags = 0;
-        flags |= this.passFlags.phong            & 0b000001;
-        flags |= this.passFlags.backStep    << 1 & 0b000010;
-        flags |= this.passFlags.showNormals << 2 & 0b000100;
-        flags |= this.passFlags.showVolume  << 3 & 0b001000;
-        flags |= this.passFlags.fixedCamera << 4 & 0b010000;
-        flags |= this.passFlags.randStart   << 5 & 0b100000;
+        flags |= this.passFlags.phong            & 0b0000001;
+        flags |= this.passFlags.backStep    << 1 & 0b0000010;
+        flags |= this.passFlags.showNormals << 2 & 0b0000100;
+        flags |= this.passFlags.showVolume  << 3 & 0b0001000;
+        flags |= this.passFlags.fixedCamera << 4 & 0b0010000;
+        flags |= this.passFlags.randStart   << 5 & 0b0100000;
+        flags |= this.passFlags.showSurface   << 6 & 0b1000000;
         return flags;
     }
 

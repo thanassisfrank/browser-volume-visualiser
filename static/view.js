@@ -21,7 +21,7 @@ export var viewManager = {
     moreViewsAllowed: function() {
         return Object.keys(this.views).length < this.maxViews;
     },
-    createView: async function(config) {    
+    createView: async function(config, renderEngine) {    
         // some linking is working
     
         //check to see if there is already the max amount of views
@@ -55,6 +55,7 @@ export var viewManager = {
         // generate id
         const id = newId(this.views);
         var newView = new this.View(id, camera, data, config.renderMode || renderModes.ISO_SURFACE, (data.limits[0] + data.limits[1])/2);
+        newView.init(renderEngine);
         this.createViewDOM(id, newView);
         this.views[id] = newView;
         return newView;
@@ -149,17 +150,6 @@ export var viewManager = {
 
         delete this.views[view.id];
     },
-    // render: function(gl) {
-    //     // clear the whole screen at the start
-    //     clearScreen(gl);
-    //     // call the render functions of all currently active views
-    //     for (let key in this.views) {
-    //         this.views[key].render(gl);
-    //     }
-    //     if (Object.keys(this.views).length == 0) {
-    //         clearScreen(gl);
-    //     }
-    // },
 
     update: function(dt, marchingCubesEngine) {
         for (let key in this.views) {
@@ -189,18 +179,34 @@ export var viewManager = {
             duration: 1000
         }
         this.box = {};
-        this.init = function() {
+        this.init = function(renderEngine) {
+            // set the camera pos
+            // outside
+            this.camera.setDist(380);
+            this.camera.setTh(-30);
+            this.camera.setPhi(-30);
+            // inside
+            // this.camera.setDist(160);
+            // this.camera.setTh(-30);
+            // this.camera.setPhi(-70);
+            // this.updateThreshold(130, false);
             // setup the scene
             var cameraRenderObj = new RenderableObject(RenderableObjectTypes.CAMERA, this.camera);
             this.dataRenderObj = new RenderableObject(RenderableObjectTypes.DATA, this.data);
-            var axesRenderObj = new RenderableObject(RenderableObjectTypes.MESH);
-
-            // set the render mode, default is iso surface
             this.dataRenderObj.renderMode = renderModes.RAY_SURFACE;
-            
-            this.scene.push(cameraRenderObj, this.dataRenderObj);
+            this.cameraUpVec = renderEngine.createVector([0, 0, 0], [0.5, 0, 0.5]);
 
-            console.log(this.scene)
+            // make wireframe
+            this.dataRenderObj.children.push(renderEngine.createWireframeBox(this.data.getDatasetBoundaryPoints()));
+            
+            this.scene.push(
+                // renderEngine.createAxes(20), 
+                // this.cameraUpVec, 
+                cameraRenderObj, 
+                this.dataRenderObj
+            );
+
+            console.log(this.scene);
             
             // do the correct type of initialisation based upon the rendering mode
             if (this.renderMode == renderModes.DATA_POINTS) {
@@ -213,12 +219,18 @@ export var viewManager = {
         this.updateThreshold = async function(val, fine) {
             this.threshold = val;
         }
-        this.update = async function (dt, marchingCubesEngine) {
+        this.update = async function (dt, renderEngine) {
             // only update the mesh if marching is needed
             if (this.dataRenderObj.renderMode == renderModes.DATA_POINTS) return;
 
             this.dataRenderObj.renderData.threshold = this.threshold;
 
+            // re-align camera up vector
+            var viewMat = this.camera.getViewMat();
+            // right vec: 0, 4, 8
+            // up vec: 1, 5, 9
+            var up = VecMath.scalMult(50, [viewMat[2], viewMat[6], viewMat[10]]);
+            // renderEngine.updateVector(this.cameraUpVec, up);
             
 
             // if (this.)
@@ -267,8 +279,5 @@ export var viewManager = {
             // deregister from marcher
             marcherManager.removeUser(this.marcher);
         }
-
-        // call the init function
-        this.init();
     }
 }

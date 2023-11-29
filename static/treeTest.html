@@ -2,19 +2,22 @@
 <html>
     <head>
         <title>tree test</title>
+        <style>
+            body {margin: 0px; padding: 20px}
+            #c {width: 1000px; height: 700px}
+        </style>
     </head>
     <body>
-        <canvas id="c" style="border: 1px solid black"></canvas>
+        <canvas id="c"></canvas>
         <p id="time">0ms</p>
         <script type="module">
-            import {buildCellKDTree, get} from "./core/utils.js";
+            import {buildCellKDTree, get, setupCanvasDims} from "./core/utils.js";
             import {mat3} from "https://cdn.skypack.dev/gl-matrix";
 
-            var max = [900, 700];
-
+            
             var canvas = get("c");
-            canvas.width = max[0];
-            canvas.height = max[1];
+            setupCanvasDims(canvas);
+            var max = [canvas.width, canvas.height];
             var ctx = canvas.getContext("2d");
 
             var generateData = () => {
@@ -32,13 +35,18 @@
                 var cellOffsets = [];
                 var cellTypes = [];
                 
-                var cols = 1100;
-                var rows = 1100;
-                var cellSize = 1;
-                var randOffset = 0;
+                var cols = 70;
+                var rows = 49;
+                var cellSize = 11;
+                var randOffset = 5;
+
+                var offsets = [(max[0] - cols*cellSize)/2, (max[1] - rows*cellSize)/2];
                 for (let i = 0; i < rows; i++) { // go through the rows
                     for (let j = 0; j < cols; j++) { // so through the points on the rows
-                        var newPoint = [j*cellSize + Math.random()*randOffset, i*cellSize + Math.random()*randOffset];
+                        var newPoint = [
+                            offsets[0] + j*cellSize + Math.random()*randOffset, 
+                            offsets[1] + i*cellSize + Math.random()*randOffset
+                        ];
                         var newIndex = points.length/2;
                         // make 2 new tris
                         if (i > 0 && j > 0) {
@@ -66,7 +74,7 @@
             var testData = generateData();
             console.log(testData.cellOffsets.length);
             var start = performance.now();
-            var tree = buildCellKDTree(testData.points, 2, 15, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
+            var tree = buildCellKDTree(testData.points, 2, 0, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
 
             console.log(`build took: ${performance.now() - start}ms`)
             // console.log(tree);
@@ -134,6 +142,11 @@
                         }
                         
                     } else {
+                        // draw the cells
+                        ctx.strokeStyle = "black";
+                        for (let i = 0; i < currNode.cells.length; i++) {
+                            drawCell(testData, currNode.cells[i]);
+                        }
                         // leaf, draw the points
                         var leafCol = "rgb(" + 
                             Math.floor(Math.random()*255) + ", " + 
@@ -144,13 +157,14 @@
                         // for (let i = 0; i < currNode.points.length; i += 2) {
                         //     ctx.fillRect(currNode.points[i] - 2, currNode.points[i + 1] - 2, 4, 4);
                         // }
+                        
                         // draw the bounds
-                        ctx.strokeRect(
-                            currNode.box[0][0] + 1,
-                            currNode.box[0][1] + 1,
-                            currNode.box[1][0] - currNode.box[0][0] - 1,
-                            currNode.box[1][1] - currNode.box[0][1] - 1
-                        );
+                        // ctx.strokeRect(
+                        //     currNode.box[0][0] + 1,
+                        //     currNode.box[0][1] + 1,
+                        //     currNode.box[1][0] - currNode.box[0][0] - 1,
+                        //     currNode.box[1][1] - currNode.box[0][1] - 1
+                        // );
                     }
                 }
             }
@@ -274,10 +288,9 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 var canvasRect = canvas.getBoundingClientRect();
                 var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
-                var start = performance.now();
                 var result = queryTree(tree, mouseCoords, true);
                 var intersectedCell = queryLeaf(testData, result, mouseCoords);
-                get("time").innerText = `${performance.now() - start}ms`;
+                // get("time").innerText = Math.round(testCount/dt) + " samples per second";
                 // console.log(result)
                 // console.log(`query took: ${performance.now() - start}ms`)
                 
@@ -286,7 +299,7 @@
                 //     ctx.fillRect(result.points[i] - 2, result.points[i + 1] - 2, 4, 4);
                 // }
                 // draw the bounds
-                ctx.strokeStyle = "#aaaaaa";
+                ctx.strokeStyle = "#777777";
                 for (let i = result.boxes.length - 1; i >= 0; i--) {
                     if (i == 0) {
                         ctx.strokeStyle = "#ff0000";
@@ -299,7 +312,7 @@
                     );
                 }
                 
-                ctx.strokeStyle = "#aaaaaa";
+                ctx.strokeStyle = "#777777";
                 // draw the cells
                 for (let i = 0; i < result.cells.length; i++) {
                     drawCell(testData, result.cells[i]);
@@ -321,6 +334,27 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 drawTree(tree);
             });
+        
+            document.body.addEventListener("keypress", (e) => {
+                if (e.key != " ") return;
+                // run test
+                // performance test
+                var sampleCount = 10000;
+                var times = [];
+                for (let j = 0; j < 5; j++) {
+                    var start = performance.now();
+                    for (let i = 0; i < sampleCount; i++) {
+                        // make sample
+                        var sample = [Math.random()*max[0], Math.random()*max[1]];
+                        var result = queryTree(tree, sample, false);
+                        var intersectedCell = queryLeaf(testData, result, sample);
+                    }
+                    var dt = (performance.now() - start)/1000;
+                    times.push(Math.round(sampleCount/dt));
+                }
+                
+                console.log(times.join(" "));
+            })
         </script>
     </body>
 </html>

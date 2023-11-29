@@ -98,7 +98,7 @@
 		},
 		"limits": [
 			0,
-			50
+			70
 		],
 		"dataType": "float32"
 	},

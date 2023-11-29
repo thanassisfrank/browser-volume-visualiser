@@ -37,10 +37,10 @@ struct Camera {
     pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
     mvMat : mat4x4<f32>, // camera view matrix
     @size(16) position : vec3<f32>,
-    // @size(16) upDirection : vec3<f32>,
-    // @size(16) rightDirection : vec3<f32>,
-    verticalFOV : f32,
-    horizontalFOV : f32,
+    @size(16) upDirection : vec3<f32>,
+    @size(16) rightDirection : vec3<f32>,
+    fovy : f32,
+    fovx : f32,
 };
 
 // common global information struct for all render passes

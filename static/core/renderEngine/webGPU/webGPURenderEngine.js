@@ -1,7 +1,7 @@
 // webGPURender.js
 // contains the main rendering object
 // import { setupWebGPU, createFilledBuffer } from "./webGPUBase.js";
-import { clampBox } from "../../utils.js";
+import { clampBox, stringifyMatrix} from "../../utils.js";
 import { EmptyRenderEngine, renderModes} from "../renderEngine.js";
 import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
@@ -86,21 +86,18 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return id;
     }
 
-    this.updateBuffers = function(mesh, id) {
+    this.updateBuffers = function(mesh) {
         webGPU.deleteBuffers(mesh);
         console.log("u")
 
         if (mesh.verts.length > 0) {
             mesh.buffers.vertex = createFilledBuffer("f32", mesh.verts, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
-            console.log("v")
         }
         if (mesh.normals.length > 0) {
             mesh.buffers.normal = createFilledBuffer("f32", mesh.normals, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
-            console.log("n")
         }
         if (mesh.indices.length > 0) {
             mesh.buffers.index = createFilledBuffer("u32", mesh.indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
-            console.log("i")
         }
     }
 
@@ -151,7 +148,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     };
 
    
-
+    // create objects fro rendering ===============================================================
     // OLD
     this.createMeshFromDataPoints = async function(renderableDataObj) {
         // first, search direct children for if the meshes have already been created
@@ -319,6 +316,48 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return renderableMesh;
     }
 
+    // creates a square floor around base, takes full bounding box as input
+    this.createWireframeFloor = function(points) {
+        var norms = new Float32Array(points.length);
+        var indices = new Uint32Array([
+            0, 1,
+            0, 4,
+            1, 5,
+            4, 5,
+        ]);
+
+        var wireframeMesh = this.meshFromArrays(points, norms, indices);
+        wireframeMesh.frontMaterial.diffuseCol = [0, 0, 0];
+        wireframeMesh.backMaterial.diffuseCol = [0, 0, 0];
+
+        var renderableMesh = new RenderableObject(RenderableObjectTypes.MESH, wireframeMesh);
+        renderableMesh.renderMode = renderModes.WIREFRAME;
+
+        return renderableMesh;
+    }
+
+    // creates a vector from the origin to the end coordinate
+    // drawn as a pixel line
+    this.createVector = function(endCoords, col) {
+        var points = new Float32Array([
+            0,     0, 0,
+            ...endCoords
+        ]);
+
+        var vectorMesh = this.meshFromArrays(points, new Float32Array(points.length), new Uint32Array([0, 1]));
+        vectorMesh.frontMaterial.diffuseCol = col;
+        vectorMesh.backMaterial.diffuseCol = col;
+        var renderableVectorMesh = new RenderableObject(RenderableObjectTypes.MESH, vectorMesh);
+        renderableVectorMesh.renderMode = renderModes.WIREFRAME;
+
+        return renderableVectorMesh;
+    }
+
+    this.updateVector = function(vector, endCoords) {
+        vector.object.buffers.vertex.destroy();
+        vector.object.buffers.vertex = webGPU.createFilledBuffer("f32", new Float32Array([0, 0, 0, ...endCoords]), GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
+    }
+
     this.createAxes = function(scale) {
         // make x axis
         var pointsX = new Float32Array([
@@ -365,8 +404,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         renderableMesh.children.push(renderableMeshZ);
 
         return renderableMesh;
-
     }
+    // ============================================================================================
 
     this.renderMesh = async function(renderableMeshObj, camera, renderPassDescriptor, box) {
         if (renderableMeshObj.renderMode == renderModes.NONE) return;
@@ -481,6 +520,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             console.warn("no camera in scene");
             return;
         }
+        // console.log(stringifyMatrix(camera.getViewMat(), 4));
 
         // traverse the scenegraph to render all objects
         var i = 0;
