@@ -34,6 +34,8 @@ export var setupCanvasDims = (canvas) => {
     let style = getComputedStyle(canvas)
     canvas.width = parseInt(style.getPropertyValue("width"));
     canvas.height = parseInt(style.getPropertyValue("height"));
+    // console.log(canvas.width, canvas.height)
+    return [canvas.width, canvas.height];
 }
 
 export var repositionCanvas = (canvas) => {
@@ -121,13 +123,30 @@ export const DATA_TYPES = {
     "int16": Int16Array
 }
 
+export var clampBetween = (low, val, high) => {
+    return Math.max(low, Math.min(val, high));
+}
 export var clampBox = (box, clampBox) => {
-    box.left = Math.max(0, Math.min(clampBox.width, box.left));
-    box.top = Math.max(0, Math.min(clampBox.height, box.top));
-    box.right = Math.max(0, Math.min(clampBox.width, box.right));
-    box.bottom = Math.max(0, Math.min(clampBox.height, box.bottom));
-    box.width = clampBox.width - box.left - box.right;
-    box.height = clampBox.height - box.top - box.bottom;
+    var newBox = {};
+    newBox.left =  clampBetween(clampBox.left,    box.left,   clampBox.right);
+    newBox.top =   clampBetween(clampBox.top,     box.top,    clampBox.bottom);
+    newBox.right = clampBetween(clampBox.left,   box.right,  clampBox.right);
+    newBox.bottom = clampBetween(clampBox.top, box.bottom, clampBox.bottom);
+    newBox.width = newBox.right - newBox.left;
+    newBox.height = newBox.bottom - newBox.top;
+
+    return newBox;
+}
+export var floorBox = (box) => {
+    var newBox = {};
+    newBox.left =   Math.floor(box.left);
+    newBox.top =    Math.floor(box.top);
+    newBox.right =  Math.floor(box.right);
+    newBox.bottom = Math.floor(box.bottom);
+    newBox.width = newBox.right - newBox.left;
+    newBox.height = newBox.bottom - newBox.top;
+
+    return newBox;
 }
 
 // turns file string into an xml dom

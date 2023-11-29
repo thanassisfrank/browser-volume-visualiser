@@ -1,7 +1,7 @@
 // webGPUBase.js
 // holds utility functions for webgpu, common to both rendering and compute passes
 
-import { stringFormat, clampBox } from "../../utils.js";
+import { stringFormat, clampBox, floorBox } from "../../utils.js";
 import { RenderableObject, RenderableObjectTypes } from "../sceneObjects.js";
 
 
@@ -564,27 +564,36 @@ export function WebGPUBase (verbose) {
         if (passObj.passType == this.PassTypes.RENDER) {
             const passEncoder = commandEncoder.beginRenderPass(passObj.renderDescriptor);
             var box = passObj.box;
-            // for now, only draw a view if it is fully inside the canvas
-            if (box.right >= 0 && box.bottom >= 0 && box.left >= 0 && box.top >= 0) {
-                // will support rect outside the attachment size for V1 of webgpu
-                // https://github.com/gpuweb/gpuweb/issues/373 
-                passEncoder.setViewport(box.left, box.top, box.width, box.height, 0, 1);
-                clampBox(box, passObj.boundingBox);
-                passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
-                passEncoder.setPipeline(passObj.pipeline);
+            var bounds = passObj.boundingBox;
+            passEncoder.setViewport(
+                Math.floor(box.left - bounds.left), 
+                Math.floor(box.top - bounds.top), 
+                Math.floor(box.width), 
+                Math.floor(box.height), 
+                0, 1
+            );
 
-                for (let i = 0; i < passObj.vertexBuffers.length; i++) {
-                    passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
-                }
-                for (let i = 0; i < bindGroups.length; i++) {
-                    passEncoder.setBindGroup(i, bindGroups[i]);
-                }
-                if (passObj.indexed) {
-                    passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
-                    passEncoder.drawIndexed(passObj.indicesCount);
-                } else {
-                    passEncoder.draw(passObj.vertCount);
-                }
+            box = clampBox(box, bounds);
+            box = floorBox(box);
+            
+            // console.log(clampedBox);
+            // console.log(box, passObj.boundingBox)
+            // will support rect outside the attachment size for V1 of webgpu
+            // https://github.com/gpuweb/gpuweb/issues/373 
+            passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
+            passEncoder.setPipeline(passObj.pipeline);
+
+            for (let i = 0; i < passObj.vertexBuffers.length; i++) {
+                passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
+            }
+            for (let i = 0; i < bindGroups.length; i++) {
+                passEncoder.setBindGroup(i, bindGroups[i]);
+            }
+            if (passObj.indexed) {
+                passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
+                passEncoder.drawIndexed(passObj.indicesCount);
+            } else {
+                passEncoder.draw(passObj.vertCount);
             }
             passEncoder.end();
         } else if (passObj.passType == this.PassTypes.COMPUTE) {

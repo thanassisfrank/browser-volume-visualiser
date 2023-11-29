@@ -246,6 +246,12 @@ export var cameraManager = {
                 this.fovY, this.fovX, 0, 0 // fovs
             ])
         }
+        // sets the aspect ratio for the camera, recalc proj mat
+        this.setAspectRatio = function(aspect) {
+            this.aspect = aspect;
+            this.fovX = this.fovY/this.aspect;
+            this.setProjMat();
+        }
         this.setProjMat = function() {
             let projMat = mat4.create();
         

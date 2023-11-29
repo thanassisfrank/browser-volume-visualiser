@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Ray marching</title>
+        <style>
+            body {
+                padding: 0px;
+                margin: 0px;
+            }
+            #c{
+                position: absolute;
+                margin: 0px;
+                width: 100%;
+                height: 100%;
+                /* background-color: blue; */
+            }
+            .view-container {
+                margin: 0px;
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                /* border: 1px solid blue; */
+            }
+            .frame {
+                position: absolute;
+                width: calc(100%);
+                height: calc(100%);
+                text-align: center;
+                /* border: 1px solid red; */
+            }
+            .bottom-bar{
+                position: absolute;
+                bottom: 0px;
+                padding: 5px;
+                /* background: white; */
+                /* border: 1px solid black; */
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="c"></canvas>
+        <div id="view-container-container"></div>
+        <div id="view-container-proto" class="view-container" style="display: none">
+            <div class="frame">
+                <div class="bottom-bar">
+                    <input type="range" class="threshold">
+                </div>
+            </div>
+        </div>
+        <script type="module">
+            import {get, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositionCanvas, parseXML, IntervalTree, OldIntervalTree, timer} from "./core/utils.js";
+
+            import { dataManager } from "./core/data/data.js";
+            import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
+            import { cameraManager, meshManager } from "./core/renderEngine/sceneObjects.js";
+            import { renderModes } from "./core/renderEngine/renderEngine.js";
+            import { viewManager } from "./view.js";
+
+            console.log("fesf")
+
+            // define the main function
+            async function main() {
+                console.log("main")
+                var canvas = get("c");
+                
+
+                // create a new rendering engine
+                var renderEngine = await createRenderEngine(canvas);
+                await renderEngine.setup();
+                await renderEngine.marchingCubes.setupMarchModule();
+                await renderEngine.rayMarcher.setupEngine();
+
+
+                const datasets = await fetch("/data/datasets.json")
+                    .then((res) => res.json());
+                // setup data manager with these
+                dataManager.setConfigSet(datasets);
+                
+
+                // shortcuts
+                document.body.addEventListener("keydown", function(e) {
+                    switch (e.key) {
+                        case " ":
+                            // centre the camera on all views
+                            
+                            break;
+                        case "Alt":
+                            e.preventDefault();
+                            break;
+                    }
+                });
+                    
+                
+
+                var newData = await dataManager.getDataObj("turbulence");
+                // var unstruct = dataManager.createUnstructuredFromStructured(newData);
+                var camera = cameraManager.createCamera();
+                var newView = await viewManager.createView({
+                    camera: camera,
+                    data: newData,
+                    renderMode: renderModes.RAY_SURFACE
+                }, renderEngine);
+
+                var canvasDims = setupCanvasDims(canvas);
+                // change camera aspect ratio
+                camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
+                window.addEventListener("resize", () => {
+                    var canvasDims = setupCanvasDims(canvas);
+                    // change camera aspect ratio
+                    camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
+                    renderEngine.resizeRenderingContext();
+                })
+
+
+                var renderLoop = async (lastFrameEnd) => {
+                    
+                    // update the objects
+                    // does stuff like propagating threshold value, fetching required data
+                    viewManager.update(0, renderEngine);
+                    
+                    // render the scenes
+                    // includes doing marching cubes/ray marching if required by object
+                    // renderEngine.clearScreen();
+                    for (let view of Object.values(viewManager.views)) {
+                        await renderEngine.renderView(view);
+                    }
+                    
+                    const dt = performance.now() - lastFrameEnd;
+                    // get("frameTime").innerText = Math.round(dt) + "ms";
+                    // next frame
+                    requestAnimationFrame(renderLoop);
+                    // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);
+                };
+                renderLoop();
+            }
+
+            document.body.onload = main;
+        </script>
+    </body>
+</html>

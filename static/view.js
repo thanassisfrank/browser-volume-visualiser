@@ -65,9 +65,9 @@ export var viewManager = {
         var viewContainer = get("view-container-proto").cloneNode(true);
         viewContainer.id = id;
 
-        var slider = viewContainer.getElementsByTagName("INPUT")[0];
-        var frame = viewContainer.getElementsByTagName("DIV")[0];
-        var closeBtn = viewContainer.getElementsByTagName("BUTTON")[0];
+        var slider = viewContainer.getElementsByClassName("threshold")[0];
+        var frame = viewContainer.getElementsByClassName("frame")[0];
+        var closeBtn = viewContainer.getElementsByClassName("close")?.[0];
 
         slider.min = view.data.limits[0]; // Math.max(view.data.limits[0], 0);
         slider.max = view.data.limits[1];
@@ -75,9 +75,12 @@ export var viewManager = {
 
         slider.value = (view.data.limits[0] + view.data.limits[1]) / 2;
 
-        closeBtn.onclick = () => {
-            this.deleteView(view);
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                this.deleteView(view);
+            }
         }
+        
 
         // set event listeners for the elements
         const shiftFac = 0.5;
@@ -249,28 +252,18 @@ export var viewManager = {
             // }
         }
         this.getFrameElem = function() {
-            return get(this.id).children[0];
+            return get(this.id).getElementsByClassName("frame")[0];
         }
         this.getViewContainer = function() {
             return get(this.id);
         }
         this.getBox = function() {
             // find the box corresponding to the associated frame element
-            // the box is relative to the canvas element
+            // the box is relative to the window
             var rect = this.getFrameElem().getBoundingClientRect();
-            var canvasRect = get("c").getBoundingClientRect();
-            this.box.left = rect.left - canvasRect.left;// + window.scrollX;
-            this.box.top = rect.top - canvasRect.top;
-            this.box.right = window.innerWidth + canvasRect.left - rect.right;
-            this.box.bottom = window.innerHeight + canvasRect.top - rect.bottom// - window.scrollY;
-            this.box.width = rect.width;
-            this.box.height = rect.width;
-
-            return this.box;
+            this.box = rect;
+            return rect;
         }
-        // this.render = function(gl) {
-        //     this.marcher.renderMesh(gl, this.camera.projMat, this.camera.getModelViewMat(), this.getBox(), this.renderMode);
-        // }
         this.delete = function() {
             // remove dom
             this.getViewContainer().remove();
