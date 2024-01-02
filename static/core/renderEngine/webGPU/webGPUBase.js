@@ -11,11 +11,6 @@ export function WebGPUBase (verbose) {
     this.device;
     this.buffers
     this.verbose = verbose;
-    this.log = function(obj) {
-        if (this.verbose) {
-            console.log(obj)
-        }
-    }
 
     this.maxStorageBufferBindingSize;
 

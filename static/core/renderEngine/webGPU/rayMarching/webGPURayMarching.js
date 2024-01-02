@@ -2,6 +2,7 @@
 // implements the ray marching algorithm with webgpu
 
 import {mat4} from "https://cdn.skypack.dev/gl-matrix";
+import { DataFormats } from "../../../data/data.js";
 import { RenderableObjectTypes, RenderableObjectUsage, checkForChild, getTotalObjectTransform } from "../../sceneObjects.js";
 import { clampBox } from "../../../utils.js";
 
@@ -10,7 +11,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     var device = webGPU.device;
 
     var constsBuffer;
-    var rayMarchBindGroupLayouts;
 
     this.rayMarchPassDescriptor;
 
@@ -38,7 +38,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.setupEngine = async function() {
         // make bind group layouts
-        rayMarchBindGroupLayouts = [
+        var rayMarchBindGroupLayouts = [
             webGPU.bindGroupLayouts.render0,
             webGPU.createBindGroupLayout([
                 {
@@ -89,39 +89,62 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         if(!renderData.buffers) renderData.buffers = {};
         if(!renderData.samplers) renderData.samplers = {};
 
-        var datasetSize = dataObj.getDataSize();
-        // copy the data to a texture
-        const textureSize = {
-            width: datasetSize[0],
-            height: datasetSize[1],
-            depthOrArrayLayers: datasetSize[2]
+        if (dataObj.dataFormat == DataFormats.STRUCTURED) {
+            var datasetSize = dataObj.getDataSize();
+            // copy the data to a texture
+            const textureSize = {
+                width: datasetSize[0],
+                height: datasetSize[1],
+                depthOrArrayLayers: datasetSize[2]
+            }
+
+            renderData.textures.data = device.createTexture({
+                label: "whole data texture",
+                size: textureSize,
+                dimension: "3d",
+                format: "r32float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            });
+
+            await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.getValues()).buffer);
+
+            // create sampler for data texture
+            // doesn't work for float32 data
+            renderData.samplers.data = device.createSampler({
+                label: "ray data sampler",
+                magFilter: "linear",
+                minFilter: "linear"
+            });
+
+            renderData.buffers.passInfo = webGPU.makeBuffer(256, "u cs cd", "ray pass info");
+            renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info");
+
+            renderableDataObj.renderData.rayMarchingReady = true;
+
+        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
+            renderableDataObj.renderData.setupFailed = true;
+            var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+            console.log(dataObj.data.values.byteLength, dataObj.data.values);
+            renderData.buffers.values = webGPU.createFilledBuffer("f32", dataObj.data.values, usage);
+            renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage);
+            renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage);
+            renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage);
+            // only handle tetrahedra for now
+            // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
+            
+            // generate the tree
+            var cellTreeBuffer = dataObj.getCellTreeBuffer();
+
+            console.log(new Float32Array(cellTreeBuffer));
+
+            renderableDataObj.renderData.setupFailed = true;
         }
-
-        renderData.textures.data = device.createTexture({
-            label: "whole data texture",
-            size: textureSize,
-            dimension: "3d",
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-        });
-
-        await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.getValues()).buffer);
-
-        //create sampler for data texture
-        renderData.samplers.data = device.createSampler({
-            label: "ray data sampler",
-            magFilter: "linear",
-            minFilter: "linear"
-        });
-
-        renderData.buffers.passInfo = webGPU.makeBuffer(256, "u cs cd", "ray pass info");
-        renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info");
-        renderableDataObj.renderData.rayMarchingReady = true;
     }
 
     // do ray marching on the data
     // renders to a texture which will then be composited onto the final view
     this.march = async function(renderableDataObj, camera, renderPassDescriptor, box, canvas) {
+        if (renderableDataObj.renderData.setupFailed) return;
         // load the data to the GPU if its not already there
         if (!renderableDataObj.renderData.rayMarchingReady) {
             this.setupRayMarch(renderableDataObj);

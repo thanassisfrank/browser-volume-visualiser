@@ -964,7 +964,141 @@ function testPivot() {
 // cellOffsets          a set of offsets into cellConnectivity, where the point list for each starts; one entry per cell
 // cellTypes            a set of values that determines the types each cell(i.e. how many points it has); one entry per cell
 // outputs a contiguous binary tree of nodes of the 
-export function buildCellKDTree(points, dimensions, depth, cellConnectivity, cellOffsets, cellTypes, ) {
+export function buildCellKDTree(points, dimensions, depth, cellConnectivity, cellOffsets, cellTypes) {
+    var cellsTree = false;
+    if (cellConnectivity) cellsTree = true;
+    // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
+    var checkCellPosition = (id, checkDimension, splitVal) => {
+        // first get the points in the cell
+        var pointsLength = 0;
+        switch (cellTypes[id]) {
+            case 10: // tet
+                pointsLength = 4;
+                break;
+            case 12: // hexa
+                pointsLength = 8;
+                break;
+            case 5:  // tri
+                pointsLength = 3;
+                break;
+        }
+        var pointsOffset = cellOffsets[id];
+        var results = [false, false];
+        for (let i = 0; i < pointsLength; i++) {
+            // index into the points array
+            var thisIndex = cellConnectivity[pointsOffset + i];
+            // the position of this point in the dimension that is being checked
+            var thisPointValue = points[thisIndex*dimensions + checkDimension];
+            if (thisPointValue <= splitVal) results[0] = true;
+            if (thisPointValue > splitVal)  results[1] = true;
+        }
+        return results;
+    }
+
+    var nodeQueue = [];
+    // make a root node with the whols dataset
+    var root = {
+        depth: 0,
+        splitDimension: 0,
+        splitVal: null,
+        left: null,
+        right: null,
+        points: points,
+        cells: []
+    }
+    if (cellsTree) {
+        for (let i = 0; i < cellOffsets.length; i++) {
+            root.cells.push(i);
+        }
+    }
+    nodeQueue.push(root);
+
+    while (nodeQueue.length > 0) {
+        var parentNode = nodeQueue.pop();
+        var currentDepth = parentNode.depth + 1;
+        // stop the expansion of this node if the tree is deep enough
+        if (currentDepth > depth) continue;
+
+        var currentDimension = parentNode.splitDimension;
+        var currentPoints = parentNode.points;
+
+        // make a set of points that is just the values in the current dimension
+        var thisDimValues = [];
+        for (let i = currentDimension; i < currentPoints.length; i += dimensions) {
+            // console.log(i);
+            thisDimValues.push(currentPoints[i]);
+        }
+        
+        // find the pivot 
+        parentNode.splitVal = pivotFull(thisDimValues);
+        // console.log(parentNode.splitVal);
+
+        // split the points into left and right
+        var leftPoints = [];
+        var rightPoints = [];
+        for (let i = 0; i < currentPoints.length; i+= dimensions) {
+            if (currentPoints[i + currentDimension] <= parentNode.splitVal) {
+                // point goes in left
+                for (let j = 0; j < dimensions; j++) {
+                    leftPoints.push(currentPoints[i + j]);
+                }
+            } else {
+                // point goes in right
+                for (let j = 0; j < dimensions; j++) {
+                    rightPoints.push(currentPoints[i + j]);
+                }
+            }
+        }
+
+        // split the cells into left and right
+        var leftCells = [];
+        var rightCells = [];
+
+        if (cellsTree) {
+            for (let cellID of parentNode.cells) {
+                // see if cell is <= pivot, > pivot or both
+                var cellSides = checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                if (cellSides[0]) leftCells.push(cellID);
+                if (cellSides[1]) rightCells.push(cellID);
+            }
+        }
+
+        // create the new left and right nodes
+        var nextDimension = (currentDimension + 1) % dimensions;
+        var leftNode = {
+            depth: currentDepth,
+            splitDimension: nextDimension,
+            splitVal: null,
+            left: null,
+            right: null,
+            points: leftPoints,
+            cells: leftCells
+        }
+        var rightNode = {
+            depth: currentDepth,
+            splitDimension: nextDimension,
+            splitVal: null,
+            left: null,
+            right: null,
+            points: rightPoints,
+            cells: rightCells
+        }
+
+        // make sure the parent is properly closed out
+        parentNode.cells = null;
+        parentNode.points = null;
+        parentNode.left = leftNode;
+        parentNode.right = rightNode;
+
+        // add children to the queue
+        nodeQueue.push(leftNode, rightNode);
+    }
+
+    // return the tree object
+    return root;
+}
+
+export function buildCellKDTreeArray(points, dimensions, depth, cellConnectivity, cellOffsets, cellTypes) {
     var cellsTree = false;
     if (cellConnectivity) cellsTree = true;
     // checks whether the cell of the given id is lte, gt the split val in checked dimension or both

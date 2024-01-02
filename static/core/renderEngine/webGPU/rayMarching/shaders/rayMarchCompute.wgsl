@@ -14,7 +14,7 @@
 // ray marching data
 // threshold, data matrix, march parameters
 @group(1) @binding(0) var<storage> passInfo : RayMarchPassInfo;
-// data tree, leaves contain a list of intersecting cells
+// data tree, leaves contain a list of intersecting cell ids
 @group(1) @binding(1) var<storage> dataTree : U32Buff; 
 // positions of each of the vertices in the mesh
 @group(1) @binding(2) var<storage> vertexPositions : PointsBuff;

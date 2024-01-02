@@ -92,24 +92,25 @@
                     
                 
 
-                var newData = await dataManager.getDataObj("turbulence");
-                // var unstruct = dataManager.createUnstructuredFromStructured(newData);
+                var newData = await dataManager.getDataObj("silicium");
+                var unstruct = await dataManager.createUnstructuredFromStructured(newData);
+                console.log(unstruct);
+
                 var camera = cameraManager.createCamera();
                 var newView = await viewManager.createView({
                     camera: camera,
-                    data: newData,
+                    data: unstruct,
                     renderMode: renderModes.RAY_SURFACE
                 }, renderEngine);
 
-                var canvasDims = setupCanvasDims(canvas);
-                // change camera aspect ratio
-                camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
-                window.addEventListener("resize", () => {
+                var resize = () => {
                     var canvasDims = setupCanvasDims(canvas);
                     // change camera aspect ratio
                     camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
                     renderEngine.resizeRenderingContext();
-                })
+                }
+                resize();
+                window.addEventListener("resize", resize);
 
 
                 var renderLoop = async (lastFrameEnd) => {
@@ -133,7 +134,7 @@
                 };
                 renderLoop();
             }
-
+            // window.addEventListener("load", main);
             document.body.onload = main;
         </script>
     </body>

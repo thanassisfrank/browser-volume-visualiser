@@ -3,14 +3,15 @@
 
 import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
-import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer } from "../utils.js";
+import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
+import { CellTree } from "./cellTree.js";
 
 export {dataManager};
 
 const blockSize = [4, 4, 4];
 
-const DATA_FORMATS = {
+export const DataFormats = {
     EMPTY:           0,  // undefined/empty
     STRUCTURED:      1,  // data points are arranged as a contiguous texture
     STRUCTURED_GRID: 2,  // data is arranged as a contiguous 3d texture, each point has a sumplemental position
@@ -91,23 +92,24 @@ var dataManager = {
     },
     // takes a data object with format STRUCTURED and creates a new dataset with tetrahedral cells
     createUnstructuredFromStructured: async function(structuredData) {
-        if (structuredData.dataFormat != DATA_FORMATS.STRUCTURED) return;
+        if (structuredData.dataFormat != DataFormats.STRUCTURED) return;
         // create blank
         var unstructuredData = await this.createData();
-        unstructuredData.dataFormat = DATA_FORMATS.UNSTRUCTURED;
+        unstructuredData.dataFormat = DataFormats.UNSTRUCTURED;
         console.log(unstructuredData, structuredData)
         // copy what is the same
-        unstructuredData.data.values = structuredData.data.values;
         unstructuredData.size = structuredData.size;
         unstructuredData.limits = structuredData.limits;
         unstructuredData.dataTransformMat = structuredData.dataTransformMat;
-
+        
         // build the cell data
         var pointCount = structuredData.data.values.length;
         var dataSize = structuredData.getDataSize();
+        console.log(dataSize);
         var cubesCount = (dataSize[0] - 1)*(dataSize[1] - 1)*(dataSize[2] - 1);
         var tetsCount = cubesCount * 5;
         
+        unstructuredData.data.values = new Float32Array(structuredData.data.values);
         unstructuredData.data.positions = new Float32Array(pointCount * 3);
         unstructuredData.data.cellConnectivity = new Uint32Array(tetsCount * 4); // 5 tet per hex, 4 points per tet
         unstructuredData.data.cellOffsets = new Uint32Array(tetsCount); // 5 tet per hex, 4 points per tet
@@ -220,7 +222,7 @@ var dataManager = {
         this.config;
 
         // what kind of data file this contains
-        this.dataFormat = DATA_FORMATS.EMPTY;
+        this.dataFormat = DataFormats.EMPTY;
 
         // what this.data represents
         this.dataName = "";
@@ -251,7 +253,7 @@ var dataManager = {
             if (config.f) {
                 this.generateData(config);
             } else if (config.type == "raw") {
-                this.dataFormat = DATA_FORMATS.STRUCTURED;
+                this.dataFormat = DataFormats.STRUCTURED;
                 const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
                 this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
                 this.limits = config.limits;
@@ -272,9 +274,9 @@ var dataManager = {
     
                 
             } else if (config.type == "structuredGrid") {
-                this.dataFormat = DATA_FORMATS.STRUCTURED_GRID;
+                this.dataFormat = DataFormats.STRUCTURED_GRID;
             } else if (config.type == "unstructured") {
-                this.dataFormat = DATA_FORMATS.UNSTRUCTURED;
+                this.dataFormat = DataFormats.UNSTRUCTURED;
             }
             
             this.initialised = true;
@@ -401,7 +403,7 @@ var dataManager = {
         }
         // for structured formats, this returns the dimensions of the data grid in # data points
         this.getDataSize = function() {
-            if (this.dataFormat == DATA_FORMATS.STRUCTURED || this.dataFormat == DATA_FORMATS.STRUCTURED_GRID) {
+            if (this.dataFormat == DataFormats.STRUCTURED || this.dataFormat == DataFormats.STRUCTURED_GRID) {
                 // swizel dimensions so they're accurate
                 return this.size;
             } else {
@@ -410,6 +412,24 @@ var dataManager = {
         }
         this.getValues = function() {
             return this.data.values;
+        }
+
+        // generates the cell tree for fast lookups in unstructured data
+        this.getCellTreeBuffer = function() {
+            var depth = 1;
+            var tree = new CellTree();
+            // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
+            tree.build(
+                3, 
+                depth, 
+                this.data.positions, 
+                this.data.cellConnectivity,
+                this.data.cellOffsets,
+                new Uint32Array(this.data.cellOffsets.length).fill(10)
+            );
+            console.log(this.data.positions);    
+            console.log(tree);
+            return tree.serialise();
         }
 
         // returns a mat4 encoding object space -> data space
