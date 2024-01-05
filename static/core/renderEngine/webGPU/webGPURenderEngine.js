@@ -2,10 +2,12 @@
 // contains the main rendering object
 // import { setupWebGPU, createFilledBuffer } from "./webGPUBase.js";
 import { clampBox, stringifyMatrix} from "../../utils.js";
-import { EmptyRenderEngine, renderModes} from "../renderEngine.js";
-import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
+import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
-import { RenderableObjectTypes, RenderableObjectUsage, RenderableObject, meshManager, traverseSceneGraph, checkForChild, getTotalObjectTransform } from "../sceneObjects.js";
+import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
+
+// extension modules for more complex rendering operations
+import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 
 // the main rendering object that handles interacting with the GPU
@@ -147,300 +149,220 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         depthStencilTexture.destroy();
     };
 
-   
-    // create objects fro rendering ===============================================================
-    // OLD
-    this.createMeshFromDataPoints = async function(renderableDataObj) {
-        // first, search direct children for if the meshes have already been created
-        for (let child of renderableDataObj.children) {
-            if (child.type == RenderableObjectTypes.MESH && child.usage == RenderableObjectUsage.DATA_POINTS) {
-                // the required mesh has already been created, can return safetly
-                return;
-            }
+    // setup scene object for rendering ===========================================================
+    // create the needed renderables for a scene object to be displayed as desired
+    
+    // take a scene object as input and creates its needed renderables
+    this.setupSceneObject = async function(sceneObj) {
+        // get rid of any renderables already present
+        for (let renderable of sceneObj.renderables) {
+            this.destroyRenderable(renderable);
         }
 
-        // the mesh does not exist yet
-        var dataObj = renderableDataObj.object;
-        
-        // create a buffer with the points in
-        var vertsBufferTemp = new Float32Array(dataObj.volume*3);
-        var normBufferTemp = new Float32Array(dataObj.volume*3);
-        var index = 0;
-        for (let i = 0; i < dataObj.size[0]; i++) {
-            for (let j = 0; j < dataObj.size[1]; j++) {
-                for (let k = 0; k < dataObj.size[2]; k++) {
-                    vertsBufferTemp[3*index + 0] = i;
-                    vertsBufferTemp[3*index + 1] = j;
-                    vertsBufferTemp[3*index + 2] = k;
-                    index++;
-                }
-            }
+        if (sceneObj.renderMode == SceneObjectRenderModes.NONE) return;
+
+        if (sceneObj.renderMode & SceneObjectRenderModes.BOUNDING_WIREFRAME) {
+            // create a bounding wireframe for the object
+            this.addBoundingWireFrameToSceneObject(sceneObj);
         }
+        // first filter by object type
+        switch (sceneObj.objectType) {
+            case SceneObjectTypes.MESH:
+                this.setupMeshSceneObject(sceneObj);
+                break;
+            case SceneObjectTypes.DATA:
+                this.setupDataSceneObject(sceneObj);
+                break; 
+            case SceneObjectTypes.AXES:
+                this.setupAxesSceneObject(sceneObj);
+                break;
+            case SceneObjectTypes.VECTOR:
+                this.setupVectorObject(sceneObj);
+                break;
+            // nothing is rendered for these by default
+            case SceneObjectTypes.EMPTY:
+            case SceneObjectTypes.CAMERA:
+            case SceneObjectTypes.LIGHT:
+                break;
+        }
+    }
 
-        var dataPointsMesh = meshManager.createMesh();
-        // move vertex data to the gpu
-        dataPointsMesh.buffers.vertex = webGPU.createFilledBuffer("f32", vertsBufferTemp, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        dataPointsMesh.buffers.normal = webGPU.createFilledBuffer("f32", normBufferTemp, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        
-        // set the number of verts
-        dataPointsMesh.vertsNum = dataObj.volume;
+    this.destroyRenderable = function(renderable) {
+        // the important data is stored within renderData
+        var textures = renderable.renderData.textures;
+        for (let textureName in textures) {
+            textures[textureName].destroy();
+        }
+        var buffers = renderable.renderData.buffers;
+        for (let bufferName in buffers) {
+            buffers[bufferName].destroy();
+        }
+    }
 
-        // place mesh into scene heirarchy
-        var renderableMeshObj = new RenderableObject(RenderableObjectTypes.MESH, dataPointsMesh);
-        renderableMeshObj.usage = RenderableObjectUsage.DATA_POINTS;
-        renderableMeshObj.renderMode = renderModes.POINTS;
+    this.addBoundingWireFrameToSceneObject = function(sceneObj) {
+        // get the bounding points first
+        var points = sceneObj.getBoundaryPoints();
 
-        renderableDataObj.children.push(renderableMeshObj);
+        // check if points were generated properly
+        if (!points || points.length != 8 * 3) return;
 
-        // console.log(renderableMeshObj);
-        webGPU.readBuffer(dataPointsMesh.buffers.vertex, 0, 100).then(
-            (arrayBuffer) => {console.log(new Float32Array(arrayBuffer))}
+        var renderable = webGPU.meshRenderableFromArrays(
+            points,
+            new Float32Array(points.length * 3), 
+            new Uint32Array([
+                0, 1,
+                0, 2,
+                0, 4,
+                1, 3,
+                1, 5,
+                2, 3,
+                2, 6,
+                3, 7,
+                4, 5,
+                4, 6,
+                5, 7,
+                6, 7
+            ]), 
+            RenderableRenderModes.MESH_WIREFRAME
         );
+        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
 
-
-        // old code from marcher.js
-
-        // if (this.multiBlock) {
-        //     for (let i = 0; i < this.pieces.length; i++) {
-        //         this.pieces[i].transferPointsToMesh();
-        //     }
-            
-        // } else {
-        //     if (data.structuredGrid) {
-        //         this.mesh.verts = this.data.points;
-        //     } else {
-        //         this.mesh.verts = new Float32Array(this.data.volume*3);
-        //         var index = 0;
-        //         for (let i = 0; i < this.data.size[0]; i++) {
-        //             for (let j = 0; j < this.data.size[1]; j++) {
-        //                 for (let k = 0; k < this.data.size[2]; k++) {
-        //                     this.mesh.verts[3*index + 0] = i;
-        //                     this.mesh.verts[3*index + 1] = j;
-        //                     this.mesh.verts[3*index + 2] = k;
-        //                     index++;
-        //                 }
-        //             }
-        //         }
-        //         console.log("made points");
-        //     }
-        //     this.mesh.normals = new Float32Array(this.data.volume*3);
-        //     this.mesh.vertsNum = this.data.volume;
-        // }
-        // this.updateBuffers();
-        
+        sceneObj.renderables.push(renderable);
     }
 
-    this.meshFromArrays = function(points, norms, indices) {
-        var mesh = meshManager.createMesh();
-        // move vertex data to the gpu
-        mesh.buffers.vertex = webGPU.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        mesh.buffers.normal = webGPU.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        mesh.buffers.index = webGPU.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC);
-        
-        // set the number of verts
-        mesh.vertsNum = points.length/3;
-        mesh.indicesNum = indices.length;
+    this.addFloorWireFrameToSceneObject = function(sceneObj) {
+        // get the bounding points first
+        var points = sceneObj.getDatasetBoundaryPoints();
 
-        return mesh;
+        // check if points were generated properly
+        if (!points || points.length != 8 * 3) return;
+
+        var renderable = webGPU.meshRenderableFromArrays(
+            points,
+            new Float32Array(points.length * 3), 
+            new Uint32Array([
+                0, 1,
+                0, 4,
+                1, 5,
+                4, 5,
+            ]), 
+            RenderableRenderModes.MESH_WIREFRAME
+        );
+        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
+
+        sceneObj.renderables.push(renderable);
+    }
+    
+    // move mesh data to renderable
+    this.setupMeshSceneObject = async function(mesh) {
+        var renderable = webGPU.meshRenderableFromArrays(mesh.verts, mesh.norms, mesh.indices, mesh.renderMode);
+
+        // set the materials
+        renderable.serialisedMaterials = webGPU.serialiseMaterials(mesh.frontMaterial, mesh.backMaterial);
+
+        mesh.renderables.push(renderable);
     }
 
-    this.createBoundingBox = function(renderableDataObj) {
-        // check if bounding box if already generated
-        if (checkForChild(renderableDataObj, RenderableObjectTypes.MESH, RenderableObjectUsage.BOUNDING_BOX)) return;
-        // make points
-        var size = renderableDataObj.object.size;
-        var points = renderableDataObj.object.getDatasetBoundaryPoints();
-
-        var norms = new Float32Array(points.length);
-        var indices = new Uint32Array([
-            // bottom face
-            2, 1, 0,
-            1, 2, 3,
-            // top face
-            4, 5, 6,
-            7, 6, 5,
-            // side 1
-            1, 3, 5,
-            7, 5, 3,
-            // side 2
-            4, 2, 0,
-            2, 4, 6,
-            // side 3
-            0, 1, 4,
-            5, 4, 1,
-            // side 4
-            6, 3, 2,
-            3, 6, 7
-        ]);
-
-        var boundingBoxMesh = this.meshFromArrays(points, norms, indices);
-        boundingBoxMesh.frontMaterial.diffuseCol  = [0.7, 0.2, 0.2]; // diffuse col front
-        boundingBoxMesh.frontMaterial.specularCol = [0.9, 0.4, 0.4]; // specular col front
-        boundingBoxMesh.frontMaterial.shininess = 1000;
-        
-        boundingBoxMesh.backMaterial.diffuseCol   = [0.2, 0.2, 0.7]; // diffuse col front
-        boundingBoxMesh.backMaterial.specularCol  = [0.4, 0.4, 0.9]; // specular col front
-        boundingBoxMesh.backMaterial.shininess = 1000;
-        
-        var renderableMesh = new RenderableObject(RenderableObjectTypes.MESH, boundingBoxMesh);
-        renderableMesh.usage = RenderableObjectUsage.BOUNDING_BOX;
-        renderableMesh.renderMode = renderModes.NONE;
-
-        return renderableMesh;
+    // perform the setup needed depending on the data render mode
+    this.setupDataSceneObject = async function(data) {
+        if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
+            // move data points to a new mesh renderable
+            console.log("sorry, this data render mode is not supported yet");
+        }
+        if (data.renderMode & SceneObjectRenderModes.DATA_MARCH_SURFACE ||
+            data.renderMode & SceneObjectRenderModes.DATA_MARCH_POINTS
+        ) {
+            // interface with marching cubes engine to move data to GPU
+            console.log("sorry, this data render mode is not supported yet");
+        }
+        if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
+            this.rayMarcher.setupRayMarch(data);
+        }
     }
 
-    this.createWireframeBox = function(points) {
-        var norms = new Float32Array(points.length);
-        var indices = new Uint32Array([
-            0, 1,
-            0, 2,
-            0, 4,
-            1, 3,
-            1, 5,
-            2, 3,
-            2, 6,
-            3, 7,
-            4, 5,
-            4, 6,
-            5, 7,
-            6, 7
-        ]);
-
-        var wireframeMesh = this.meshFromArrays(points, norms, indices);
-        wireframeMesh.frontMaterial.diffuseCol = [0, 0, 0];
-        wireframeMesh.backMaterial.diffuseCol = [0, 0, 0];
-
-        var renderableMesh = new RenderableObject(RenderableObjectTypes.MESH, wireframeMesh);
-        renderableMesh.renderMode = renderModes.WIREFRAME;
-
-        return renderableMesh;
-    }
-
-    // creates a square floor around base, takes full bounding box as input
-    this.createWireframeFloor = function(points) {
-        var norms = new Float32Array(points.length);
-        var indices = new Uint32Array([
-            0, 1,
-            0, 4,
-            1, 5,
-            4, 5,
-        ]);
-
-        var wireframeMesh = this.meshFromArrays(points, norms, indices);
-        wireframeMesh.frontMaterial.diffuseCol = [0, 0, 0];
-        wireframeMesh.backMaterial.diffuseCol = [0, 0, 0];
-
-        var renderableMesh = new RenderableObject(RenderableObjectTypes.MESH, wireframeMesh);
-        renderableMesh.renderMode = renderModes.WIREFRAME;
-
-        return renderableMesh;
-    }
-
-    // creates a vector from the origin to the end coordinate
-    // drawn as a pixel line
-    this.createVector = function(endCoords, col) {
-        var points = new Float32Array([
-            0,     0, 0,
-            ...endCoords
-        ]);
-
-        var vectorMesh = this.meshFromArrays(points, new Float32Array(points.length), new Uint32Array([0, 1]));
-        vectorMesh.frontMaterial.diffuseCol = col;
-        vectorMesh.backMaterial.diffuseCol = col;
-        var renderableVectorMesh = new RenderableObject(RenderableObjectTypes.MESH, vectorMesh);
-        renderableVectorMesh.renderMode = renderModes.WIREFRAME;
-
-        return renderableVectorMesh;
-    }
-
-    this.updateVector = function(vector, endCoords) {
-        vector.object.buffers.vertex.destroy();
-        vector.object.buffers.vertex = webGPU.createFilledBuffer("f32", new Float32Array([0, 0, 0, ...endCoords]), GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-    }
-
-    this.createAxes = function(scale) {
+    this.setupAxesSceneObject = async function(axes) {
         // make x axis
-        var pointsX = new Float32Array([
-            0,     0, 0,
-            scale, 0, 0
-        ]);
-
-        var axesMeshX = this.meshFromArrays(pointsX, new Float32Array(pointsX.length), new Uint32Array([0, 1]));
-        axesMeshX.frontMaterial.diffuseCol = [1, 0, 0];
-        axesMeshX.backMaterial.diffuseCol = [1, 0, 0];
-        var renderableMeshX = new RenderableObject(RenderableObjectTypes.MESH, axesMeshX);
-        renderableMeshX.renderMode = renderModes.WIREFRAME;
-
+        var renderableX = webGPU.meshRenderableFromArrays(
+            new Float32Array([
+                0, 0, 0,
+                axes.scale, 0, 0
+            ]), 
+            new Float32Array(2 * 3), 
+            new Uint32Array([0, 1]), 
+            RenderableRenderModes.MESH_WIREFRAME
+        );
+        renderableX.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [1, 0, 0]}, {diffuseCol: [1, 0, 0]});
+        
         // make y axis
-        var pointsY = new Float32Array([
-            0, 0,     0,
-            0, scale, 0
-        ]);
-
-        var axesMeshY = this.meshFromArrays(pointsY, new Float32Array(pointsY.length), new Uint32Array([0, 1]));
-        axesMeshY.frontMaterial.diffuseCol = [0, 1, 0];
-        axesMeshY.backMaterial.diffuseCol = [0, 1, 0];
-        var renderableMeshY = new RenderableObject(RenderableObjectTypes.MESH, axesMeshY);
-        renderableMeshY.renderMode = renderModes.WIREFRAME;
+        var renderableY = webGPU.meshRenderableFromArrays(
+            new Float32Array([
+                0, 0, 0,
+                0, axes.scale, 0
+            ]), 
+            new Float32Array(2 * 3), 
+            new Uint32Array([0, 1]), 
+            RenderableRenderModes.MESH_WIREFRAME
+        );
+        renderableY.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 1, 0]}, {diffuseCol: [0, 1, 0]});
 
         // make z axis
-        var pointsZ = new Float32Array([
-            0, 0, 0,
-            0, 0, scale
-        ]);
+        var renderableZ = webGPU.meshRenderableFromArrays(
+            new Float32Array([
+                0, 0, 0,
+                0, 0, axes.scale
+            ]), 
+            new Float32Array(2 * 3), 
+            new Uint32Array([0, 1]), 
+            RenderableRenderModes.MESH_WIREFRAME
+        );
+        renderableZ.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 0, 1]}, {diffuseCol: [0, 0, 1]});
 
-        var axesMeshZ = this.meshFromArrays(pointsZ, new Float32Array(pointsZ.length), new Uint32Array([0, 1]));
-        axesMeshZ.frontMaterial.diffuseCol = [0, 0, 1];
-        axesMeshZ.backMaterial.diffuseCol = [0, 0, 1];
-        var renderableMeshZ = new RenderableObject(RenderableObjectTypes.MESH, axesMeshZ);
-        renderableMeshZ.renderMode = renderModes.WIREFRAME;
-
-
-        var renderableMesh = new RenderableObject(RenderableObjectTypes.EMPTY);
-        renderableMesh.renderMode = renderModes.NONE;
-
-        renderableMesh.children.push(renderableMeshX);
-        renderableMesh.children.push(renderableMeshY);
-        renderableMesh.children.push(renderableMeshZ);
-
-        return renderableMesh;
+        axes.renderables.push(renderableX);
+        axes.renderables.push(renderableY);
+        axes.renderables.push(renderableZ);
     }
+
+    this.setupVectorObject = function(vector) {
+        var renderable = webGPU.meshRenderableFromArrays(
+            new Float32Array([
+                0, 0, 0,
+                ...vector.endPoint
+            ]), 
+            new Float32Array([2]), 
+            new Uint32Array([0, 1]), 
+            RenderableRenderModes.MESH_WIREFRAME
+        );
+        renderable.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: vector.color}, {diffuseCol: vector.color});
+
+        vector.renderables.push(renderable);
+    }
+
     // ============================================================================================
 
-    this.renderMesh = async function(renderableMeshObj, camera, renderPassDescriptor, box) {
-        if (renderableMeshObj.renderMode == renderModes.NONE) return;
-        if (!renderableMeshObj.renderData?.buffers?.objectInfo) {
-            renderableMeshObj.renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info buffer");
-        }
-        
-        var meshObj = renderableMeshObj.object;
-        
-        if (meshObj.indicesNum == 0 && meshObj.vertsNum == 0) {
+    this.renderMesh = async function(renderable, camera, renderPassDescriptor, box) {        
+        if (renderable.indexCount == 0 && renderable.vertexCount == 0) {
             return;
         }
-
-        var transform = getTotalObjectTransform(renderableMeshObj);
-
 
         var commandEncoder = webGPU.device.createCommandEncoder();     
 
         await commandEncoder;
 
-        if (renderableMeshObj.renderMode == renderModes.POINTS) {
+        if (renderable.renderMode == RenderableRenderModes.MESH_POINTS) {
             var thisPassDescriptor = this.pointsRenderPassDescriptor;
-        } else if (renderableMeshObj.renderMode == renderModes.WIREFRAME) {
+        } else if (renderable.renderMode == RenderableRenderModes.MESH_WIREFRAME) {
             var thisPassDescriptor = this.linesRenderPassDescriptor;
-        } else if (renderableMeshObj.renderMode == renderModes.SURFACE){
+        } else if (renderable.renderMode == RenderableRenderModes.MESH_SURFACE){
             var thisPassDescriptor = this.surfaceRenderPassDescriptor;
         }
         var renderPass = {
             ...thisPassDescriptor,
-            vertsNum: meshObj.vertsNum,
-            indicesCount: meshObj.indicesNum,
-            vertexBuffers: [meshObj.buffers.vertex, meshObj.buffers.normal],
-            indexBuffer: meshObj.buffers.index,
+            vertsNum: renderable.vertexCount,
+            indicesCount: renderable.indexCount,
+            vertexBuffers: [renderable.renderData.buffers.vertex, renderable.renderData.buffers.normal],
+            indexBuffer: renderable.renderData.buffers.index,
             resources: [
-                [this.uniformBuffer, renderableMeshObj.renderData.buffers.objectInfo]
+                [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
             ],
             renderDescriptor: renderPassDescriptor,
             box: box,
@@ -455,37 +377,17 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             [camera.serialise(), new Uint32Array([performance.now()])]
         );
         webGPU.writeDataToBuffer(
-            renderableMeshObj.renderData.buffers.objectInfo, 
-            [new Float32Array(transform), meshObj.serialiseMaterials()]
+            renderable.renderData.buffers.objectInfo, 
+            [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
         webGPU.device.queue.submit([commandEncoder.finish()]);
     };
 
-    this.renderData = async function(renderableDataObj, camera, renderPassDescriptor, box) {
-        // console.log(renderableDataObj);
-        switch (renderableDataObj.renderMode) {
-            
-            case renderModes.ISO_POINTS:
-            case renderModes.ISO_SURFACE:
-                // have to do marching cubes to get an iso-surface
-                // this will not actually draw the mesh but only generate it if needed
-                // meshes will be generate as children elements
-                // drawing of the mesh will be left to subsequent steps of the scenegraph traversal
-                this.marchingCubes.march(renderableDataObj);
-                break;
-            case renderModes.DATA_POINTS:
-                // create a new mesh with just points from the dataset
-                // if it is already created, do nothing
-                this.createMeshFromDataPoints(renderableDataObj);
-                break;
-            case renderModes.RAY_SURFACE:
-                // need to render the bounding box to a depth stencil texture
-                var renderableBoundingBoxMesh = this.createBoundingBox(renderableDataObj);
-                if (renderableBoundingBoxMesh) renderableDataObj.children.push(renderableBoundingBoxMesh);
-                
-                // var boundingBoxDepthTexture = this.meshDepthPass(renderableBoundingBoxMesh);
+    this.renderData = async function(renderable, camera, renderPassDescriptor, box) {
+        switch (renderable.renderMode) {
+            case RenderableRenderModes.DATA_RAY_VOLUME:
                 // do ray marching to extract surface
-                this.rayMarcher.march(renderableDataObj, camera, renderPassDescriptor, box, this.canvas);
+                this.rayMarcher.march(renderable, camera, renderPassDescriptor, box, this.canvas);
             default:
                 // do nothing
                 break;
@@ -511,20 +413,19 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             usage: GPUTextureUsage.RENDER_ATTACHMENT
         });
 
-        var scene = view.scene;
+        var scene = view.sceneGraph;
         // console.log(scene);
 
         // first check if there is a camera in the scene
-        var camera = this.findCamera(scene)?.object;
+        var camera = scene.activeCamera;
         if (!camera) {
             console.warn("no camera in scene");
             return;
         }
-        // console.log(stringifyMatrix(camera.getViewMat(), 4));
 
-        // traverse the scenegraph to render all objects
+        // get the renderables from the scene
         var i = 0;
-        for (let obj of traverseSceneGraph(scene)) {
+        for (let renderable of scene.getRenderables()) {
             var renderPassDescriptor;
             if (i == 0) {
                 // for first mesh, need to clear the colour and depth images
@@ -558,21 +459,19 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                     }
                 };
             }
-            if (!obj.visible) continue;
-            if (obj.type == RenderableObjectTypes.MESH) {
+            if (renderable.renderMode == RenderableRenderModes.NONE) continue;
+            if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
-                this.renderMesh(obj, camera, renderPassDescriptor, box);
+                this.renderMesh(renderable, camera, renderPassDescriptor, box);
                 i++;
-            } else if (obj.type == RenderableObjectTypes.DATA) {
+            } else if (renderable.type == RenderableTypes.DATA) {
                 // reached a data object, got to decide how to render it
-                this.renderData(obj, camera, renderPassDescriptor, box);
+                this.renderData(renderable, camera, renderPassDescriptor, box);
             }
         }
         await webGPU.waitForDone();
         depthStencilTexture.destroy();        
     }
-
-    
 
     this.resizeRenderingContext = function() {
         this.ctx.configure({

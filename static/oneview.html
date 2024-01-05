@@ -52,9 +52,8 @@
 
             import { dataManager } from "./core/data/data.js";
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
-            import { cameraManager, meshManager } from "./core/renderEngine/sceneObjects.js";
-            import { renderModes } from "./core/renderEngine/renderEngine.js";
             import { viewManager } from "./view.js";
+            import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
 
             console.log("fesf")
 
@@ -96,11 +95,11 @@
                 var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 console.log(unstruct);
 
-                var camera = cameraManager.createCamera();
+                var camera = new Camera();
                 var newView = await viewManager.createView({
                     camera: camera,
-                    data: unstruct,
-                    renderMode: renderModes.RAY_SURFACE
+                    data: newData,
+                    renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
                 }, renderEngine);
 
                 var resize = () => {

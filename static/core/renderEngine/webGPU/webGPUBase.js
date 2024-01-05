@@ -2,14 +2,14 @@
 // holds utility functions for webgpu, common to both rendering and compute passes
 
 import { stringFormat, clampBox, floorBox } from "../../utils.js";
-import { RenderableObject, RenderableObjectTypes } from "../sceneObjects.js";
+import { Renderable, RenderableTypes, RenderableRenderModes } from "../renderEngine.js";
 
 
 // class for 
 export function WebGPUBase (verbose) {
     this.adapter;
     this.device;
-    this.buffers
+    this.buffers;
     this.verbose = verbose;
 
     this.maxStorageBufferBindingSize;
@@ -268,6 +268,41 @@ export function WebGPUBase (verbose) {
         return this.device.createShaderModule({
             code: codeFormatted
         });
+    }
+
+    // serialises a set of 2 materials in the format expected by the shader
+    this.serialiseMaterials = function(frontMaterial, backMaterial) {
+        var frontDiff = frontMaterial.diffuseCol || [0, 0, 0];
+        var frontSpec = frontMaterial.specularCol || [0, 0, 0];
+        var frontShiny = frontMaterial.shininess || 0;
+        var backDiff = backMaterial.diffuseCol || [0, 0, 0];
+        var backSpec = backMaterial.specularCol || [0, 0, 0];
+        var backShiny = backMaterial.shininess || 0;
+        return new Float32Array([
+            ...frontDiff, 1,
+            ...frontSpec, 1,
+            frontShiny, 0, 0, 0,
+            ...backDiff, 1,
+            ...backSpec, 1,
+            backShiny, 0, 0, 0
+        ])
+    }
+
+    this.meshRenderableFromArrays = function(points, norms, indices, renderMode) {
+        var renderable = new Renderable(RenderableTypes.MESH, renderMode);
+        // move vertex data to the gpu
+        renderable.renderData.buffers.vertex = this.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
+        renderable.renderData.buffers.normal = this.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
+        renderable.renderData.buffers.index = this.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC);
+
+        // make the uniform to store the constant data
+        renderable.renderData.buffers.objectInfo = this.makeBuffer(256, "u cs cd", "object info buffer");
+        
+        // set the number of verts
+        renderable.vertexCount = points.length/3;
+        renderable.indexCount = indices.length;
+
+        return renderable;
     }
 
     // generates a buffer with the information and returns it

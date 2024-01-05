@@ -6,7 +6,7 @@
 
 import { dataManager } from "../../data/data.js";
 import { meshManager } from "../sceneObjects.js";
-import { renderModes } from "../renderEngine.js";
+import { RenderModes } from "../renderEngine.js";
 import { newId, volume, getRangeDeltas, rangesOverlap } from "../../utils.js";
 
 export {marcherManager}

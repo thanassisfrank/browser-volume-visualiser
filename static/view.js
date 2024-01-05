@@ -5,10 +5,11 @@ import { get, show, isVisible, toRads, newId, timer } from "./core/utils.js";
 import { VecMath } from "./core/VecMath.js";
 import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
 
-import { cameraManager, RenderableObject, RenderableObjectTypes } from "./core/renderEngine/sceneObjects.js";
-import { marcherManager } from "./core/renderEngine/webGL/marcher.js";
+import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
+// import { marcherManager } from "./core/renderEngine/webGL/marcher.js";
 
-import {renderModes} from "./core/renderEngine/renderEngine.js";
+import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
+import { RenderableTypes } from "./core/renderEngine/renderEngine.js";
 
 
 
@@ -32,29 +33,17 @@ export var viewManager = {
     
         // check if the mesh, data and camera objects are supplied
         var camera = config.camera;
-        var data = config.data;
-
-        // var marcher = await marcherManager.create(data); // FOR NOW CREATE NEW FOR EACH VIEW
-        var marcher;
-        
+        var data = config.data;        
 
         const modelMat = mat4.create();
-        // mat4.rotateX(modelMat, modelMat, toRads(-90));
-        // mat4.translate(modelMat, modelMat, VecMath.scalMult(-1, data.midPoint));
 
-        // camera.setModelMat(modelMat);
         camera.setProjMat();
         camera.setDist(1*data.getMaxLength());
         camera.setTarget(data.getMidPoint());
 
-        // register a new user of the used objects
-        cameraManager.addUser(camera);
-        // marcherManager.addUser(marcher);
-
-
         // generate id
         const id = newId(this.views);
-        var newView = new this.View(id, camera, data, config.renderMode || renderModes.ISO_SURFACE, (data.limits[0] + data.limits[1])/2);
+        var newView = new this.View(id, camera, data, config.renderMode, (data.limits[0] + data.limits[1])/2);
         newView.init(renderEngine);
         this.createViewDOM(id, newView);
         this.views[id] = newView;
@@ -162,12 +151,8 @@ export var viewManager = {
     View: function(id, camera, data, renderMode, threshold) {
         this.id = id;
 
-        this.scene = [];
-        this.dataRenderObj;
-
-
+        this.sceneGraph = new SceneGraph();
         this.camera = camera;
-
         this.data = data;
 
         this.threshold = threshold;
@@ -183,73 +168,29 @@ export var viewManager = {
         }
         this.box = {};
         this.init = function(renderEngine) {
-            // set the camera pos
-            // outside
-            this.camera.setDist(380);
-            this.camera.setTh(-30);
-            this.camera.setPhi(-30);
-            // inside
-            // this.camera.setDist(160);
-            // this.camera.setTh(-30);
-            // this.camera.setPhi(-70);
-            // this.updateThreshold(130, false);
+            // define what rendering type will be performed on dataset object
+            this.data.renderMode = SceneObjectRenderModes.DATA_RAY_VOLUME;
             // setup the scene
-            var cameraRenderObj = new RenderableObject(RenderableObjectTypes.CAMERA, this.camera);
-            this.dataRenderObj = new RenderableObject(RenderableObjectTypes.DATA, this.data);
-            this.dataRenderObj.renderMode = renderModes.RAY_SURFACE;
-            this.cameraUpVec = renderEngine.createVector([0, 0, 0], [0.5, 0, 0.5]);
-
-            // make wireframe
-            this.dataRenderObj.children.push(renderEngine.createWireframeBox(this.data.getDatasetBoundaryPoints()));
+            this.sceneGraph.insertChild(this.camera, undefined, true);
+            this.sceneGraph.insertChild(this.data);
+            this.sceneGraph.insertChild(new Axes(10));
             
-            this.scene.push(
-                // renderEngine.createAxes(20), 
-                // this.cameraUpVec, 
-                cameraRenderObj, 
-                this.dataRenderObj
-            );
-
-            console.log(this.scene);
-            
-            // do the correct type of initialisation based upon the rendering mode
-            if (this.renderMode == renderModes.DATA_POINTS) {
-                // transfer the points from the data object to the mesh
-                this.marcher.transferPointsToMesh();
-            } else if (this.renderMode == renderModes.ISO_SURFACE ||this.renderMode == renderModes.ISO_POINTS) {
-                this.updateThreshold(this.threshold, true);
-            }            
+            for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
+                renderEngine.setupSceneObject(sceneObj);
+            }
         }     
         this.updateThreshold = async function(val, fine) {
             this.threshold = val;
         }
         this.update = async function (dt, renderEngine) {
-            // only update the mesh if marching is needed
-            if (this.dataRenderObj.renderMode == renderModes.DATA_POINTS) return;
+            // propagate the threshold to where is it needed
+            this.data.threshold = this.threshold;
 
-            this.dataRenderObj.renderData.threshold = this.threshold;
-
-            // re-align camera up vector
-            var viewMat = this.camera.getViewMat();
-            // right vec: 0, 4, 8
-            // up vec: 1, 5, 9
-            var up = VecMath.scalMult(50, [viewMat[2], viewMat[6], viewMat[10]]);
-            // renderEngine.updateVector(this.cameraUpVec, up);
-            
-
-            // if (this.)
-            // if (this.marchedThreshold != this.threshold) {
-            //     this.marchedThreshold = this.threshold;
-            //     // march if threshold has changed
-            //     //var meshObj = this.marcher.march(this.threshold, marchingCubesEngine);
-                
-            // }
-            
-            // if (fine && this.marcher.complex) {
-            //     console.log("fine")
-            //     this.marcher.marchFine(this.threshold);
-            // } else {
-            //     this.marcher.march(this.threshold);
-            // }
+            for (let renderable of this.data.renderables) {
+                if (renderable.type == RenderableTypes.DATA) {
+                    renderable.passData.threshold = this.threshold;
+                }
+            }
         }
         this.getFrameElem = function() {
             return get(this.id).getElementsByClassName("frame")[0];
@@ -270,7 +211,7 @@ export var viewManager = {
             // deregister from camera
             cameraManager.removeUser(this.camera);
             // deregister from marcher
-            marcherManager.removeUser(this.marcher);
+            // marcherManager.removeUser(this.marcher);
         }
     }
 }

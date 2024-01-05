@@ -7,6 +7,8 @@ import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTre
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
 import { CellTree } from "./cellTree.js";
 
+import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
+
 export {dataManager};
 
 const blockSize = [4, 4, 4];
@@ -217,6 +219,7 @@ var dataManager = {
         }
     },
     Data: function(id) {
+        SceneObject.call(this, SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
         this.users = 0;
         this.config;
@@ -351,7 +354,7 @@ var dataManager = {
             return this.data.values.byteLength;
         }
         // returns the positions of the boundary points
-        this.getDatasetBoundaryPoints = function() {
+        this.getBoundaryPoints = function() {
             var size = this.getDataSize();
             var points = new Float32Array([
                 0,       0,       0,       // 0
@@ -380,7 +383,7 @@ var dataManager = {
             return points;
         }
         this.getMidPoint = function() {
-            var points = this.getDatasetBoundaryPoints();
+            var points = this.getBoundaryPoints();
             var min = points.slice(0, 3);
             var max = points.slice(21, 24);
 
@@ -391,7 +394,7 @@ var dataManager = {
             ]
         }
         this.getMaxLength = function() {
-            var points = this.getDatasetBoundaryPoints();
+            var points = this.getBoundaryPoints();
             var min = points.slice(0, 3);
             var max = points.slice(21, 24);
 
