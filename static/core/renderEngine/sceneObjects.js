@@ -83,48 +83,6 @@ export function SceneGraph() {
 }
 
 
-
-
-
-
-
-// recursive function for depth first traversal of scene graph
-export function* traverseSceneGraph (scene) {
-    for (let obj of scene) {
-        // do children first
-        if (obj.children.length > 0) {
-            yield* traverseSceneGraph(obj.children);
-        }
-        // then yield the object
-        yield obj;
-    }
-}
-
-export var checkForChild = (RenderableObject, childType, childUsage) => {
-    for (let child of RenderableObject.children) {
-        if (child.type == childType && child.usage == childUsage) {
-            // the required mesh has already been created, can return safetly
-            return child;
-        }
-    }
-    return false;
-}
-
-export var getTotalObjectTransform = (renderableObject) => {
-    // need to get the transform of object it i.e. rotation and scale as mat4
-    var transform = mat4.create();
-    mat4.multiply(transform, renderableObject.transform, transform);
-    var parent = renderableObject.parent;
-    while (parent) {
-        mat4.multiply(transform, parent.transform, transform);
-        parent = parent.parent;
-    }
-
-    return transform;
-}
-
-
-
 // Some Basic Scene Objects =======================================================================
 // scene objects are the nodes in the scene graph
 // they can have multiple renderables linked

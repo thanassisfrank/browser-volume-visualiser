@@ -104,7 +104,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     }
 
     // clears the screen and creates the empty depth texture
-    this.clearScreen = async function() {
+    this.getClearedRenderAttachments = async function() {
         
         // provide details of load and store part of pass
         // here there is one color output that will be cleared on load
@@ -144,9 +144,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         webGPU.device.queue.submit([commandEncoder.finish()]);
 
-        await webGPU.waitForDone();
-
-        depthStencilTexture.destroy();
+        return {
+            color: this.ctx.getCurrentTexture(),
+            depth: depthStencilTexture
+        }
     };
 
     // setup scene object for rendering ===========================================================
@@ -397,24 +398,11 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     // renders a view object, datasets
     // for now, all share a canvas
     this.renderView = async function (view) {
-        this.clearScreen();
-
+        var renderAttachments = await this.getClearedRenderAttachments();
+        
         var box = view.getBox();
 
-        // make a common depth texture for the view frame
-        var depthStencilTexture = webGPU.device.createTexture({
-            size: {
-                width: this.canvas.width,
-                height: this.canvas.height,
-                depthOrArrayLayers: 1
-            },
-            dimension: '2d',
-            format: 'depth32float',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT
-        });
-
         var scene = view.sceneGraph;
-        // console.log(scene);
 
         // first check if there is a camera in the scene
         var camera = scene.activeCamera;
@@ -424,41 +412,22 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
 
         // get the renderables from the scene
-        var i = 0;
+        var i = 1;
         for (let renderable of scene.getRenderables()) {
-            var renderPassDescriptor;
-            if (i == 0) {
-                // for first mesh, need to clear the colour and depth images
-                renderPassDescriptor = {
-                    colorAttachments: [{
-                        clearValue: this.clearColor,
-                        loadOp: "load",
-                        storeOp: "store",
-                        view: this.ctx.getCurrentTexture().createView()
-                    }],
-                    depthStencilAttachment: {
-                        depthClearValue: 1.0,
-                        depthLoadOp: "clear",
-                        depthStoreOp: "store",
-                        view: depthStencilTexture.createView()
-                    }
-                };
-            } else {
-                renderPassDescriptor = {
-                    colorAttachments: [{
-                        clearValue: this.clearColor,
-                        loadOp: "load",
-                        storeOp: "store",
-                        view: this.ctx.getCurrentTexture().createView()
-                    }],
-                    depthStencilAttachment: {
-                        depthClearValue: 1.0,
-                        depthLoadOp: "load",
-                        depthStoreOp: "store",
-                        view: depthStencilTexture.createView()
-                    }
-                };
-            }
+            var renderPassDescriptor = {
+                colorAttachments: [{
+                    clearValue: this.clearColor,
+                    loadOp: "load",
+                    storeOp: "store",
+                    view: renderAttachments.color.createView()
+                }],
+                depthStencilAttachment: {
+                    depthClearValue: 1.0,
+                    depthLoadOp: "load",
+                    depthStoreOp: "store",
+                    view: renderAttachments.depth.createView()
+                }
+            };
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
@@ -470,7 +439,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             }
         }
         await webGPU.waitForDone();
-        depthStencilTexture.destroy();        
+        renderAttachments.depth.destroy();     
     }
 
     this.resizeRenderingContext = function() {
