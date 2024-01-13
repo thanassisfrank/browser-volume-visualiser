@@ -197,6 +197,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         var renderData = renderable.renderData;
 
+
+        var faceIndices = [
+            [2, 1, 0, 1, 2, 3],
+            [4, 5, 6, 7, 6, 5],
+            [1, 3, 5, 7, 5, 3],
+            [4, 2, 0, 2, 4, 6],
+            [0, 1, 4, 5, 4, 1],
+            [6, 3, 2, 3, 6, 7]
+        ]
+
         // add the data information to the renderable
         if (dataObj.dataFormat == DataFormats.STRUCTURED) {
             var datasetSize = dataObj.getDataSize();

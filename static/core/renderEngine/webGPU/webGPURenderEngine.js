@@ -3,7 +3,7 @@
 // import { setupWebGPU, createFilledBuffer } from "./webGPUBase.js";
 import { clampBox, stringifyMatrix} from "../../utils.js";
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
-import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
+import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
 import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
 
 // extension modules for more complex rendering operations
@@ -293,6 +293,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             RenderableRenderModes.MESH_WIREFRAME
         );
         renderableX.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [1, 0, 0]}, {diffuseCol: [1, 0, 0]});
+        renderableX.highPriority = true;
         
         // make y axis
         var renderableY = webGPU.meshRenderableFromArrays(
@@ -305,6 +306,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             RenderableRenderModes.MESH_WIREFRAME
         );
         renderableY.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 1, 0]}, {diffuseCol: [0, 1, 0]});
+        renderableY.highPriority = true;
 
         // make z axis
         var renderableZ = webGPU.meshRenderableFromArrays(
@@ -317,6 +319,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             RenderableRenderModes.MESH_WIREFRAME
         );
         renderableZ.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 0, 1]}, {diffuseCol: [0, 0, 1]});
+        renderableZ.highPriority = true;
 
         axes.renderables.push(renderableX);
         axes.renderables.push(renderableY);
@@ -336,6 +339,37 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         renderable.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: vector.color}, {diffuseCol: vector.color});
 
         vector.renderables.push(renderable);
+    }
+
+    // sorts a list of renderables, primarily by distance from camera
+    // the sorted list will look like:
+    // [high priority se (sorted), high priority sd (unsorted), sort enabled (sorted), sort disabled (unsorted)]
+    this.sortRenderables = function(renderables, camera) {
+        var camPos = camera.getEyePos();
+        var renderablesSortFunc = (a, b) => {
+            // first check if either is one is high and other normal priority
+            if (a.highPriority && !b.highPriority) return -1;
+            if (!a.highPriority && b.highPriority) return 1;
+            // check if sorting is enabled
+            if (a.depthSort && !b.depthSort) return -1;
+            if (!a.depthSort && !b.depthSort) return 0;
+            if (!a.depthSort && b.depthSort) return 1;
+            
+            // get worldspace a and b
+            var aObj = vec4.fromValues(...a.objectSpaceMidPoint, 1);
+            var aWorld = vec4.create();
+            vec4.transformMat4(aWorld, aObj, a.transform);
+            var aDist = vec3.distance([aWorld[0], aWorld[1], aWorld[2]],  camPos);
+
+            var bObj = vec4.fromValues(...b.objectSpaceMidPoint, 1);
+            var bWorld = vec4.create();
+            vec4.transformMat4(bWorld, bObj, b.transform);
+            var bDist = vec3.distance([bWorld[0], bWorld[1], bWorld[2]],  camPos);
+
+            return aDist - bDist;
+        };
+
+        return renderables.sort(renderablesSortFunc);
     }
 
     // ============================================================================================
@@ -412,8 +446,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
 
         // get the renderables from the scene
-        var i = 1;
-        for (let renderable of scene.getRenderables()) {
+        var renderables = scene.getRenderables();
+        this.sortRenderables(renderables, camera);
+
+        for (let renderable of renderables) {
             var renderPassDescriptor = {
                 colorAttachments: [{
                     clearValue: this.clearColor,
@@ -432,7 +468,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
                 this.renderMesh(renderable, camera, renderPassDescriptor, box);
-                i++;
             } else if (renderable.type == RenderableTypes.DATA) {
                 // reached a data object, got to decide how to render it
                 this.renderData(renderable, camera, renderPassDescriptor, box);

@@ -48,8 +48,14 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
     // renderMode tells the renderer what to do with this data
     this.renderMode = renderMode;
 
-    // information about auxiliary functions the render engine can do
+    // information about sorting
+    // whether to enable depth dorting for this element
     this.depthSort = false;
+    // the coords of the point used for depth sorting in object space
+    this.objectSpaceMidPoint = [null, null, null];
+    // whether this renderable is considered high priority to be drawn first
+    this.highPriority = false;
+
 
     // renderData is what is held by the render engine
     // this needs to be explicitly deleted when an object is deleted
