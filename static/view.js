@@ -35,12 +35,6 @@ export var viewManager = {
         var camera = config.camera;
         var data = config.data;        
 
-        const modelMat = mat4.create();
-
-        camera.setProjMat();
-        camera.setDist(1*data.getMaxLength());
-        camera.setTarget(data.getMidPoint());
-
         // generate id
         const id = newId(this.views);
         var newView = new this.View(id, camera, data, config.renderMode, (data.limits[0] + data.limits[1])/2);
@@ -168,8 +162,25 @@ export var viewManager = {
         }
         this.box = {};
         this.init = function(renderEngine) {
+            // setup camera position
+            camera.setProjMat();
+            camera.setDist(1*data.getMaxLength());
+            camera.setTarget(data.getMidPoint());
+
+            camera.setTh(9);
+            camera.setPhi(4)
+            camera.setDist(79);
+            camera.setTarget([126.45763133939798, 104.17004882299433, 59.497677321611484]);
+            this.updateThreshold(237.15);
+
+            camera.setTh(-88.75);
+            camera.setPhi(-41.75)
+            camera.setDist(31.499999999999932);
+            camera.setTarget([79.89939025552015, 114.19461663327571, 142.63685822729508]);
+            this.updateThreshold(7.7);
             // define what rendering type will be performed on dataset object
-            this.data.renderMode = SceneObjectRenderModes.DATA_RAY_VOLUME;
+            this.data.renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+            // this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
             // setup the scene
             this.sceneGraph.insertChild(this.camera, undefined, true);
             this.sceneGraph.insertChild(this.data);
@@ -178,6 +189,8 @@ export var viewManager = {
             for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
                 renderEngine.setupSceneObject(sceneObj);
             }
+
+            
         }     
         this.updateThreshold = async function(val, fine) {
             this.threshold = val;
@@ -187,9 +200,9 @@ export var viewManager = {
             this.data.threshold = this.threshold;
 
             for (let renderable of this.data.renderables) {
-                if (renderable.type == RenderableTypes.DATA) {
-                    renderable.passData.threshold = this.threshold;
-                }
+                renderable.passData.threshold = this.threshold;
+                // if (renderable.type == RenderableTypes.DATA) {
+                // }
             }
         }
         this.getFrameElem = function() {

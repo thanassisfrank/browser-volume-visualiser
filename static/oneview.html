@@ -48,7 +48,7 @@
             </div>
         </div>
         <script type="module">
-            import {get, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositionCanvas, parseXML, IntervalTree, OldIntervalTree, timer} from "./core/utils.js";
+            import {get, getClass, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositionCanvas, parseXML, IntervalTree, OldIntervalTree, timer} from "./core/utils.js";
 
             import { dataManager } from "./core/data/data.js";
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
@@ -74,23 +74,8 @@
                     .then((res) => res.json());
                 // setup data manager with these
                 dataManager.setConfigSet(datasets);
-                
 
-                // shortcuts
-                document.body.addEventListener("keydown", function(e) {
-                    switch (e.key) {
-                        case " ":
-                            // centre the camera on all views
-                            
-                            break;
-                        case "Alt":
-                            e.preventDefault();
-                            break;
-                    }
-                });
-
-
-                var newData = await dataManager.getDataObj("turbulence");
+                var newData = await dataManager.getDataObj("engine");
                 // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 
@@ -100,6 +85,25 @@
                     data: newData,
                     renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
                 }, renderEngine);
+
+                // shortcuts
+                document.body.addEventListener("keydown", function(e) {
+                    switch (e.key) {
+                        case " ":
+                            camera.printVals();
+                            console.log("threshold", newView.threshold);
+                            
+                            break;
+                        case "h":
+                            for (let elem of getClass("threshold")) {
+                                hide(elem);
+                            }
+                            break;
+                        case "Alt":
+                            e.preventDefault();
+                            break;
+                    }
+                });
 
                 var resize = () => {
                     var canvasDims = setupCanvasDims(canvas);

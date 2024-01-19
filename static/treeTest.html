@@ -40,6 +40,8 @@
                 var cellSize = 11;
                 var randOffset = 5;
 
+                var tris = 0;
+
                 var offsets = [(max[0] - cols*cellSize)/2, (max[1] - rows*cellSize)/2];
                 for (let i = 0; i < rows; i++) { // go through the rows
                     for (let j = 0; j < cols; j++) { // so through the points on the rows
@@ -57,12 +59,14 @@
                             cellTypes.push(5);
                             cellOffsets.push(connectivity.length);
                             connectivity.push(newIndex, newIndex - cols, newIndex - cols - 1);
+
+                            tris += 2;
                         }
                         
                         points.push(...newPoint);
                     }
                 }
-
+                console.log("tris:", tris);
                 return {
                     points: points,
                     cellConnectivity: connectivity,
@@ -74,7 +78,7 @@
             var testData = generateData();
             console.log(testData.cellOffsets.length);
             var start = performance.now();
-            var tree = buildCellKDTree(testData.points, 2, 0, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
+            var tree = buildCellKDTree(testData.points, 2, 13, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
 
             console.log(`build took: ${performance.now() - start}ms`)
             // console.log(tree);
@@ -339,7 +343,8 @@
                 if (e.key != " ") return;
                 // run test
                 // performance test
-                var sampleCount = 10000;
+                console.log("running test");
+                var sampleCount = 100000;
                 var times = [];
                 for (let j = 0; j < 5; j++) {
                     var start = performance.now();
@@ -352,8 +357,12 @@
                     var dt = (performance.now() - start)/1000;
                     times.push(Math.round(sampleCount/dt));
                 }
-                
                 console.log(times.join(" "));
+                var sum = 0;
+                for (let i = 0; i < times.length; i++) {
+                    sum += times[i];
+                }
+                console.log(sum/times.length);
             })
         </script>
     </body>

@@ -349,6 +349,13 @@ export function Camera(id) {
         this.viewMatValid = false;
         this.endMove();
     }
+
+    this.printVals = function() {
+        console.log("th", this.th);
+        console.log("phi", this.phi);
+        console.log("dist", this.dist);
+        console.log("target", this.target);
+    }
 }
 
 

@@ -65,6 +65,14 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
         samplers: {},
     };
 
+    // data that is a reference to another renderable
+    // not owned by this one, shouldn't be deleted when this is
+    this.sharedData = {
+        buffers: {},
+        textures: {},
+        samplers: {},
+    }
+
     // additional data that doesn't need to be cleaned up
     this.passData = {};
     // a serialised version of the front and back materials

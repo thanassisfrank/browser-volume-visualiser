@@ -95,17 +95,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     };
 
-    // OLD
-    /*
-    this.setupRayMarch = async function(renderableDataObj) {
-        var renderData = renderableDataObj.renderData;
-        var dataObj = renderableDataObj.object;
-        if(!renderData.textures) renderData.textures = {};
-        if(!renderData.buffers) renderData.buffers = {};
-        if(!renderData.samplers) renderData.samplers = {};
-
-        if (dataObj.dataFormat == DataFormats.STRUCTURED) {
-            var datasetSize = dataObj.getDataSize();
+    this.createStructuredDataRenderable = async function(dataObj) {
+        var renderable = new Renderable(RenderableTypes.DATA, RenderableRenderModes.NONE);
+        var renderData = renderable.renderData;
+        var datasetSize = dataObj.getDataSize();
             // copy the data to a texture
             const textureSize = {
                 width: datasetSize[0],
@@ -134,10 +127,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             renderData.buffers.passInfo = webGPU.makeBuffer(256, "u cs cd", "ray pass info");
             renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info");
 
-            renderableDataObj.renderData.rayMarchingReady = true;
+            return renderable;
+    }
 
-        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
-            renderableDataObj.renderData.setupFailed = true;
+    this.createUnstructuredDataRenderable = async function(dataObj) {
+        renderableDataObj.renderData.setupFailed = true;
             var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
             console.log(dataObj.data.values.byteLength, dataObj.data.values);
             renderData.buffers.values = webGPU.createFilledBuffer("f32", dataObj.data.values, usage);
@@ -151,52 +145,27 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             var cellTreeBuffer = dataObj.getCellTreeBuffer();
 
             console.log(new Float32Array(cellTreeBuffer));
-
-            renderableDataObj.renderData.setupFailed = true;
-        }
     }
-    */
 
-    // setup the data sceneObj with the renderable for its bounding volume
-    // this will be drawn using ray marching
+    // setup the data sceneObj with the correct renderables 
+    // one that contains the data
+    // six face meshes that are actually rendered
     this.setupRayMarch = async function(dataObj) {
+        // create the renderable that contains the data
+        if (dataObj.dataFormat == DataFormats.STRUCTURED) {
+            var dataRenderable = await this.createStructuredDataRenderable(dataObj);
+        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
+            var dataRenderable = await this.createUnstructuredDataRenderable(dataObj);
+        }
+
+        dataObj.renderables.push(dataRenderable);
+
         // add the mesh information to the renderable
         // get the bounding points first
         var points = dataObj.getBoundaryPoints();
 
         // check if points were generated properly
         if (!points || points.length != 8 * 3) return;
-
-        var renderable = webGPU.meshRenderableFromArrays(
-            points,
-            new Float32Array(points.length * 3), 
-            new Uint32Array([
-                // bottom face
-                2, 1, 0,
-                1, 2, 3,
-                // top face
-                4, 5, 6,
-                7, 6, 5,
-                // side 1
-                1, 3, 5,
-                7, 5, 3,
-                // side 2
-                4, 2, 0,
-                2, 4, 6,
-                // side 3
-                0, 1, 4,
-                5, 4, 1,
-                // side 4
-                6, 3, 2,
-                3, 6, 7
-            ]),
-            RenderableRenderModes.DATA_RAY_VOLUME
-        );
-        renderable.type = RenderableTypes.DATA;
-        renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
-
-        var renderData = renderable.renderData;
-
 
         var faceIndices = [
             [2, 1, 0, 1, 2, 3],
@@ -207,62 +176,40 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             [6, 3, 2, 3, 6, 7]
         ]
 
-        // add the data information to the renderable
-        if (dataObj.dataFormat == DataFormats.STRUCTURED) {
-            var datasetSize = dataObj.getDataSize();
-            // copy the data to a texture
-            const textureSize = {
-                width: datasetSize[0],
-                height: datasetSize[1],
-                depthOrArrayLayers: datasetSize[2]
+        for (let i = 0; i < faceIndices.length; i++) {
+            var faceRenderable = webGPU.meshRenderableFromArrays(
+                points,
+                new Float32Array(points.length * 3), 
+                new Uint32Array(faceIndices[i]),
+                RenderableRenderModes.DATA_RAY_VOLUME
+            );
+            faceRenderable.type = RenderableTypes.DATA;
+            faceRenderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
+            // calculate the midpoint
+            var midPoint = [0, 0, 0];
+            for (let j = 0; j < faceIndices.length; j++) {
+                midPoint[0] += points[3*faceIndices[i][j] + 0];
+                midPoint[1] += points[3*faceIndices[i][j] + 1];
+                midPoint[2] += points[3*faceIndices[i][j] + 2];
             }
+            midPoint[0] /= faceIndices.length;
+            midPoint[1] /= faceIndices.length;
+            midPoint[2] /= faceIndices.length;
 
-            renderData.textures.data = device.createTexture({
-                label: "whole data texture",
-                size: textureSize,
-                dimension: "3d",
-                format: "r32float",
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-            });
+            faceRenderable.objectSpaceMidPoint = midPoint;
+            faceRenderable.depthSort = true;
 
-            await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.getValues()).buffer);
+            faceRenderable.passData.threshold = dataObj.threshold;
+            faceRenderable.passData.limits = dataObj.limits;
+            faceRenderable.passData.dMatInv = dataObj.getdMatInv();
 
-            // create sampler for data texture
-            // doesn't work for float32 data
-            renderData.samplers.data = device.createSampler({
-                label: "ray data sampler",
-                magFilter: "linear",
-                minFilter: "linear"
-            });
-
-            renderData.buffers.passInfo = webGPU.makeBuffer(256, "u cs cd", "ray pass info");
-            renderData.buffers.objectInfo = webGPU.makeBuffer(256, "u cs cd", "object info");
-        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
-            renderableDataObj.renderData.setupFailed = true;
-            var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
-            console.log(dataObj.data.values.byteLength, dataObj.data.values);
-            renderData.buffers.values = webGPU.createFilledBuffer("f32", dataObj.data.values, usage);
-            renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage);
-            renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage);
-            renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage);
-            // only handle tetrahedra for now
-            // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
+            // add the shared data
+            faceRenderable.sharedData.textures.data = dataRenderable.renderData.textures.data;
+            faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
             
-            // generate the tree
-            var cellTreeBuffer = dataObj.getCellTreeBuffer();
-
-            console.log(new Float32Array(cellTreeBuffer));
+            dataObj.renderables.push(faceRenderable);
         }
-
-        // add additional data
-        renderable.passData.threshold = dataObj.threshold;
-        renderable.passData.limits = dataObj.limits;
-        renderable.passData.dMatInv = dataObj.getdMatInv();
-
-        dataObj.renderables.push(renderable);
         console.log("setup data for ray marching");
-        console.log(renderable);
-        console.log(dataObj);
     }
 
     // do ray marching on the data
@@ -275,7 +222,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             renderDescriptor: renderPassDescriptor,
             resources: [
                 [constsBuffer, renderable.renderData.buffers.objectInfo],
-                [renderable.renderData.buffers.passInfo, renderable.renderData.textures.data]
+                [renderable.sharedData.buffers.passInfo, renderable.sharedData.textures.data]
             ],
             box: box,
             boundingBox: canvas.getBoundingClientRect(),
@@ -297,16 +244,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
         webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.passInfo, 
+            renderable.sharedData.buffers.passInfo, 
             [
                 new Uint32Array([this.getPassFlagsUint()]), 
                 new Float32Array([
                     renderable.passData.threshold, 
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
-                    1, 
-                    2000,
-                    0, 0,
+                    1, // step size
+                    2000, // max ray length
+                    0, 0, // padding
                     ...renderable.passData.dMatInv,
                 ])
             ]

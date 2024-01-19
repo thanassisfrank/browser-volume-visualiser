@@ -449,6 +449,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         var renderables = scene.getRenderables();
         this.sortRenderables(renderables, camera);
 
+        // console.log(renderables);
+
         for (let renderable of renderables) {
             var renderPassDescriptor = {
                 colorAttachments: [{
@@ -467,7 +469,11 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
-                this.renderMesh(renderable, camera, renderPassDescriptor, box);
+                if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
+                    this.rayMarcher.march(renderable, camera, renderPassDescriptor, box, this.canvas);
+                } else {
+                    this.renderMesh(renderable, camera, renderPassDescriptor, box);
+                }
             } else if (renderable.type == RenderableTypes.DATA) {
                 // reached a data object, got to decide how to render it
                 this.renderData(renderable, camera, renderPassDescriptor, box);

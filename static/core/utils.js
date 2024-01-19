@@ -4,6 +4,10 @@ export var get = (id) => {
     return document.getElementById(id)
 }
 
+export var getClass = (className) => {
+    return document.getElementsByClassName(className);
+}
+
 export var isVisible = (elem) => {
     return getComputedStyle(elem).display.toLowerCase() != "none";
 }

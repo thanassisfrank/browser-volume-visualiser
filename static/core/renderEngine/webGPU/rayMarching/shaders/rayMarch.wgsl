@@ -136,7 +136,7 @@ fn fragment_main(
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
         enteredDataset = true;
-        // return vec4<f32>(randVal, randVal, randVal, 1);
+        // return vec4<f32>(1, 0, 0, 0.5);
     } else {
         // marching from the inside
         ray.tip = cameraPos;
@@ -144,7 +144,7 @@ fn fragment_main(
         // ray = extendRay(ray, nearPlaneDist);
         // guess that we started outside to prevent issues with the near clipping plane
         enteredDataset = false;
-        // return vec4<f32>(randVal, randVal, randVal, 1);
+        // return vec4<f32>(0, 0, 1, 0.5);
     }   
 
     // extend by a random amount
