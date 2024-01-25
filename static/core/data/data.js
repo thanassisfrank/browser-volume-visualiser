@@ -406,12 +406,7 @@ var dataManager = {
         }
         // for structured formats, this returns the dimensions of the data grid in # data points
         this.getDataSize = function() {
-            if (this.dataFormat == DataFormats.STRUCTURED || this.dataFormat == DataFormats.STRUCTURED_GRID) {
-                // swizel dimensions so they're accurate
-                return this.size;
-            } else {
-                return [0, 0, 0];
-            }
+            return this.size;
         }
         this.getValues = function() {
             return this.data.values;
@@ -419,7 +414,7 @@ var dataManager = {
 
         // generates the cell tree for fast lookups in unstructured data
         this.getCellTreeBuffer = function() {
-            var depth = 1;
+            var depth = 8;
             var tree = new CellTree();
             // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
             tree.build(
@@ -430,7 +425,7 @@ var dataManager = {
                 this.data.cellOffsets,
                 new Uint32Array(this.data.cellOffsets.length).fill(10)
             );
-            console.log(this.data.positions);    
+            // console.log(this.data.positions);    
             console.log(tree);
             return tree.serialise();
         }

@@ -23,18 +23,20 @@ import { mat4 } from 'https://cdn.skypack.dev/gl-matrix';
 
 // applied to renderables to tell the renderer what kind of object it is
 export const RenderableTypes = {
-    EMPTY:          0,
-    POINT_LIGHT:    1,
-    MESH:           2,
-    DATA:           4
+    EMPTY:              0,
+    POINT_LIGHT:        1,
+    MESH:               2,
+    DATA:               4,
+    UNSTRUCTURED_DATA:  8,
 };
 
 export const RenderableRenderModes = {
-    NONE:                   0,
-    MESH_SURFACE:           1,
-    MESH_WIREFRAME:         2,
-    MESH_POINTS:            4,
-    DATA_RAY_VOLUME:        8,
+    NONE:                           0,
+    MESH_SURFACE:                   1,
+    MESH_WIREFRAME:                 2,
+    MESH_POINTS:                    4,
+    DATA_RAY_VOLUME:                8,
+    UNSTRUCTURED_DATA_RAY_VOLUME:  16,
 };
 
 // base renderable object

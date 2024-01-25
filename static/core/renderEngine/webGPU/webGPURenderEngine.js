@@ -17,7 +17,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     EmptyRenderEngine.call(this);
     var webGPU = webGPUBase;
 
-    this.marchingCubes = new WebGPUMarchingCubesEngine(webGPUBase);
+    // this.marchingCubes = new WebGPUMarchingCubesEngine(webGPUBase);
     this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
     // stores a reference to the canvas element
     this.canvas = canvas;
@@ -374,7 +374,9 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     // ============================================================================================
 
-    this.renderMesh = async function(renderable, camera, renderPassDescriptor, box) {        
+    // used for rendering basic meshes with phong shading
+    // supports point, line and mesh rendering
+    this.renderMesh = async function(renderable, camera, outputRenderPassDescriptor, box) {        
         if (renderable.indexCount == 0 && renderable.vertexCount == 0) {
             return;
         }
@@ -399,7 +401,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             resources: [
                 [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
             ],
-            renderDescriptor: renderPassDescriptor,
+            renderDescriptor: outputRenderPassDescriptor,
             box: box,
             boundingBox: this.ctx.canvas.getBoundingClientRect(),
         }
@@ -418,21 +420,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         webGPU.device.queue.submit([commandEncoder.finish()]);
     };
 
-    this.renderData = async function(renderable, camera, renderPassDescriptor, box) {
-        switch (renderable.renderMode) {
-            case RenderableRenderModes.DATA_RAY_VOLUME:
-                // do ray marching to extract surface
-                this.rayMarcher.march(renderable, camera, renderPassDescriptor, box, this.canvas);
-            default:
-                // do nothing
-                break;
-        }
-    }
-
     // renders a view object, datasets
     // for now, all share a canvas
     this.renderView = async function (view) {
-        var renderAttachments = await this.getClearedRenderAttachments();
+        // create the render attachments (color and depth textures) that will be used to create the final view
+        // these are initialised to a cleared state
+        // the colour attachment is from the output canvas
+        var outputRenderAttachments = await this.getClearedRenderAttachments();
         
         var box = view.getBox();
 
@@ -444,6 +438,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             console.warn("no camera in scene");
             return;
         }
+        // console.log(camera.fovX, camera.fovY);
 
         // get the renderables from the scene
         var renderables = scene.getRenderables();
@@ -452,42 +447,46 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // console.log(renderables);
 
         for (let renderable of renderables) {
-            var renderPassDescriptor = {
+            var outputRenderPassDescriptor = {
                 colorAttachments: [{
                     clearValue: this.clearColor,
                     loadOp: "load",
                     storeOp: "store",
-                    view: renderAttachments.color.createView()
+                    view: outputRenderAttachments.color.createView()
                 }],
                 depthStencilAttachment: {
                     depthClearValue: 1.0,
                     depthLoadOp: "load",
                     depthStoreOp: "store",
-                    view: renderAttachments.depth.createView()
+                    view: outputRenderAttachments.depth.createView()
                 }
             };
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
+
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
                 if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
-                    this.rayMarcher.march(renderable, camera, renderPassDescriptor, box, this.canvas);
+                    this.rayMarcher.march(renderable, camera, outputRenderPassDescriptor, box, this.canvas);
+                } else if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
+                    this.rayMarcher.marchUnstructured(renderable, camera, outputRenderPassDescriptor, box, this.ctx);
                 } else {
-                    this.renderMesh(renderable, camera, renderPassDescriptor, box);
+                    this.renderMesh(renderable, camera, outputRenderPassDescriptor, box);
                 }
-            } else if (renderable.type == RenderableTypes.DATA) {
-                // reached a data object, got to decide how to render it
-                this.renderData(renderable, camera, renderPassDescriptor, box);
             }
         }
         await webGPU.waitForDone();
-        renderAttachments.depth.destroy();     
+        outputRenderAttachments.depth.destroy();     
     }
 
     this.resizeRenderingContext = function() {
         this.ctx.configure({
             device: webGPU.device,
             format: "bgra8unorm",
-            alphaMode: "opaque"
+            alphaMode: "opaque",
+            usage: 
+                GPUTextureUsage.RENDER_ATTACHMENT | 
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.STORAGE_BINDING
         });
     }
 }

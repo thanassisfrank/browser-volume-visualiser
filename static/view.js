@@ -113,12 +113,12 @@ export var viewManager = {
             e.preventDefault();
             view.camera.changeDist(e.deltaY);
         };
-        slider.oninput = function() {
-            view.updateThreshold(parseFloat(this.value), false);
-        };
-        slider.onmouseup = function() {
-            view.updateThreshold(parseFloat(this.value), true);
-        }
+        slider.addEventListener("mousedown", (e) => {
+            e.stopPropagation();
+        })
+        slider.addEventListener("input", (e) => {
+            view.updateThreshold(parseFloat(e.target.value), false);
+        });
 
 
         // might want another event listener for when the frame element is moved or resized 
@@ -167,20 +167,20 @@ export var viewManager = {
             camera.setDist(1*data.getMaxLength());
             camera.setTarget(data.getMidPoint());
 
-            camera.setTh(9);
-            camera.setPhi(4)
-            camera.setDist(79);
-            camera.setTarget([126.45763133939798, 104.17004882299433, 59.497677321611484]);
-            this.updateThreshold(237.15);
+            // camera.setTh(9);
+            // camera.setPhi(4)
+            // camera.setDist(79);
+            // camera.setTarget([126.45763133939798, 104.17004882299433, 59.497677321611484]);
+            // this.updateThreshold(237.15);
 
-            camera.setTh(-88.75);
-            camera.setPhi(-41.75)
-            camera.setDist(31.499999999999932);
-            camera.setTarget([79.89939025552015, 114.19461663327571, 142.63685822729508]);
-            this.updateThreshold(7.7);
+            // camera.setTh(-88.75);
+            // camera.setPhi(-41.75)
+            // camera.setDist(31.499999999999932);
+            // camera.setTarget([79.89939025552015, 114.19461663327571, 142.63685822729508]);
+            // this.updateThreshold(7.7);
             // define what rendering type will be performed on dataset object
             this.data.renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-            // this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+            this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
             // setup the scene
             this.sceneGraph.insertChild(this.camera, undefined, true);
             this.sceneGraph.insertChild(this.data);

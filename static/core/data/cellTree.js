@@ -66,7 +66,7 @@ export function CellTree() {
     }
     // builds a tree by splitting the whole data with median each time
     this.build = function(dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes) {
-        console.log(points);
+        // console.log(points);
         var cellsTree = false;
         if (cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
@@ -126,7 +126,7 @@ export function CellTree() {
             
             // find the pivot 
             parentNode.splitVal = pivotFull(thisDimValues);
-            console.log(thisDimValues);
+            // console.log(thisDimValues);
     
             // split the points into left and right
             var leftPoints = [];

@@ -193,11 +193,11 @@ export function Camera(id) {
     // field of view
     this.aspect = 1;
     this.fovY = 70;
-    this.fovX = this.fovY/this.aspect
+    this.fovX = this.fovY*this.aspect
 
     // near/far planes
     this.zNear = 1;
-    this.zFar = 1000;
+    this.zFar = 2000;
 
     this.viewMat;
     this.projMat;
@@ -230,13 +230,13 @@ export function Camera(id) {
             ...this.getEyePos(), 0,    // camera location
             ...up, 0,                  // up vector
             ...right, 0,               // right vector
-            this.fovY, this.fovX, 0, 0 // fovs
+            toRads(this.fovY), toRads(this.fovX), 0, 0 // fovs
         ])
     }
     // sets the aspect ratio for the camera, recalc proj mat
     this.setAspectRatio = function(aspect) {
         this.aspect = aspect;
-        this.fovX = this.fovY/this.aspect;
+        this.fovX = this.fovY*this.aspect;
         this.setProjMat();
     }
     this.setProjMat = function() {

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>struct</title>
+        <title>unstruct</title>
         <style>
             body {
                 padding: 0px;
@@ -77,13 +77,13 @@
                 dataManager.setConfigSet(datasets);
 
                 var newData = await dataManager.getDataObj("silicium");
-                // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
+                var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 
                 var camera = new Camera();
                 var newView = await viewManager.createView({
                     camera: camera,
-                    data: newData,
+                    data: unstruct,
                     renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
                 }, renderEngine);
 

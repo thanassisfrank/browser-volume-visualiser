@@ -61,29 +61,29 @@ export function WebGPUBase (verbose) {
 
     this.wgslLibs = {};
 
-    this.getNewBufferId = function(){
-        var id = Object.keys(buffers).length;
-            while (buffers.hasOwnProperty(String(id))) {
-                id++;
-            };
-            return String(id);
-    }
-
     this.setupWebGPU = async function() {
+        // gpu
         console.log(navigator.gpu.wgslLanguageFeatures);
         this.adapter = await navigator.gpu.requestAdapter({
             powerPreference: "high-performance"
         });
+
+        // adapter
         console.log(await this.adapter.requestAdapterInfo());
         console.log(this.adapter.limits);
-        if (!this.adapter.features.has("float32-filterable")) {
-            console.warn("Filterable 32-bit float textures support is not available");
+        var features = [];
+        for (let feature of this.adapter.features.values()) {
+            features.push(feature);
         }
+        console.log("adapter features: ", features);
+
+        // device
         this.device = await this.adapter.requestDevice({
-            requiredLimits:{
+            requiredLimits: {
                 maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
                 maxBufferSize: this.adapter.limits.maxBufferSize
-            }
+            },
+            requiredFeatures: ["bgra8unorm-storage"]
         });
         console.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
@@ -296,7 +296,7 @@ export function WebGPUBase (verbose) {
         renderable.renderData.buffers.index = this.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC);
 
         // make the uniform to store the constant data
-        renderable.renderData.buffers.objectInfo = this.makeBuffer(256, "u cs cd", "object info buffer");
+        renderable.renderData.buffers.objectInfo = this.makeBuffer(256, "u cs cd", "object info buffer u");
         
         // set the number of verts
         renderable.vertexCount = points.length/3;
@@ -356,6 +356,9 @@ export function WebGPUBase (verbose) {
             new Uint32Array(buffer.getMappedRange()).set(data);
         } else if (type = "u8") {
             new Uint8Array(buffer.getMappedRange()).set(data);
+        } else {
+            // write the pure buffer
+            new ArrayBuffer(buffer.getMappedRange()).set(data);
         }
         
         buffer.unmap();
@@ -520,7 +523,7 @@ export function WebGPUBase (verbose) {
         // console.log(bindGroupLayouts);
         var pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
         var shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
-        if (passType = this.PassTypes.RENDER) {
+        if (passType == this.PassTypes.RENDER) {
             // create a render pass
             var pipelineDescriptor = {
                 layout: pipelineLayout,
@@ -532,31 +535,44 @@ export function WebGPUBase (verbose) {
                 fragment: {
                     module: shaderModule,
                     entryPoint: "fragment_main",
-                    targets: [{
-                        format: "bgra8unorm",
-                        blend: {
-                            color: {
-                                operation: "add",
-                                srcFactor: "src-alpha", 
-                                dstFactor: "one-minus-src-alpha"
-                            },
-                            alpha: {
-                                operation: "add",
-                                srcFactor: "one",
-                                dstFactor: "zero"
-                            }
-                        }
-                    }]
+                    targets: []
                 },
                 primitive: {
                     topology: passOptions.topology,
                 },
-                depthStencil: {
+            };
+
+
+            var colorTarget = {
+                format: passOptions.colorAttachmentFormat || "bgra8unorm",
+            }
+
+            if (passOptions.colorAttachmentFormat != "r32float") {
+                colorTarget.blend = {
+                    color: {
+                        operation: "add",
+                        srcFactor: "src-alpha", 
+                        dstFactor: "one-minus-src-alpha"
+                    },
+                    alpha: {
+                        operation: "add",
+                        srcFactor: "one",
+                        dstFactor: "zero"
+                    }
+                }
+            }
+
+            pipelineDescriptor.fragment.targets.push(colorTarget);
+
+
+
+            if (!passOptions.excludeDepth) {
+                pipelineDescriptor.depthStencil = {
                     format: "depth32float",
                     depthWriteEnabled : true,
                     depthCompare: "less"
                 }
-            };
+            }
             // create the render pass object
             return {
                 passType: this.PassTypes.RENDER,
@@ -627,7 +643,8 @@ export function WebGPUBase (verbose) {
             }
             passEncoder.end();
         } else if (passObj.passType == this.PassTypes.COMPUTE) {
-            passEncoder.setPipeline(dataObj.marchData.pipelines.march);
+            const passEncoder = commandEncoder.beginComputePass();
+            passEncoder.setPipeline(passObj.pipeline);
             for (let i = 0; i < bindGroups.length; i++) {
                 passEncoder.setBindGroup(i, bindGroups[i]);
             }

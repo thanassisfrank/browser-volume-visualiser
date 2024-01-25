@@ -78,7 +78,7 @@
             var testData = generateData();
             console.log(testData.cellOffsets.length);
             var start = performance.now();
-            var tree = buildCellKDTree(testData.points, 2, 13, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
+            var tree = buildCellKDTree(testData.points, 2, 6, testData.cellConnectivity, testData.cellOffsets, testData.cellTypes);
 
             console.log(`build took: ${performance.now() - start}ms`)
             // console.log(tree);

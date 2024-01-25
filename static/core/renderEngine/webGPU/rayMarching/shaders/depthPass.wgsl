@@ -1,38 +1,31 @@
-struct Uniform {
-    pMat : mat4x4<f32>,  // perspective projection
-    mvMat : mat4x4<f32>, // camera view matrix
-    @size(16) cameraPos : vec3<f32>, // camera position in world space
-};
+// shader.wgsl
+// used for rendering simple meshes with phong shading
 
-// specific info for this object
-struct ObjectInfo {
-    otMat : mat4x4<f32>, // object transform matrix
-    frontMaterial : Material,
-    backMaterial : Material
-}
+// import the utils structs/functions
+{{utils.wgsl}}
+
+// data common to all rendering
+// camera mats, position
+@group(0) @binding(0) var<uniform> globalInfo : GlobalUniform;
+
+@group(0) @binding(1) var<uniform> objectInfo : ObjectInfo;
 
 struct VertexOut {
-    @builtin(position) clipPosition : vec4<f32>,
-    @location(0) worldPosition : vec4<f32>,
-    @location(1) eye : vec3<f32>,    
+    @builtin(position) position : vec4<f32>,
+    @location(0) eye : vec3<f32>,
 };
-
-@group(0) @binding(0) var<uniform> u : Uniform;
-@group(0) @binding(1) var<uniform> objectInfo : ObjectInfo;
 
 
 @vertex
 fn vertex_main(
     @location(0) position: vec3<f32>
-) 
-    -> VertexOut
+) -> VertexOut
 {
     var out : VertexOut;
-    var vert : vec4<f32> = globalInfo.mvMat * vec4<f32>(position, 1.0);
-
-    out.worldPosition = objectInfo.otMat * vec4<f32>(position, 1.0);
-    out.eye = vert.xyz;
-    out.clipPosition = globalInfo.pMat * globalInfo.mvMat * out.worldPosition;
+    var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
+    
+    out.position = globalInfo.camera.pMat * vert;
+    out.eye = -vec3<f32>(vert.xyz);
 
     return out;
 }
@@ -44,6 +37,5 @@ fn fragment_main(
 ) 
     -> @location(0) vec4<f32>
 {
-    return vec4<length(out.eye), 0, 0, 0>;
-
+    return vec4<f32>(length(data.eye), 0, 0, 0);
 }   
