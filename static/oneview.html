@@ -35,14 +35,25 @@
                 background: white;
                 border: 1px solid black;
             }
-            #frame-time {
+            #frame-info {
                 position: absolute;
+            }
+            #frame-time {
+                padding: 2px;
+                margin: 2px;
+            }
+            #frame-time-graph {
+                height: 50px;
+                width: 100px;
             }
         </style>
     </head>
     <body>
         <canvas id="c"></canvas>
-        <p id="frame-time">0ms</p>
+        <div id="frame-info">
+            <canvas id="frame-time-graph"></canvas>
+            <!-- <p id="frame-time">0ms</p> -->
+        </div>
         <div id="view-container-container"></div>
         <div id="view-container-proto" class="view-container" style="display: none">
             <div class="frame">
@@ -58,11 +69,14 @@
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
             import { viewManager } from "./view.js";
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
+            import { FrameTimeGraph } from "./frameTimeGraph.js";
 
 
             // define the main function
             async function main() {
                 var canvas = get("c");
+
+                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"));
                 
 
                 // create a new rendering engine
@@ -94,7 +108,7 @@
                 // setup data manager with these
                 dataManager.setConfigSet(allDatasets);
 
-                var newData = await dataManager.getDataObj("test");
+                var newData = await dataManager.getDataObj("magnetic");
                 // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 
@@ -140,6 +154,7 @@
                     lastFrameStart = thisFrameStart;
                     
                     // update the objects
+                    frameTimeGraph.update(dt);
                     // does stuff like propagating threshold value, fetching required data
                     viewManager.update(0, renderEngine);
                     
@@ -150,7 +165,7 @@
                         await renderEngine.renderView(view);
                     }
                     
-                    get("frame-time").innerText = Math.round(dt) + "ms";
+                    // get("frame-time").innerText = Math.round(dt) + "ms";
                     // next frame
                     requestAnimationFrame(renderLoop);
                     // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);
