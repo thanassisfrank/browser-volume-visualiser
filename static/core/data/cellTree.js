@@ -50,6 +50,7 @@ var pivotFull = (a) => {
 
 export function CellTree() {
     this.tree = null;
+    this.minLeafCells = 256;
 
     this.createNode = function(depth = 0, splitDimension = 0, points = null, cells = [], parent = null) {
         return{
@@ -113,6 +114,8 @@ export function CellTree() {
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
             if (currentDepth > depth) continue;
+            // stop if the # cells is already low enough
+            if (parentNode.cells.length <= this.minLeafCells) continue;
     
             var currentDimension = parentNode.splitDimension;
             var currentPoints = parentNode.points;
@@ -232,7 +235,11 @@ export function CellTree() {
             u32View[5] = childLocation;
         }
     }
-    // returns the tree as
+    this.writeCellsLocation = function(buffer, byteOffset, cellsLocation) {
+        var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
+        u32View[3] = cellsLocation;
+    }
+    // returns the tree as a buffer
     this.serialise = function() {
         // tree has not been built
         if (!this.tree) return;
@@ -251,21 +258,45 @@ export function CellTree() {
                 var parent = node.parent;
                 if (parent) {
                     if (parent.left == node) {
-                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation, true);
+                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation/4, true);
                     } else {
-                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation, false);
+                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation/4, false);
                     }
                 }
                 nextByteOffset += NODE_BYTE_LENGTH;
             }, 
             // run only for leaf nodex
             (node) => {
+                node.cellsByteLocation = nextByteOffset;
                 new Uint32Array(treeBuffer, nextByteOffset, node.cells.length).set(node.cells);
+                this.writeCellsLocation(treeBuffer, node.byteLocation, node.cellsByteLocation/4);
+                nextByteOffset += node.cells.length*4;
             }, 
             // run only for branch nodes
             (node) => {}
         );
 
         return treeBuffer;
+    }
+
+    // print the tree node info
+    // if full, prints more info
+    // if not full, prints only info sent to gpu
+    this.printNodes = function(full = false) {
+        console.log("splitDim, splitVal, cellsLen, cellsLoc, leftLoc, rightLoc")
+        forEachDepth(this.tree,
+            (node) => {
+               console.log(" ".repeat(node.depth),
+                    node.splitDimension, 
+                    node.splitVal,
+                    node.cells?.length || 0,
+                    node.cellsByteLocation/4 || 0,
+                    node.left?.byteLocation/4,
+                    node.right?.byteLocation/4,
+                )
+            },
+            () => {},
+            () => {}
+        )
     }
 }

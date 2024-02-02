@@ -36,12 +36,12 @@
 
 
 struct KDTreeNode {
-    splitDimension : u32,
-    splitVal : f32,
-    cellCount: u32,
-    leaf : u32,           // -1 if not a leaf node
-    leftPtr : u32,
-    rightPtr : u32,
+    splitDimension : u32, // the dimensions of the split
+    splitVal : f32,       // the value this node is split at into left and right
+    cellCount: u32,       // # cells within this node
+    leaf : u32,           // location of cells start in buffer
+    leftPtr : u32,        // where the left child is
+    rightPtr : u32,       // where the right child is
 };
 
 struct InterpolationCell {
@@ -59,6 +59,7 @@ struct Sample {
 
 fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
     // traverse the data tree (kdtree) to find the correct leaf node
+    var depth = 0;
     var currNodePtr : u32 = 0u;
     var currNode : KDTreeNode;
     loop {
@@ -72,6 +73,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
                          dataTree.buffer[currNodePtr + 5],
 
         );
+        // break;
         if (currNode.cellCount == 0) {
             // have to carry on down the tree
             if (queryPoint[currNode.splitDimension] <= currNode.splitVal) {
@@ -79,10 +81,12 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
             } else {
                 currNodePtr = currNode.rightPtr;
             }
+            depth++;
         } else {
             // got to the bottom
             break;
         }
+
     }
 
     return currNode;
@@ -95,43 +99,101 @@ fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var z = queryPoint.z;
     var p = cell.points;
     // compute the barycentric coords for the point
-    var lambda1 = 1/6*determinant(mat4x4<f32>(
-        1,       1,       1,       1,
-        p[0][0], p[1][0], p[2][0], x,
-        p[0][1], p[1][1], p[2][1], y,
-        p[0][2], p[1][2], p[2][2], z,
+    var lambda1 = determinant(mat4x4<f32>(
+        1,       x,       y,       z,
+        1, p[1][0], p[1][1], p[1][2],
+        1, p[2][0], p[2][1], p[2][2],
+        1, p[3][0], p[3][1], p[3][2],
     ));
 
-    var lambda2 = 1/6*determinant(mat4x4<f32>(
-        1,       1,       1,      1,
-        p[0][0], p[1][0], x,      p[3][0],
-        p[0][1], p[1][1], y,      p[3][1],
-        p[0][2], p[1][2], z,      p[3][2],
+    var lambda2 = determinant(mat4x4<f32>(
+        1, p[0][0], p[0][1], p[0][2],      
+        1,       x,       y,       z,      
+        1, p[2][0], p[2][1], p[2][2],      
+        1, p[3][0], p[3][1], p[3][2],      
     ));
 
-    var lambda3 = 1/6*determinant(mat4x4<f32>(
-        1,       1,       1,      1,
-        p[0][0], x,       p[2][0], p[3][0],
-        p[0][1], y,       p[2][1], p[3][1],
-        p[0][2], z,       p[2][2], p[3][2],
+    var lambda3 = determinant(mat4x4<f32>(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1,       x,       y,       z,      
+        1, p[3][0], p[3][1], p[3][2],      
     ));
 
-    var lambda4 = 1/6*determinant(mat4x4<f32>(
-        1,       1,       1,      1,
-        x,       p[1][0], p[2][0], p[3][0],
-        y,       p[1][1], p[2][1], p[3][1],
-        z,       p[1][2], p[2][2], p[3][2],
+    var lambda4 = determinant(mat4x4<f32>(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1, p[2][0], p[2][1], p[2][2],      
+        1,       x,       y,       z,      
+    ));
+
+    var vol = determinant(mat4x4<f32>(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1, p[2][0], p[2][1], p[2][2],      
+        1, p[3][0], p[3][1], p[3][2],      
     ));
 
     if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
-        return -1.0*vec4<f32>(lambda1, lambda2, lambda3, lambda4);
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
     } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4);
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
     } else {
         // not in this cell
         return vec4<f32>(0);
     }
 
+}
+
+fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+    var p = queryPoint;
+    var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
+    var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
+    var c = vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
+    var d = vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
+
+    var vap : vec3<f32> = p - a;
+    var vbp : vec3<f32> = p - b;
+
+    var vab : vec3<f32> = b - a;
+    var vac : vec3<f32> = c - a;
+    var vad : vec3<f32> = d - a;
+    var vbc : vec3<f32> = c - b;
+    var vbd : vec3<f32> = d - b;
+    // ScTP computes the scalar triple product
+    var lambda1 : f32 = scalarTriple(vbp, vbd, vbc);
+    var lambda2 : f32 = scalarTriple(vap, vac, vad);
+    var lambda3 : f32 = scalarTriple(vap, vad, vab);
+    var lambda4 : f32 = scalarTriple(vap, vab, vac);
+    var v = scalarTriple(vab, vac, vad);
+
+    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
+    } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
+    } else {
+        // not in this cell
+        return vec4<f32>(0);
+    }
+}
+
+fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+    var xMax = max(cell.points[0][0], max(cell.points[1][0], max(cell.points[2][0], cell.points[3][0])));
+    var xMin = min(cell.points[0][0], min(cell.points[1][0], min(cell.points[2][0], cell.points[3][0])));
+
+    if (queryPoint.x < xMin || queryPoint.x >= xMax) {return vec4<f32>(0);};
+
+    var yMax = max(cell.points[0][1], max(cell.points[1][1], max(cell.points[2][1], cell.points[3][1])));
+    var yMin = min(cell.points[0][1], min(cell.points[1][1], min(cell.points[2][1], cell.points[3][1])));
+
+    if (queryPoint.y < yMin || queryPoint.y >= yMax) {return vec4<f32>(0);};
+
+    var zMax = max(cell.points[0][2], max(cell.points[1][2], max(cell.points[2][2], cell.points[3][2])));
+    var zMin = min(cell.points[0][2], min(cell.points[1][2], min(cell.points[2][2], cell.points[3][2])));
+
+    if (queryPoint.z < zMin || queryPoint.z >= zMax) {return vec4<f32>(0);};
+
+    return vec4<f32>(0.25);
 }
 
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> InterpolationCell {
@@ -140,12 +202,12 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
     // check the cells in the leaf node found
     var cellsPtr = leafNode.leaf; // go to where cells are stored
     var foundCell = false;
-    var cellID : i32;
+    var cellID : u32;
     var i = 0u;
     loop {
         if (i >= leafNode.cellCount) {break;}
         // go through and check all the contained cells
-        cellID = bitcast<i32>(dataTree.buffer[cellsPtr + i]);
+        cellID = dataTree.buffer[cellsPtr + i];
         // create a cell from the data
 
         // figure out if cell is inside using barycentric coords
@@ -157,24 +219,27 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             var thisPointIndex = cellConnectivity.buffer[pointsOffset + j];
             cell.points[j] = vertexPositions.buffer[thisPointIndex];
             j++;
-            if (j > 4u) {break;}
+            if (j > 3u) {break;}
         }
 
-        // cell is a tetrahedron
+        // check cell bounding box
+        var boundFactors = pointInTetBounds(queryPoint, cell);
+        if (length(boundFactors) == 0) {
+            i++;
+            continue;
+        };
         var tetFactors = pointInTet(queryPoint, cell);
-        
-        if (length(tetFactors) != 0) {
-            // found the correct cell
-            // extract the cell values
-            cell.values[0] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 0]];
-            cell.values[1] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 1]];
-            cell.values[2] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 2]];
-            cell.values[3] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 3]];
+        if (length(tetFactors) == 0) {
+            i++;
+            continue;
+        };
+        cell.values[0] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+        cell.values[1] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+        cell.values[2] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+        cell.values[3] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 3]];
 
-            cell.factors = tetFactors;
-            break;
-        }
-        i++;
+        cell.factors = tetFactors;
+        break;
     }
     return cell;
 }
@@ -184,13 +249,13 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
 // have to traverse tree and interpolate within the cell
 // returns -1 if point is not in a cell
 fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
-    return 5;
     var queryPoint = vec3<f32>(x, y, z);
 
-
     var leafNode : KDTreeNode = getContainingLeafNode(queryPoint);
+    // return f32(leafNode.leaf)/5000;
 
     var cell : InterpolationCell = getContainingCell(queryPoint, leafNode);
+    // return cell.values[0];
 
     // interpolate value
     if (length(cell.factors) == 0) {
@@ -201,7 +266,8 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
 
 
 fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
-    textureStore(outputImage, coords, col);
+    var outCol = vec4<f32>(vec3<f32>(1-col.a), 0) + vec4<f32>(col.a*col.rgb, col.a);
+    textureStore(outputImage, coords, outCol);
 }
 
 fn pixelOnVolume(x : u32, y : u32) -> bool {
@@ -242,7 +308,7 @@ fn main(
 ) {  
     var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image and on the mesh
-    if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1 ){//|| !pixelOnVolume(id.x, id.y)) {
+    if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1 || !pixelOnVolume(id.x, id.y)) {
         // outside the image
         return;
     }

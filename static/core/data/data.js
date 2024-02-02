@@ -106,7 +106,7 @@ var dataManager = {
         
         // build the cell data
         var pointCount = structuredData.data.values.length;
-        var dataSize = structuredData.getDataSize();
+        var dataSize = structuredData.getDataSize(); // the size in data points
         console.log(dataSize);
         var cubesCount = (dataSize[0] - 1)*(dataSize[1] - 1)*(dataSize[2] - 1);
         var tetsCount = cubesCount * 5;
@@ -121,13 +121,16 @@ var dataManager = {
         var getIndex = (i, j, k) => {
             return k * dataSize[0] * dataSize[1] + j * dataSize[0] + i;
         }
+        var getHexCellIndex = (i, j, k) => {
+            return k * (dataSize[0] - 1) * (dataSize[1] - 1) + j * (dataSize[0] - 1) + i;
+        }
         var writeTet = (cellIndex, coords) => {
             var cellOffset = cellIndex * 4;
             unstructuredData.data.cellOffsets[cellIndex] = cellOffset;
-            unstructuredData.data.cellConnectivity[cellOffset    ] = getIndex(...coords[0]);
-            unstructuredData.data.cellConnectivity[cellOffset + 1] = getIndex(...coords[1]);
-            unstructuredData.data.cellConnectivity[cellOffset + 2] = getIndex(...coords[2]);
-            unstructuredData.data.cellConnectivity[cellOffset + 3] = getIndex(...coords[3]);
+            unstructuredData.data.cellConnectivity[cellOffset    ] = getIndex(...(coords[0]));
+            unstructuredData.data.cellConnectivity[cellOffset + 1] = getIndex(...(coords[1]));
+            unstructuredData.data.cellConnectivity[cellOffset + 2] = getIndex(...(coords[2]));
+            unstructuredData.data.cellConnectivity[cellOffset + 3] = getIndex(...(coords[3]));
         }
 
         var writePoint = (pointIndex, x, y, z) => {
@@ -136,13 +139,14 @@ var dataManager = {
             unstructuredData.data.positions[3 * pointIndex + 2] = z;
         }
         
+        // looks like only last tet is being written/read
         // rip hexahedra
         for (let k = 0; k < dataSize[2] - 1; k++) { // loop z
             for (let j = 0; j < dataSize[1] - 1; j++) { // loop y
                 for (let i = 0; i < dataSize[0] - 1; i++) { // loop x
-                    var thisIndex = getIndex(i, j, k);
+                    var thisIndex = getHexCellIndex(i, j, k);        
                     // tet 1
-                    writeTet(5 * thisIndex, 
+                    writeTet(5 * thisIndex + 0, 
                         [
                             [i,     j,     k    ], 
                             [i + 1, j,     k    ],
@@ -151,17 +155,17 @@ var dataManager = {
                         ]
                     );
 
-                    // tet 2
+                    // // tet 2
                     writeTet(5 * thisIndex + 1, 
                         [
                             [i + 1, j,     k    ],
-                            [i,     j + 1, k    ],
                             [i + 1, j + 1, k    ], 
+                            [i,     j + 1, k    ],
                             [i + 1, j + 1, k + 1],
                         ]
                     );
                         
-                    // tet 3
+                    // // tet 3
                     writeTet(5 * thisIndex + 2, 
                         [
                             [i,     j,     k + 1],
@@ -171,17 +175,17 @@ var dataManager = {
                         ]
                     );
 
-                    // tet 4
+                    // // tet 4
                     writeTet(5 * thisIndex + 3, 
                         [
                             [i,     j,     k + 1],
                             [i + 1, j + 1, k + 1],
-                            [i,     j + 1, k + 1],
                             [i,     j + 1, k    ],
+                            [i,     j + 1, k + 1],
                         ]
                     );
 
-                    // tet 5
+                    // // tet 5
                     writeTet(5 * thisIndex + 4, 
                         [
                             [i + 1, j,     k    ],
@@ -199,6 +203,7 @@ var dataManager = {
             for (let j = 0; j < dataSize[1]; j++) { // loop y
                 for (let i = 0; i < dataSize[0]; i++) { // loop x
                     // write the position
+                    var thisIndex = getIndex(i, j, k);
                     writePoint(thisIndex, i, j, k);
                 }
             }
@@ -254,6 +259,7 @@ var dataManager = {
         this.createSimple = async function(config) {
             this.config = config;
             if (config.f) {
+                this.dataFormat = DataFormats.STRUCTURED;
                 this.generateData(config);
             } else if (config.type == "raw") {
                 this.dataFormat = DataFormats.STRUCTURED;
@@ -261,18 +267,6 @@ var dataManager = {
                 this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
                 this.limits = config.limits;
 
-                this.size = [config.size.z, config.size.y, config.size.x];
-                if (config.cellSize) {
-                    this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
-                    this.dataTransformMat = mat4.fromValues(
-                        1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
-                        0, 0, 0, 1,
-                    )
-                } else {
-                    
-                }
                 console.log("made structured data obj")
     
                 
@@ -281,60 +275,39 @@ var dataManager = {
             } else if (config.type == "unstructured") {
                 this.dataFormat = DataFormats.UNSTRUCTURED;
             }
+
+            this.size = [config.size.z, config.size.y, config.size.x];
+            this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
+            this.dataTransformMat = mat4.fromValues(
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            )
             
             this.initialised = true;
         };
 
         this.generateData = async function(config) {
-            if (config.type == "structuredGrid") {
-                const numPieces = config.blocks;
-                var extents = [];
-                var limits = [];
-                this.structuredGrid = true;
-                for (let i = 0; i < numPieces; i++) {
-                    var p;
-                    if (numPieces == 1) {
-                        p = this;
-                    } else {
-                        this.pieces[i] = await dataManager.createData({});
-                        this.pieces[i].structuredGrid = true;
-                        var p = this.pieces[i];
-                        this.multiBlock = true;
-                    }
-                    
-                    const result = config.f(i);
-                    p.limits = result.limits;
-                    limits.push(result.limits);
-                    p.size = result.size;
-                    extents.push(result.size);
-                    p.data = result.data;
-                    p.points = result.points;
-                }
-                this.initialiseVTS(numPieces, extents, limits);
-                console.log(extents, limits);
-                
-            } else {
-                const x = config.size.x;
-                const y = config.size.y;
-                const z = config.size.z;
-                const f = config.f;
-                let v = 0.0;
-                this.data = new Float32Array(x * y * z);
-                for (let i = 0; i < x; i++) {
-                    for (let j = 0; j < y; j++) {
-                        for (let k = 0; k < z; k++) {
-                            // values are clamped to >= 0
-                            v = Math.max(0, f(i, j, k));
-                            if (!this.limits[0] || v < this.limits[0]) {
-                                this.limits[0] = v;
-                            } else if (!this.limits[1] || v > this.limits[1]) {
-                                this.limits[1] = v;
-                            }this.data[i * y * z + j * z + k] = v;
-                            
+            const x = config.size.x;
+            const y = config.size.y;
+            const z = config.size.z;
+            const f = config.f;
+            let v = 0.0;
+            this.data.values = new Float32Array(x * y * z);
+            for (let i = 0; i < x; i++) {
+                for (let j = 0; j < y; j++) {
+                    for (let k = 0; k < z; k++) {
+                        // values are clamped to >= 0
+                        v = Math.max(0, f(i, j, k));
+                        if (!this.limits[0] || v < this.limits[0]) {
+                            this.limits[0] = v;
+                        } else if (!this.limits[1] || v > this.limits[1]) {
+                            this.limits[1] = v;
                         }
+                        this.data.values[i * y * z + j * z + k] = v;
                     }
                 }
-                console.log(this.limits);
             }
         };
         this.getLimits = function() {
@@ -356,15 +329,17 @@ var dataManager = {
         // returns the positions of the boundary points
         this.getBoundaryPoints = function() {
             var size = this.getDataSize();
+            // extent is size -1
+            var e = [size[0] - 1, size[1] - 1, size[2] - 1];
             var points = new Float32Array([
                 0,       0,       0,       // 0
-                size[0], 0,       0,       // 1
-                0,       size[1], 0,       // 2
-                size[0], size[1], 0,       // 3
-                0,       0,       size[2], // 4
-                size[0], 0,       size[2], // 5
-                0,       size[1], size[2], // 6
-                size[0], size[1], size[2]  // 7
+                e[0], 0,       0,       // 1
+                0,       e[1], 0,       // 2
+                e[0], e[1], 0,       // 3
+                0,       0,       e[2], // 4
+                e[0], 0,       e[2], // 5
+                0,       e[1], e[2], // 6
+                e[0], e[1], e[2]  // 7
             ])
             var transformedPoint = [0, 0, 0, 0];
             for (let i = 0; i < points.length; i += 3) {
@@ -414,20 +389,26 @@ var dataManager = {
 
         // generates the cell tree for fast lookups in unstructured data
         this.getCellTreeBuffer = function() {
-            var depth = 8;
+            var maxDepth = 16;
             var tree = new CellTree();
             // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
             tree.build(
                 3, 
-                depth, 
+                maxDepth, 
                 this.data.positions, 
                 this.data.cellConnectivity,
                 this.data.cellOffsets,
-                new Uint32Array(this.data.cellOffsets.length).fill(10)
+                this.data.cellTypes
             );
-            // console.log(this.data.positions);    
-            console.log(tree);
-            return tree.serialise();
+            var treeBuffer = tree.serialise();
+            // console.log("GOOD: positions");
+            // console.log(this.data.positions);
+            // console.log("connectivity");
+            // console.log(this.data.cellConnectivity);
+            // console.log("GOOD: cell offsets");
+            // console.log(this.data.cellOffsets);
+            // tree.printNodes();
+            return treeBuffer;
         }
 
         // returns a mat4 encoding object space -> data space

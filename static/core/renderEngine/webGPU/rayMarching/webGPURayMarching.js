@@ -223,9 +223,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         // generate the tree
         var cellTreeBuffer = dataObj.getCellTreeBuffer();
-        console.log(new Uint32Array(cellTreeBuffer));
+        // console.log(new Uint32Array(cellTreeBuffer));
         // write the tree buffer
-        renderData.buffers.tree = webGPU.createFilledBuffer("", cellTreeBuffer, usage);
+        renderData.buffers.tree = webGPU.createFilledBuffer("u8", new Uint8Array(cellTreeBuffer), usage);
 
         renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");
 
@@ -306,7 +306,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
             faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
 
-            
+            // webGPU.readBuffer(faceRenderable.sharedData.buffers.tree, 0, 256).then(buff => console.log(new Uint32Array(buff)));
             meshRenderables.push(faceRenderable);
         }
 
@@ -323,6 +323,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
             var dataRenderable = await this.createUnstructuredDataRenderable(dataObj);
         }
+
+        // webGPU.readBuffer(dataRenderable.renderData.buffers.tree, 0, 256)
+        //     .then(buff => console.log(new Uint32Array(buff)));
+
 
         // add the data renderable
         dataObj.renderables.push(dataRenderable);

@@ -71,12 +71,30 @@
                 await renderEngine.rayMarcher.setupEngine();
 
 
-                const datasets = await fetch("/data/datasets.json")
+                const serverDatasets = await fetch("/data/datasets.json")
                     .then((res) => res.json());
-                // setup data manager with these
-                dataManager.setConfigSet(datasets);
 
-                var newData = await dataManager.getDataObj("silicium");
+                const allDatasets = {
+                    ...serverDatasets,
+                    test: {
+                        name: "Small Test",
+                        size: {
+                            x: 4,
+                            y: 4,
+                            z: 4
+                        },
+                        cellSize: {
+                            x: 1,
+                            y: 1,
+                            z: 1
+                        },
+                        f: (x, y, z) => Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2))
+                    }
+                }
+                // setup data manager with these
+                dataManager.setConfigSet(allDatasets);
+
+                var newData = await dataManager.getDataObj("test");
                 // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 

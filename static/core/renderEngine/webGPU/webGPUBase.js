@@ -357,8 +357,12 @@ export function WebGPUBase (verbose) {
         } else if (type = "u8") {
             new Uint8Array(buffer.getMappedRange()).set(data);
         } else {
-            // write the pure buffer
-            new ArrayBuffer(buffer.getMappedRange()).set(data);
+            // can't do this
+            console.warn("can't create filled buffer of this type");
+            buffer.unmap();
+            buffer.destroy();
+            return;
+            
         }
         
         buffer.unmap();

@@ -120,3 +120,7 @@ fn randomU32(seed : u32) -> u32 {
     }
     return x;
 }
+
+fn scalarTriple(a : vec3<f32>, b : vec3<f32>, c : vec3<f32>) -> f32 {
+    return dot(a, cross(b, c));
+}

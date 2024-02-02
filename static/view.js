@@ -178,6 +178,10 @@ export var viewManager = {
             // camera.setDist(31.499999999999932);
             // camera.setTarget([79.89939025552015, 114.19461663327571, 142.63685822729508]);
             // this.updateThreshold(7.7);
+
+            // camera.setDist(20);
+            // camera.setTh(20);
+            // camera.setPhi(5);
             // define what rendering type will be performed on dataset object
             this.data.renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
             this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;

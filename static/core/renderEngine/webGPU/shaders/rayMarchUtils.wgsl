@@ -78,9 +78,10 @@ fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
 // to get the attenuation factor, a base is raised to this power
 // implements the transfer function
 fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit : f32, highLimit : f32, threshold : f32) -> vec3<f32> {
-    var normalisedSample = (sample - lowLimit)/(highLimit - lowLimit);
+    var normalisedSample = max(0, (sample - lowLimit)/(highLimit - lowLimit));
     var normalisedThreshold = (threshold - lowLimit)/(highLimit - lowLimit);
     var absorptionCoeff = pow(normalisedSample/1.8, 1.1);
+    // var absorptionCoeff = pow(normalisedSample/0.7, 1.2);
     var sampleCol = absorptionCoeff * vec3<f32>(1.0) * length;
     
     return prevCol + sampleCol;
@@ -134,6 +135,7 @@ fn marchRay(
     var lastStepSize : f32 = 0;
     var sampleVal : f32;
     var thisAbove = false;
+    var stepsInside = 0u;
     var i = 0u;
     loop {
         if (ray.length > passInfo.maxLength) {
@@ -142,9 +144,9 @@ fn marchRay(
         var tipDataPos = toDataSpace(ray.tip); // the tip in data space
         // check if tip has left data
         if (
-            tipDataPos.x > dataSize.x || tipDataPos.x < 0 ||
-            tipDataPos.y > dataSize.y || tipDataPos.y < 0 ||
-            tipDataPos.z > dataSize.z || tipDataPos.z < 0
+            tipDataPos.x > dataSize.x - 1 || tipDataPos.x < 0 ||
+            tipDataPos.y > dataSize.y - 1 || tipDataPos.y < 0 ||
+            tipDataPos.z > dataSize.z - 1 || tipDataPos.z < 0
         ) {
             // have gone all the way through the dataset
             if (enteredDataset) {
@@ -152,6 +154,7 @@ fn marchRay(
             }
         } else {
             enteredDataset = true;
+            stepsInside++;
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
             if (sampleVal > passInfo.threshold) {
                 thisAbove = true;
@@ -160,7 +163,7 @@ fn marchRay(
             }
             if (i > 0u) {
                 // check if the threshold has been crossed
-                if (thisAbove != lastAbove && passFlags.showSurface) {
+                if (thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u) {
                     // has been crossed
                     if (passFlags.backStep) {
                         // find where exactly by lerp

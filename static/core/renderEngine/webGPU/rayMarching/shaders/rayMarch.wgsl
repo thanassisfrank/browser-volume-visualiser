@@ -31,7 +31,6 @@ fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
 
 // sampler not available for f32 -> do own lerp
 fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
-    return 5;
     var flr = vec3<u32>(u32(floor(x)), u32(floor(y)), u32(floor(z)));
     var cel = vec3<u32>(u32(ceil(x)), u32(ceil(y)), u32(ceil(z)));
     // lerp in z direction
