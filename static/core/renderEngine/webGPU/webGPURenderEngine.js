@@ -4,7 +4,9 @@
 import { clampBox, stringifyMatrix} from "../../utils.js";
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
-import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
+
+// renderable manager
+import { WebGPURenderableManager } from "./webGPURenderableManager.js";
 
 // extension modules for more complex rendering operations
 import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
@@ -19,6 +21,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     // this.marchingCubes = new WebGPUMarchingCubesEngine(webGPUBase);
     this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
+    this.renderableManager = new WebGPURenderableManager(webGPUBase, this.rayMarcher);
     // stores a reference to the canvas element
     this.canvas = canvas;
     this.ctx;
@@ -124,229 +127,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
     };
 
-    // setup scene object for rendering ===========================================================
-    // create the needed renderables for a scene object to be displayed as desired
-    
-    // take a scene object as input and creates its needed renderables
-    this.setupSceneObject = async function(sceneObj) {
-        // get rid of any renderables already present
-        for (let renderable of sceneObj.renderables) {
-            this.destroyRenderable(renderable);
-        }
-
-        if (sceneObj.renderMode == SceneObjectRenderModes.NONE) return;
-
-        if (sceneObj.renderMode & SceneObjectRenderModes.BOUNDING_WIREFRAME) {
-            // create a bounding wireframe for the object
-            sceneObj.renderables.push(this.createBoundingWireFrame(sceneObj));
-        }
-        // first filter by object type
-        switch (sceneObj.objectType) {
-            case SceneObjectTypes.MESH:
-                this.setupMeshSceneObject(sceneObj);
-                break;
-            case SceneObjectTypes.DATA:
-                this.setupDataSceneObject(sceneObj);
-                break; 
-            case SceneObjectTypes.AXES:
-                this.setupAxesSceneObject(sceneObj);
-                break;
-            case SceneObjectTypes.VECTOR:
-                this.setupVectorObject(sceneObj);
-                break;
-            // nothing is rendered for these by default
-            case SceneObjectTypes.EMPTY:
-            case SceneObjectTypes.CAMERA:
-            case SceneObjectTypes.LIGHT:
-                break;
-        }
-    }
-
-    this.destroyRenderable = function(renderable) {
-        // the important data is stored within renderData
-        var textures = renderable.renderData.textures;
-        for (let textureName in textures) {
-            textures[textureName].destroy();
-        }
-        var buffers = renderable.renderData.buffers;
-        for (let bufferName in buffers) {
-            buffers[bufferName].destroy();
-        }
-    }
-
-    this.createBoundingWireFrame = function(sceneObj) {
-        // get the bounding points first
-        var points = sceneObj.getBoundaryPoints();
-
-        // check if points were generated properly
-        if (!points || points.length != 8 * 3) return;
-
-        var renderable = webGPU.meshRenderableFromArrays(
-            points,
-            new Float32Array(points.length * 3), 
-            new Uint32Array([
-                0, 1,
-                0, 2,
-                0, 4,
-                1, 3,
-                1, 5,
-                2, 3,
-                2, 6,
-                3, 7,
-                4, 5,
-                4, 6,
-                5, 7,
-                6, 7
-            ]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-        
-        return renderable;
-    }
-
-    this.createFloorWireFrame = function(sceneObj) {
-        // get the bounding points first
-        var points = sceneObj.getDatasetBoundaryPoints();
-
-        // check if points were generated properly
-        if (!points || points.length != 8 * 3) return;
-
-        var renderable = webGPU.meshRenderableFromArrays(
-            points,
-            new Float32Array(points.length * 3), 
-            new Uint32Array([
-                0, 1,
-                0, 4,
-                1, 5,
-                4, 5,
-            ]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-        
-        return renderable;
-    }
-    
-    // move mesh data to renderable
-    this.setupMeshSceneObject = async function(mesh) {
-        var renderable = webGPU.meshRenderableFromArrays(mesh.verts, mesh.norms, mesh.indices, mesh.renderMode);
-
-        // set the materials
-        renderable.serialisedMaterials = webGPU.serialiseMaterials(mesh.frontMaterial, mesh.backMaterial);
-
-        mesh.renderables.push(renderable);
-    }
-
-    // perform the setup needed depending on the data render mode
-    this.setupDataSceneObject = async function(data) {
-        if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
-            // move data points to a new mesh renderable
-            console.log("sorry, this data render mode is not supported yet");
-        }
-        if (data.renderMode & SceneObjectRenderModes.DATA_MARCH_SURFACE ||
-            data.renderMode & SceneObjectRenderModes.DATA_MARCH_POINTS
-        ) {
-            // interface with marching cubes engine to move data to GPU
-            console.log("sorry, this data render mode is not supported yet");
-        }
-        if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
-            this.rayMarcher.setupRayMarch(data);
-        }
-    }
-
-    this.setupAxesSceneObject = async function(axes) {
-        // make x axis
-        var renderableX = webGPU.meshRenderableFromArrays(
-            new Float32Array([
-                0, 0, 0,
-                axes.scale, 0, 0
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderableX.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [1, 0, 0]}, {diffuseCol: [1, 0, 0]});
-        renderableX.highPriority = true;
-        
-        // make y axis
-        var renderableY = webGPU.meshRenderableFromArrays(
-            new Float32Array([
-                0, 0, 0,
-                0, axes.scale, 0
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderableY.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 1, 0]}, {diffuseCol: [0, 1, 0]});
-        renderableY.highPriority = true;
-
-        // make z axis
-        var renderableZ = webGPU.meshRenderableFromArrays(
-            new Float32Array([
-                0, 0, 0,
-                0, 0, axes.scale
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderableZ.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 0, 1]}, {diffuseCol: [0, 0, 1]});
-        renderableZ.highPriority = true;
-
-        axes.renderables.push(renderableX);
-        axes.renderables.push(renderableY);
-        axes.renderables.push(renderableZ);
-    }
-
-    this.setupVectorObject = function(vector) {
-        var renderable = webGPU.meshRenderableFromArrays(
-            new Float32Array([
-                0, 0, 0,
-                ...vector.endPoint
-            ]), 
-            new Float32Array([2]), 
-            new Uint32Array([0, 1]), 
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: vector.color}, {diffuseCol: vector.color});
-
-        vector.renderables.push(renderable);
-    }
-
-    // sorts a list of renderables, primarily by distance from camera
-    // the sorted list will look like:
-    // [high priority se (sorted), high priority sd (unsorted), sort enabled (sorted), sort disabled (unsorted)]
-    this.sortRenderables = function(renderables, camera) {
-        var camPos = camera.getEyePos();
-        var renderablesSortFunc = (a, b) => {
-            // first check if either is one is high and other normal priority
-            if (a.highPriority && !b.highPriority) return -1;
-            if (!a.highPriority && b.highPriority) return 1;
-            // check if sorting is enabled
-            if (a.depthSort && !b.depthSort) return -1;
-            if (!a.depthSort && !b.depthSort) return 0;
-            if (!a.depthSort && b.depthSort) return 1;
-            
-            // get worldspace a and b
-            var aObj = vec4.fromValues(...a.objectSpaceMidPoint, 1);
-            var aWorld = vec4.create();
-            vec4.transformMat4(aWorld, aObj, a.transform);
-            var aDist = vec3.distance([aWorld[0], aWorld[1], aWorld[2]],  camPos);
-
-            var bObj = vec4.fromValues(...b.objectSpaceMidPoint, 1);
-            var bWorld = vec4.create();
-            vec4.transformMat4(bWorld, bObj, b.transform);
-            var bDist = vec3.distance([bWorld[0], bWorld[1], bWorld[2]],  camPos);
-
-            return aDist - bDist;
-        };
-
-        return renderables.sort(renderablesSortFunc);
-    }
-
-    // ============================================================================================
+    // calls the same function from the renderable manager to create the renderables needed
+    this.setupSceneObject = function(sceneObj) {
+        this.renderableManager.setupSceneObject(sceneObj);
+    };
 
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
@@ -419,7 +203,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         // get the renderables from the scene
         var renderables = scene.getRenderables();
-        this.sortRenderables(renderables, camera);
+        this.renderableManager.sortRenderables(renderables, camera);
 
         // console.log(renderables);
 

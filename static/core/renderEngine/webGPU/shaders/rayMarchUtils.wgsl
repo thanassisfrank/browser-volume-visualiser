@@ -149,10 +149,6 @@ fn marchRay(
         } else {
             enteredDataset = true;
             stepsInside++;
-            // extend by a random amount
-            if (stepsInside == 1u && passFlags.randStart) {
-                ray = extendRay(ray, randVal * passInfo.stepSize);
-            }
 
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
             if (sampleVal > passInfo.threshold) {
@@ -203,11 +199,16 @@ fn marchRay(
         }
         
         continuing {
-            var thisStepSize = passInfo.stepSize*ray.length/10;
-            ray = extendRay(ray, passInfo.stepSize);
+            var thisStepSize = passInfo.stepSize;//*ray.length/10;
+
+            if (stepsInside == 1u && passFlags.randStart) {
+                // extend by a random amount
+                thisStepSize *= randVal;
+            }
+            ray = extendRay(ray, thisStepSize);
             lastAbove = thisAbove;
             lastSampleVal = sampleVal;
-            lastStepSize = passInfo.stepSize;
+            lastStepSize = thisStepSize;
             i += 1u;
         }
     }
