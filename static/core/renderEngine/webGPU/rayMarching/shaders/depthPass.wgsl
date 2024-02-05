@@ -13,6 +13,7 @@
 struct VertexOut {
     @builtin(position) position : vec4<f32>,
     @location(0) eye : vec3<f32>,
+    @location(1) worldPosition : vec4<f32>,
 };
 
 
@@ -23,6 +24,7 @@ fn vertex_main(
 {
     var out : VertexOut;
     var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
+    out.worldPosition = objectInfo.otMat * vec4<f32>(position, 1.0);
     
     out.position = globalInfo.camera.pMat * vert;
     out.eye = -vec3<f32>(vert.xyz);
@@ -34,8 +36,12 @@ fn vertex_main(
 fn fragment_main(
     @builtin(front_facing) frontFacing : bool, 
     data: VertexOut
-) 
-    -> @location(0) vec4<f32>
+) -> @location(0) vec4<f32>
 {
-    return vec4<f32>(length(data.eye), 0, 0, 0);
+    var dist : f32 = length(data.worldPosition.xyz - globalInfo.camera.position);
+    if (frontFacing) {
+        return vec4<f32>(dist, 0, 0, 0);
+    } else {
+        return vec4<f32>(-1*dist, 0, 0, 0); // depth is negative if this is the back face
+    }
 }   

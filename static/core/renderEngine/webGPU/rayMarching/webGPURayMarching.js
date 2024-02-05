@@ -11,6 +11,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     var device = webGPU.device;
 
     var constsBuffer;
+    this.depthTexture;
 
     this.rayMarchPassDescriptor;
     this.depthRenderPassDescriptor;
@@ -336,6 +337,26 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         console.log("setup data for ray marching");
     }
 
+
+    this.beginFrame = function(ctx) {
+        // create the texture that the mesh depth will be drawn onto
+        this.depthTexture = device.createTexture({
+            label: "depth text",
+            size: {
+                width: ctx.canvas.width,
+                height: ctx.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "r32float",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+        })
+    }
+
+    this.endFrame = function() {
+        webGPU.waitForDone().then(() => {this.depthTexture.destroy();});
+    }
+
     // do ray marching on the data
     this.march = async function(renderable, camera, renderPassDescriptor, box, canvas) {
         var commandEncoder = await device.createCommandEncoder();
@@ -389,25 +410,12 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.marchUnstructured = async function(renderable, camera, outputRenderPassDescriptor, box, ctx) {
         var commandEncoder = await device.createCommandEncoder();
 
-        // create the texture that the mesh depth will be drawn onto
-        var depthTexture = device.createTexture({
-            label: "depth text",
-            size: {
-                width: ctx.canvas.width,
-                height: ctx.canvas.height,
-                depthOrArrayLayers: 1
-            },
-            dimension: "2d",
-            format: "r32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-        })
-
         var attachments = {
             colorAttachments: [{
                 clearValue: {r: 0, g: 0, b: 0, a: 0},
                 loadOp: "clear",
                 storeOp: "store",
-                view: depthTexture.createView()
+                view: this.depthTexture.createView()
             }],
             depthStencilAttachment: outputRenderPassDescriptor.depthStencilAttachment
         }
@@ -457,7 +465,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.sharedData.buffers.values,
                 ],
                 [
-                    depthTexture,
+                    this.depthTexture,
                     outputTexture
                 ]
             ],
@@ -502,7 +510,5 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         device.queue.submit([commandEncoder.finish()]);
-        await webGPU.waitForDone();
-        depthTexture.destroy();
     }
 }

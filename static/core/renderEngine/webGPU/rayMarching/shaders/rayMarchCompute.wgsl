@@ -92,8 +92,9 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
     return currNode;
 }
 
-// returns the barycentric coords if inside and all 0 if outside
-fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+// point in tet functions returns the barycentric coords if inside and all 0 if outside
+// this implementation uses the determinates of matrices - slightly faster
+fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var x = queryPoint.x;
     var y = queryPoint.y;
     var z = queryPoint.z;
@@ -145,7 +146,8 @@ fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
 
 }
 
-fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+// this implementation uses the scalar triple product
+fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var p = queryPoint;
     var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
     var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
@@ -160,12 +162,12 @@ fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32>
     var vad : vec3<f32> = d - a;
     var vbc : vec3<f32> = c - b;
     var vbd : vec3<f32> = d - b;
-    // ScTP computes the scalar triple product
+    
     var lambda1 : f32 = scalarTriple(vbp, vbd, vbc);
     var lambda2 : f32 = scalarTriple(vap, vac, vad);
     var lambda3 : f32 = scalarTriple(vap, vad, vab);
     var lambda4 : f32 = scalarTriple(vap, vab, vac);
-    var v = scalarTriple(vab, vac, vad);
+    var v : f32 = scalarTriple(vab, vac, vad);
 
     if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
         return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
@@ -193,7 +195,7 @@ fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f3
 
     if (queryPoint.z < zMin || queryPoint.z >= zMax) {return vec4<f32>(0);};
 
-    return vec4<f32>(0.25);
+    return vec4<f32>(1);
 }
 
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> InterpolationCell {
@@ -228,7 +230,7 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             i++;
             continue;
         };
-        var tetFactors = pointInTet(queryPoint, cell);
+        var tetFactors = pointInTetFast(queryPoint, cell);
         if (length(tetFactors) == 0) {
             i++;
             continue;
@@ -272,7 +274,16 @@ fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
 
 fn pixelOnVolume(x : u32, y : u32) -> bool {
     var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
-    return pixVal > 0;
+    return pixVal != 0;
+}
+
+fn isFrontFacing(x : u32, y : u32) -> bool {
+    var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
+    if (pixVal > 0) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 // takes camera and x
@@ -313,23 +324,36 @@ fn main(
         return;
     }
 
-    var depthVal : f32 = textureLoad(boundingVolDepthImage, id.xy, 0)[0];
-
-    // setPixel(id.xy, vec4<f32>(depthVal, 0, 0, 1));
-
     // get the flags governing this pass
     var passFlags : RayMarchPassFlags = getFlags(passInfo.flags);
+
     // calculate the world position of the starting fragment
     var ray = getRay(id.x, id.y, globalInfo.camera);
 
-    // ray = extendRay(ray, depthVal);
+    var startInside = false;
+
+    if (isFrontFacing(id.x, id.y)) {
+        var depthVal : f32 = textureLoad(boundingVolDepthImage, id.xy, 0)[0];
+        ray = extendRay(ray, depthVal + 0.01); // nudge the start just inside
+        startInside = true;
+    }
     if (passFlags.showRayDirs) {
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
         return;
     }
 
+    // generate a random f32 value if needed
+    var randVal : f32;
+    if (passFlags.randStart) {
+        // compute a random f32 value between 0 and 1
+        var randU32 = randomU32(
+            localIndex ^ globalInfo.time
+        );
+        randVal = f32(randU32)/exp2(32);
+    }
+
     // march the ray through the volume
-    var fragCol = marchRay(passFlags, passInfo, ray, passInfo.dataSize, false, 0);
+    var fragCol = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, randVal);
 
     setPixel(id.xy, fragCol);
 }

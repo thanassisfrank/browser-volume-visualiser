@@ -190,6 +190,13 @@ export function Camera(id) {
     // vertical angle
     this.phi = 0;
 
+    this.initialPosition = {
+        dist: 0,
+        th: 0,
+        phi: 0,
+        target: [0, 0, 0]
+    }
+
     // field of view
     this.aspect = 1;
     this.fovY = 70;
@@ -343,11 +350,22 @@ export function Camera(id) {
     this.changeDist = function(d) {
         this.setDist(Math.max(0.1, this.dist + (d)/10));
     }
-    this.centre = function() {
+    this.moveToStart = function() {
         this.endMove();
-        this.target = [0, 0, 0];
-        this.viewMatValid = false;
+        this.setTarget(this.initialPosition.target);
+        this.setDist(this.initialPosition.dist);
+        this.setTh(this.initialPosition.th);
+        this.setPhi(this.initialPosition.phi);
         this.endMove();
+    }
+
+    this.setStartPosition = function(target, dist, th, phi) {
+        this.initialPosition = {
+            target: target,
+            dist: dist,
+            th: th,
+            phi: phi
+        }
     }
 
     this.printVals = function() {

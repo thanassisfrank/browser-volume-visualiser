@@ -90,15 +90,15 @@ fn fragment_main(
     }
 
     // create the ray stub used for marching
-    var raySegment = fragInfo.inPosition.xyz - cameraPos;
+    var raySegment = fragInfo.worldPosition.xyz - cameraPos;
     var ray : Ray;
     ray.direction = normalize(raySegment);
     var enteredDataset : bool;
     if (front_facing) {
         // marching from the outside
-        ray.tip = cameraPos;//fragInfo.worldPosition.xyz;
-        ray.length = 0;//length(raySegment);
-        enteredDataset = false;
+        ray.tip = fragInfo.worldPosition.xyz;
+        ray.length = length(raySegment);
+        enteredDataset = true;
         // return vec4<f32>(1, 0, 0, 0.5);
     } else {
         // marching from the inside

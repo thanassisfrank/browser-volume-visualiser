@@ -69,38 +69,12 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return this.ctx;
     }
 
-    this.createBuffers = function() {
-        const id = getNewBufferId()
-        buffers[id] = {
-            vertex: {
-                buffer: null,
-                byteLength: 0
-            },
-            normal: {
-                buffer: null,
-                byteLength: 0
-            },
-            index: {
-                buffer: null,
-                byteLength: 0
-            }
-        }
-        return id;
+    this.beginFrame = function() {
+        this.rayMarcher.beginFrame(this.ctx);
     }
 
-    this.updateBuffers = function(mesh) {
-        webGPU.deleteBuffers(mesh);
-        console.log("u")
-
-        if (mesh.verts.length > 0) {
-            mesh.buffers.vertex = createFilledBuffer("f32", mesh.verts, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
-        }
-        if (mesh.normals.length > 0) {
-            mesh.buffers.normal = createFilledBuffer("f32", mesh.normals, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
-        }
-        if (mesh.indices.length > 0) {
-            mesh.buffers.index = createFilledBuffer("u32", mesh.indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
-        }
+    this.endFrame = function() {
+        this.rayMarcher.endFrame();
     }
 
     // clears the screen and creates the empty depth texture
@@ -164,7 +138,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         if (sceneObj.renderMode & SceneObjectRenderModes.BOUNDING_WIREFRAME) {
             // create a bounding wireframe for the object
-            this.addBoundingWireFrameToSceneObject(sceneObj);
+            sceneObj.renderables.push(this.createBoundingWireFrame(sceneObj));
         }
         // first filter by object type
         switch (sceneObj.objectType) {
@@ -200,7 +174,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
     }
 
-    this.addBoundingWireFrameToSceneObject = function(sceneObj) {
+    this.createBoundingWireFrame = function(sceneObj) {
         // get the bounding points first
         var points = sceneObj.getBoundaryPoints();
 
@@ -227,11 +201,11 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             RenderableRenderModes.MESH_WIREFRAME
         );
         renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-
-        sceneObj.renderables.push(renderable);
+        
+        return renderable;
     }
 
-    this.addFloorWireFrameToSceneObject = function(sceneObj) {
+    this.createFloorWireFrame = function(sceneObj) {
         // get the bounding points first
         var points = sceneObj.getDatasetBoundaryPoints();
 
@@ -250,8 +224,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             RenderableRenderModes.MESH_WIREFRAME
         );
         renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-
-        sceneObj.renderables.push(renderable);
+        
+        return renderable;
     }
     
     // move mesh data to renderable
@@ -423,11 +397,14 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     // renders a view object, datasets
     // for now, all share a canvas
     this.renderView = async function (view) {
+
         // create the render attachments (color and depth textures) that will be used to create the final view
         // these are initialised to a cleared state
         // the colour attachment is from the output canvas
         var outputRenderAttachments = await this.getClearedRenderAttachments();
         
+        this.beginFrame();
+
         var box = view.getBox();
 
         var scene = view.sceneGraph;
@@ -475,7 +452,9 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             }
         }
         await webGPU.waitForDone();
-        outputRenderAttachments.depth.destroy();     
+        this.endFrame();
+        outputRenderAttachments.depth.destroy(); 
+
     }
 
     this.resizeRenderingContext = function() {

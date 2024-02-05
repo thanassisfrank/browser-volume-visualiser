@@ -116,13 +116,7 @@ fn marchRay(
     var ray = rayStub;
     var enteredDataset = startInDataset;
 
-    var fragCol = vec4<f32>(1, 1, 1, 0);
-    
-    // extend by a random amount
-    if (passFlags.randStart) {
-        ray = extendRay(ray, randVal * passInfo.stepSize);
-    }
-    
+    var fragCol = vec4<f32>(1, 1, 1, 0);    
 
     var light = DirectionalLight(vec3<f32>(1), ray.direction);
 
@@ -155,6 +149,11 @@ fn marchRay(
         } else {
             enteredDataset = true;
             stepsInside++;
+            // extend by a random amount
+            if (stepsInside == 1u && passFlags.randStart) {
+                ray = extendRay(ray, randVal * passInfo.stepSize);
+            }
+
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
             if (sampleVal > passInfo.threshold) {
                 thisAbove = true;

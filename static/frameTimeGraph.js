@@ -10,11 +10,11 @@ export function FrameTimeGraph(canvas) {
     this.max = 100;
     
     // colours
-    this.bgCol = [0, 0, 0, 255];
+    this.bgCol = [0, 0, 0, 0];
     this.sampleCol = [200, 200, 200, 255];
     this.init = function () {
         this.ctx = canvas.getContext("2d", {willReadFrequently: true});
-        this.ctx.fillStyle = "rgb(" + this.bgCol[0] + "," + this.bgCol[1] + "," + this.bgCol[2] + ")";
+        this.ctx.fillStyle = "rgba(" + this.bgCol[0] + "," + this.bgCol[1] + "," + this.bgCol[2] + "," + this.bgCol[3] + ")";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
     // adds a new sample to the graph (ms)
@@ -32,21 +32,24 @@ export function FrameTimeGraph(canvas) {
                 newImgData[4*i + 0] = 0;
                 newImgData[4*i + 1] = 255;
                 newImgData[4*i + 2] = 0;
+                newImgData[4*i + 3] = 255;
             } else if (33 <= msThisPixel && 33 > msThisPixel - msPerPixel) {
                 // draw 30fps (33ms) line
-                newImgData[4*i + 0] = 255;
-                newImgData[4*i + 1] = 0;
+                newImgData[4*i + 0] = 200;
+                newImgData[4*i + 1] = 150;
                 newImgData[4*i + 2] = 0;
+                newImgData[4*i + 3] = 255;
             } else if (newSample >= msThisPixel) {
                 newImgData[4*i + 0] = this.sampleCol[0];
                 newImgData[4*i + 1] = this.sampleCol[1];
                 newImgData[4*i + 2] = this.sampleCol[2];
+                newImgData[4*i + 3] = this.sampleCol[3];
             } else {
                 newImgData[4*i + 0] = this.bgCol[0];
                 newImgData[4*i + 1] = this.bgCol[1];
                 newImgData[4*i + 2] = this.bgCol[2];
+                newImgData[4*i + 3] = this.bgCol[3];
             }
-            newImgData[4*i + 3] = 255;
         }
         var newImg = new ImageData(newImgData, 1);
         this.ctx.putImageData(newImg, this.canvas.width - 1, 0);

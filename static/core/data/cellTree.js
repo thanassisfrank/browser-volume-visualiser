@@ -50,7 +50,7 @@ var pivotFull = (a) => {
 
 export function CellTree() {
     this.tree = null;
-    this.minLeafCells = 256;
+    this.minLeafCells = 128;
 
     this.createNode = function(depth = 0, splitDimension = 0, points = null, cells = [], parent = null) {
         return{
