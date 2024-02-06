@@ -150,6 +150,7 @@ export var viewManager = {
         this.data = data;
 
         this.threshold = threshold;
+        this.thresholdChanged = true;
         this.marchedThreshold = undefined;
         this.renderMode = renderMode;
         // holds a timer that waits for a little while after the threshold has stopped changing
@@ -196,6 +197,12 @@ export var viewManager = {
         }     
         this.updateThreshold = async function(val, fine) {
             this.threshold = val;
+            this.thresholdChanged = true;
+        }
+        this.didThresholdChange = function() {
+            var changed = this.thresholdChanged;
+            this.thresholdChanged = false;
+            return changed;
         }
         this.update = async function (dt, renderEngine) {
             // propagate the threshold to where is it needed

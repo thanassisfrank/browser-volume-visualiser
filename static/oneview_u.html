@@ -67,12 +67,15 @@
             <input type="checkbox" class="ray-march-opt" name="showVolume"><label>Show volume</label><br>
             <input type="checkbox" class="ray-march-opt" name="phong"><label>Phong</label><br>
             <input type="checkbox" class="ray-march-opt" name="backStep"><label>Back step</label><br>
+            <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
             <input type="checkbox" class="ray-march-opt" name="randStart"><label>Random offset</label><br>
             <label>Debug</label><br>
             <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
             <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Show ray dir</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Show ray len</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
         </div>
         <div id="view-container-container"></div>
         <div id="view-container-proto" class="view-container" style="display: none">
@@ -141,14 +144,14 @@
 
                 
 
-                var newData = await dataManager.getDataObj("silicium");
-                var unstruct = await dataManager.createUnstructuredFromStructured(newData);
+                var newData = await dataManager.getDataObj("heptane");
+                // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 
                 var camera = new Camera();
                 var newView = await viewManager.createView({
                     camera: camera,
-                    data: unstruct,
+                    data: newData,
                     renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
                 }, renderEngine);
 
@@ -161,13 +164,13 @@
                             console.log("threshold", newView.threshold);
                             
                             break;
-                        case "c":
-                            // centre the camera
+                        case "r":
+                            // reset camera to initial position
                             camera.moveToStart();
                             break;
                         case "h":
                             // toggle visiblity of overlay elements
-                            for (let elem of [...getClass("threshold"), get("ray-march-opts-container"), get("frame-info")]) {
+                            for (let elem of [...getClass("bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
                                 if (isVisible(elem)) {
                                     hide(elem);
                                 } else {

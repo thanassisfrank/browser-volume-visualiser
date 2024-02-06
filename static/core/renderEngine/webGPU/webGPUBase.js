@@ -103,7 +103,7 @@ export function WebGPUBase (verbose) {
 
         // load utils.wgsl as a string
         this.wgslLibs["utils.wgsl"] =  await this.fetchShader("core/renderEngine/webGPU/shaders/utils.wgsl");
-        this.wgslLibs["rayMarchUtils.wgsl"] =  await this.fetchShader("core/renderEngine/webGPU/shaders/rayMarchUtils.wgsl");
+        this.wgslLibs["rayMarchUtils.wgsl"] =  await this.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchUtils.wgsl");
     }
 
     this.fetchShader = function(name) {
@@ -223,7 +223,7 @@ export function WebGPUBase (verbose) {
             } else if (resources[i].constructor == GPUTexture){
                 entries.push({
                     binding: i,
-                    resource: resources[i].createView()
+                    resource: resources[i]
                 })
             } else {
                 entries.push({
@@ -523,13 +523,14 @@ export function WebGPUBase (verbose) {
     }
 
     // creates a pass descriptor object
-    this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code) {
+    this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code, label = "") {
         // console.log(bindGroupLayouts);
         var pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
         var shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
         if (passType == this.PassTypes.RENDER) {
             // create a render pass
             var pipelineDescriptor = {
+                label: label,
                 layout: pipelineLayout,
                 vertex: {
                     module: shaderModule,
@@ -546,30 +547,29 @@ export function WebGPUBase (verbose) {
                 },
             };
 
-
-            var colorTarget = {
-                format: passOptions.colorAttachmentFormat || "bgra8unorm",
-            }
-
-            if (passOptions.colorAttachmentFormat != "r32float") {
-                colorTarget.blend = {
-                    color: {
-                        operation: "add",
-                        srcFactor: "src-alpha", 
-                        dstFactor: "one-minus-src-alpha"
-                    },
-                    alpha: {
-                        operation: "add",
-                        srcFactor: "one",
-                        dstFactor: "zero"
+            for (let colorAttachmentFormat of passOptions.colorAttachmentFormats) {
+                var colorTarget = {
+                    format: colorAttachmentFormat,
+                }
+                // add blend if
+                if (colorAttachmentFormat == "bgra8unorm") {
+                    colorTarget.blend = {
+                        color: {
+                            operation: "add",
+                            srcFactor: "src-alpha", 
+                            dstFactor: "one-minus-src-alpha"
+                        },
+                        alpha: {
+                            operation: "add",
+                            srcFactor: "one",
+                            dstFactor: "zero"
+                        }
                     }
                 }
+
+                pipelineDescriptor.fragment.targets.push(colorTarget);
             }
-
-            pipelineDescriptor.fragment.targets.push(colorTarget);
-
-
-
+            
             if (!passOptions.excludeDepth) {
                 pipelineDescriptor.depthStencil = {
                     format: "depth32float",
@@ -577,6 +577,8 @@ export function WebGPUBase (verbose) {
                     depthCompare: "less"
                 }
             }
+
+            console.log(pipelineDescriptor);
             // create the render pass object
             return {
                 passType: this.PassTypes.RENDER,
@@ -659,6 +661,13 @@ export function WebGPUBase (verbose) {
         return commandEncoder; 
     }
 
-    // TO ADD:
-    // create filled texture
+    this.copyTextureToTexture = async function(srcTexture, dstTexture, extent) {
+        var commandEncoder = await this.device.createCommandEncoder();
+        commandEncoder.copyTextureToTexture(
+            {texture: srcTexture},
+            {texture: dstTexture},
+            extent
+        )
+        this.device.queue.submit([commandEncoder.finish()]) 
+    }
 }

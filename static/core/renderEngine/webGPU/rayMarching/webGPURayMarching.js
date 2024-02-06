@@ -12,6 +12,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     var constsBuffer;
     this.depthTexture;
+    this.offsetOptimisationTextureOld;
+    this.offsetOptimisationTextureNew;
 
     this.rayMarchPassDescriptor;
     this.depthRenderPassDescriptor;
@@ -42,19 +44,31 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showSurface: true,
         showRayDirs: false,
         showRayLength: false,
-    }
+        optimiseOffset: true,
+        showOffset: false,
+        showDeviceCoords: false,
+    };
+
+    this.globalPassInfo = {
+        stepSize: 2,
+        maxRayLength: 2000,
+        framesSinceMove: 0,
+    };
 
     this.getPassFlagsUint = function() {
         var flags = 0;
-        flags |= this.passFlags.phong         << 0 & 0b1 << 0;
-        flags |= this.passFlags.backStep      << 1 & 0b1 << 1;
-        flags |= this.passFlags.showNormals   << 2 & 0b1 << 2;
-        flags |= this.passFlags.showVolume    << 3 & 0b1 << 3;
-        flags |= this.passFlags.fixedCamera   << 4 & 0b1 << 4;
-        flags |= this.passFlags.randStart     << 5 & 0b1 << 5;
-        flags |= this.passFlags.showSurface   << 6 & 0b1 << 6;
-        flags |= this.passFlags.showRayDirs   << 7 & 0b1 << 7;
-        flags |= this.passFlags.showRayLength << 8 & 0b1 << 8;
+        flags |= this.passFlags.phong          << 0 & 0b1 << 0;
+        flags |= this.passFlags.backStep       << 1 & 0b1 << 1;
+        flags |= this.passFlags.showNormals    << 2 & 0b1 << 2;
+        flags |= this.passFlags.showVolume     << 3 & 0b1 << 3;
+        flags |= this.passFlags.fixedCamera    << 4 & 0b1 << 4;
+        flags |= this.passFlags.randStart      << 5 & 0b1 << 5;
+        flags |= this.passFlags.showSurface    << 6 & 0b1 << 6;
+        flags |= this.passFlags.showRayDirs    << 7 & 0b1 << 7;
+        flags |= this.passFlags.showRayLength  << 8 & 0b1 << 8;
+        flags |= this.passFlags.optimiseOffset << 9 & 0b1 << 9;
+        flags |= this.passFlags.showOffset     << 10 & 0b1 << 10;
+        flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
         return flags;
     }
 
@@ -75,7 +89,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         multiSampled: "false"
                     }
                 }
-            ], "ray1")
+            ], "ray1"),
+            webGPU.createBindGroupLayout([
+                {
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: {
+                        sampleType: "unfilterable-float",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                }
+            ], "ray2"),
         ];
         
         var computeRayMarchBindGroupLayouts = [
@@ -126,6 +150,22 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 },
                 {
                     visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "unfilterable-float",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        access: "write-only",
+                        format: "rg32float",
+                        viewDimension: "2d"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
                     storageTexture: {
                         access: "write-only",
                         format: "bgra8unorm",
@@ -145,9 +185,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         this.rayMarchPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
-            {vertexLayout: webGPU.vertexLayouts.justPosition, topology: "triangle-list", indexed: true},
+            {
+                vertexLayout: webGPU.vertexLayouts.justPosition, 
+                colorAttachmentFormats: ["bgra8unorm", "rg32float"],
+                topology: "triangle-list", 
+                indexed: true
+            },
             rayMarchBindGroupLayouts,
-            {str: rayMarchCode, formatObj: {}}
+            {str: rayMarchCode, formatObj: {}},
+            "ray march pass (vert-frag)"
         );
 
         var depthPassCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/depthPass.wgsl");
@@ -155,12 +201,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             webGPU.PassTypes.RENDER,
             {
                 vertexLayout: webGPU.vertexLayouts.justPosition, 
+                colorAttachmentFormats: ["r32float"],
                 topology: "triangle-list", 
                 indexed: true,
-                colorAttachmentFormat: "r32float",
             },
             [webGPU.bindGroupLayouts.render0],
-            {str: depthPassCode, formatObj: {}}
+            {str: depthPassCode, formatObj: {}},
+            "depth pass"
         );
             
         var computeRayMarchCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchCompute.wgsl");
@@ -168,10 +215,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             webGPU.PassTypes.COMPUTE,
             {},
             computeRayMarchBindGroupLayouts,
-            {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y}}
-
+            {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y}},
+            "ray march pass (compute)"
         )
-        
 
     };
 
@@ -338,35 +384,94 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
 
-    this.beginFrame = function(ctx) {
-        // create the texture that the mesh depth will be drawn onto
-        this.depthTexture = device.createTexture({
-            label: "depth text",
-            size: {
+    this.beginFrame = function(ctx, resized, cameraMoved, thresholdChanged) {
+        if (cameraMoved || thresholdChanged) {
+            this.globalPassInfo.framesSinceMove = 0;
+        }
+        // check if the size of the canvas is the same as what is was previously
+        if (resized) {
+            this.depthTexture?.destroy();
+            // create the texture that the mesh depth will be drawn onto
+            this.depthTexture = device.createTexture({
+                label: "depth texture",
+                size: {
+                    width: ctx.canvas.width,
+                    height: ctx.canvas.height,
+                    depthOrArrayLayers: 1
+                },
+                dimension: "2d",
+                format: "r32float",
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            })
+
+            this.offsetOptimisationTextureOld?.destroy();
+            // create texture for offset optimisation
+            this.offsetOptimisationTextureOld = device.createTexture({
+                label: "optimisation texture current best",
+                size: {
+                    width: ctx.canvas.width,
+                    height: ctx.canvas.height,
+                    depthOrArrayLayers: 1
+                },
+                dimension: "2d",
+                format: "rg32float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            })
+
+            this.offsetOptimisationTextureNew?.destroy();
+            // create texture for offset optimisation
+            this.offsetOptimisationTextureNew = device.createTexture({
+                label: "optimisation texture new best",
+                size: {
+                    width: ctx.canvas.width,
+                    height: ctx.canvas.height,
+                    depthOrArrayLayers: 1
+                },
+                dimension: "2d",
+                format: "rg32float",
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
+            })
+        }
+    }
+
+    this.endFrame = function(ctx) {
+        this.globalPassInfo.framesSinceMove++;
+        // copy the new found or carried across offsets to be used in the next pass
+        webGPU.copyTextureToTexture(
+            this.offsetOptimisationTextureNew,
+            this.offsetOptimisationTextureOld,
+            {
                 width: ctx.canvas.width,
                 height: ctx.canvas.height,
                 depthOrArrayLayers: 1
-            },
-            dimension: "2d",
-            format: "r32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-        })
-    }
+            }
+        );
 
-    this.endFrame = function() {
-        webGPU.waitForDone().then(() => {this.depthTexture.destroy();});
+        
     }
 
     // do ray marching on the data
-    this.march = async function(renderable, camera, renderPassDescriptor, box, canvas) {
+    this.march = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, canvas) {
         var commandEncoder = await device.createCommandEncoder();
         
         var rayMarchRenderPass = {
             ...this.rayMarchPassDescriptor,
-            renderDescriptor: renderPassDescriptor,
+            renderDescriptor: {
+                colorAttachments: [
+                    outputColourAttachment,
+                    {
+                        clearValue: {r: 0, g: 0, b: 0, a: 0},
+                        loadOp: "load",
+                        storeOp: "store",
+                        view: this.offsetOptimisationTextureNew.createView()
+                    }
+                ],
+                depthStencilAttachment: outputDepthAttachment
+            },
             resources: [
                 [constsBuffer, renderable.renderData.buffers.objectInfo],
-                [renderable.sharedData.buffers.passInfo, renderable.sharedData.textures.data]
+                [renderable.sharedData.buffers.passInfo, renderable.sharedData.textures.data.createView()],
+                [this.offsetOptimisationTextureOld.createView()]
             ],
             box: box,
             boundingBox: canvas.getBoundingClientRect(),
@@ -390,15 +495,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         webGPU.writeDataToBuffer(
             renderable.sharedData.buffers.passInfo, 
             [
-                new Uint32Array([this.getPassFlagsUint()]), 
+                new Uint32Array([
+                    this.getPassFlagsUint(),
+                    this.globalPassInfo.framesSinceMove,
+                ]), 
                 new Float32Array([
                     renderable.passData.threshold, 
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
+                    0, 0, 0,
                     ...renderable.passData.dataSize,
-                    1, // step size
-                    2000, // max ray length
-                    0, 0, 0,// padding
+                    this.globalPassInfo.stepSize,
+                    this.globalPassInfo.maxRayLength,
+                    0, 0, 0, // padding
                     ...renderable.passData.dMatInv,
                 ])
             ]
@@ -407,7 +516,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         device.queue.submit([commandEncoder.finish()]);
     }
 
-    this.marchUnstructured = async function(renderable, camera, outputRenderPassDescriptor, box, ctx) {
+    this.marchUnstructured = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
         var commandEncoder = await device.createCommandEncoder();
 
         var attachments = {
@@ -417,7 +526,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 storeOp: "store",
                 view: this.depthTexture.createView()
             }],
-            depthStencilAttachment: outputRenderPassDescriptor.depthStencilAttachment
+            depthStencilAttachment: outputDepthAttachment
         }
 
         // draw the mesh into the texture
@@ -440,8 +549,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         webGPU.encodeGPUPass(commandEncoder, depthPass);
 
         // do a full ray march pass to 
-        var outputTexture = ctx.getCurrentTexture();
-        // console.log(outputTexture);
 
         var WGs = [
             Math.ceil(ctx.canvas.width/this.WGSize.x), 
@@ -465,8 +572,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.sharedData.buffers.values,
                 ],
                 [
-                    this.depthTexture,
-                    outputTexture
+                    this.depthTexture.createView(),
+                    this.offsetOptimisationTextureOld.createView(),
+                    this.offsetOptimisationTextureNew.createView(),
+                    outputColourAttachment.view
                 ]
             ],
             workGroups: WGs
@@ -495,14 +604,18 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         webGPU.writeDataToBuffer(
             renderable.sharedData.buffers.passInfo, 
             [
-                new Uint32Array([this.getPassFlagsUint()]), 
+                new Uint32Array([
+                    this.getPassFlagsUint(),
+                    this.globalPassInfo.framesSinceMove,
+                ]), 
                 new Float32Array([
                     renderable.passData.threshold, 
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
+                    0, 0, 0,
                     ...renderable.passData.dataSize,
-                    1, // step size
-                    2000, // max ray length
+                    this.globalPassInfo.stepSize,
+                    this.globalPassInfo.maxRayLength,
                     0, 0, 0, // padding
                     ...renderable.passData.dMatInv,
                 ])

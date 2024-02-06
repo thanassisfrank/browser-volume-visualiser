@@ -25,6 +25,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     // stores a reference to the canvas element
     this.canvas = canvas;
     this.ctx;
+    this.canvasResized = true;
 
     this.clearColor = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
 
@@ -52,32 +53,50 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         this.surfaceRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
-            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "triangle-list", indexed: true},
+            {
+                vertexLayout: webGPU.vertexLayouts.positionAndNormal,
+                colorAttachmentFormats: ["bgra8unorm"], 
+                topology: "triangle-list", 
+                indexed: true
+            },
             [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}}
+            {str: shaderCode, formatObj: {}},
+            "surface render pass"
         );
         this.pointsRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
-            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "point-list", indexed: false},
+            {
+                vertexLayout: webGPU.vertexLayouts.positionAndNormal, 
+                colorAttachmentFormats: ["bgra8unorm"],
+                topology: "point-list", 
+                indexed: false
+            },
             [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}}
+            {str: shaderCode, formatObj: {}},
+            "points render pass"
         );
         this.linesRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
-            {vertexLayout: webGPU.vertexLayouts.positionAndNormal, topology: "line-list", indexed: true},
+            {
+                vertexLayout: webGPU.vertexLayouts.positionAndNormal, 
+                colorAttachmentFormats: ["bgra8unorm"],
+                topology: "line-list", 
+                indexed: true
+            },
             [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}}
+            {str: shaderCode, formatObj: {}},
+            "lines render pass"
         );
 
         return this.ctx;
     }
 
-    this.beginFrame = function() {
-        this.rayMarcher.beginFrame(this.ctx);
+    this.beginFrame = function(cameraMoved, thresholdChanged) {
+        this.rayMarcher.beginFrame(this.ctx, this.canvasResized, cameraMoved, thresholdChanged);
     }
 
     this.endFrame = function() {
-        this.rayMarcher.endFrame();
+        this.rayMarcher.endFrame(this.ctx);
     }
 
     // clears the screen and creates the empty depth texture
@@ -134,7 +153,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
-    this.renderMesh = async function(renderable, camera, outputRenderPassDescriptor, box) {        
+    this.renderMesh = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box) {        
         if (renderable.indexCount == 0 && renderable.vertexCount == 0) {
             return;
         }
@@ -159,7 +178,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             resources: [
                 [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
             ],
-            renderDescriptor: outputRenderPassDescriptor,
+            renderDescriptor: {
+                colorAttachments: [outputColourAttachment],
+                depthStencilAttachment: outputDepthAttachment
+            },
             box: box,
             boundingBox: this.ctx.canvas.getBoundingClientRect(),
         }
@@ -186,8 +208,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // these are initialised to a cleared state
         // the colour attachment is from the output canvas
         var outputRenderAttachments = await this.getClearedRenderAttachments();
-        
-        this.beginFrame();
 
         var box = view.getBox();
 
@@ -199,7 +219,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             console.warn("no camera in scene");
             return;
         }
-        // console.log(camera.fovX, camera.fovY);
+        this.beginFrame(camera.didThisMove(), view.didThresholdChange());
+        this.canvasResized = false;
 
         // get the renderables from the scene
         var renderables = scene.getRenderables();
@@ -208,37 +229,49 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // console.log(renderables);
 
         for (let renderable of renderables) {
-            var outputRenderPassDescriptor = {
-                colorAttachments: [{
-                    clearValue: this.clearColor,
-                    loadOp: "load",
-                    storeOp: "store",
-                    view: outputRenderAttachments.color.createView()
-                }],
-                depthStencilAttachment: {
-                    depthClearValue: 1.0,
-                    depthLoadOp: "load",
-                    depthStoreOp: "store",
-                    view: outputRenderAttachments.depth.createView()
-                }
-            };
+            // var outputRenderPassDescriptor = {
+            //     colorAttachments: [{
+            //         clearValue: this.clearColor,
+            //         loadOp: "load",
+            //         storeOp: "store",
+            //         view: outputRenderAttachments.color.createView()
+            //     }],
+            //     depthStencilAttachment: {
+            //         depthClearValue: 1.0,
+            //         depthLoadOp: "load",
+            //         depthStoreOp: "store",
+            //         view: outputRenderAttachments.depth.createView()
+            //     }
+            // };
+
+            var outputColourAttachment = {
+                clearValue: this.clearColor,
+                loadOp: "load",
+                storeOp: "store",
+                view: outputRenderAttachments.color.createView()
+            }
+            var outputDepthAttachment = {
+                depthClearValue: 1.0,
+                depthLoadOp: "load",
+                depthStoreOp: "store",
+                view: outputRenderAttachments.depth.createView()
+            }
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
 
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
                 if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
-                    this.rayMarcher.march(renderable, camera, outputRenderPassDescriptor, box, this.canvas);
+                    this.rayMarcher.march(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.canvas);
                 } else if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
-                    this.rayMarcher.marchUnstructured(renderable, camera, outputRenderPassDescriptor, box, this.ctx);
+                    this.rayMarcher.marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
                 } else {
-                    this.renderMesh(renderable, camera, outputRenderPassDescriptor, box);
+                    this.renderMesh(renderable, camera, outputColourAttachment, outputDepthAttachment, box);
                 }
             }
         }
         await webGPU.waitForDone();
         this.endFrame();
         outputRenderAttachments.depth.destroy(); 
-
     }
 
     this.resizeRenderingContext = function() {
@@ -251,5 +284,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 GPUTextureUsage.COPY_DST |
                 GPUTextureUsage.STORAGE_BINDING
         });
+        this.canvasResized = true;
     }
 }

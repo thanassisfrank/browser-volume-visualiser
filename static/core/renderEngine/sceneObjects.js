@@ -368,6 +368,13 @@ export function Camera(id) {
         }
     }
 
+    // returns a bool indicating if camera moved since last time this was called
+    this.didThisMove = function() {
+        var moved = !this.viewMatValid;
+        this.viewMatValid = true;
+        return moved;
+    }
+
     this.printVals = function() {
         console.log("th", this.th);
         console.log("phi", this.phi);

@@ -6,13 +6,13 @@
 // information needed for the ray marching pass
 struct RayMarchPassInfo {
     flags : u32,
+    framesSinceMove : u32,
     threshold : f32,
     dataLowLimit : f32,
     dataHighLimit : f32,
     dataSize : vec3<f32>,
     stepSize : f32,
     maxLength : f32,
-    cellsInLeaves : u32,
     dMatInv : mat4x4<f32>, // from world space -> data space
 };
 
@@ -27,22 +27,40 @@ struct RayMarchPassFlags {
     showSurface : bool,
     showRayDirs: bool,
     showRayLength: bool,
+    optimiseOffset: bool,
+    showOffset: bool,
+    showDeviceCoords: bool,
 };
+
+// the return value of the ray-march function
+struct RayMarchResult {
+    fragCol : vec4<f32>,
+    surfaceDepth : f32
+}
+
+// offset optimisation sample
+struct OptimisationSample {
+    offset: f32,
+    depth: f32,
+}
 
 // functions ======================================================================================
 
 // create a flags struct from the u32
 fn getFlags(flagUint : u32) -> RayMarchPassFlags {
     return RayMarchPassFlags(
-        (flagUint & 1u) == 1u,
-        (flagUint & 2u) == 2u,
-        (flagUint & 4u) == 4u,
-        (flagUint & 8u) == 8u,
-        (flagUint & 16u) == 16u,
-        (flagUint & 32u) == 32u,
-        (flagUint & 64u) == 64u,
-        (flagUint & 128u) == 128u,
-        (flagUint & 256u) == 256u,
+        (flagUint & (1u << 0)) != 0,
+        (flagUint & (1u << 1)) != 0,
+        (flagUint & (1u << 2)) != 0,
+        (flagUint & (1u << 3)) != 0,
+        (flagUint & (1u << 4)) != 0,
+        (flagUint & (1u << 5)) != 0,
+        (flagUint & (1u << 6)) != 0,
+        (flagUint & (1u << 7)) != 0,
+        (flagUint & (1u << 8)) != 0,
+        (flagUint & (1u << 9)) != 0,
+        (flagUint & (1u << 10)) != 0,
+        (flagUint & (1u << 11)) != 0,
     );
 };
 
@@ -112,7 +130,7 @@ fn marchRay(
     dataSize : vec3<f32>,
     startInDataset : bool, 
     randVal : f32
-) -> vec4<f32> {
+) -> RayMarchResult {
     var ray = rayStub;
     var enteredDataset = startInDataset;
 
@@ -159,7 +177,7 @@ fn marchRay(
             if (i > 0u) {
                 // check if the threshold has been crossed
                 if (thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u) {
-                    // has been crossed
+                    // has been crossed, surface has been found
                     if (passFlags.backStep) {
                         // find where exactly by lerp
                         var backStep = lastStepSize/(sampleVal-lastSampleVal) * (sampleVal - passInfo.threshold);
@@ -222,7 +240,7 @@ fn marchRay(
         fragCol = vec4<f32>(ray.length/100, 0, 0, 1);  
     }
 
-    return fragCol;
+    return RayMarchResult(fragCol, ray.length);
 }
 
 

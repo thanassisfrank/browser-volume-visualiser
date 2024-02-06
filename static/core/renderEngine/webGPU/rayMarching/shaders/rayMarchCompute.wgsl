@@ -8,7 +8,7 @@
 // data common to all rendering
 // camera mats, position
 @group(0) @binding(0) var<storage, read> globalInfo : GlobalUniform;
-//  object matrix, colours
+// object matrix, colours
 @group(0) @binding(1) var<storage, read> objectInfo : ObjectInfo;
 
 // ray marching data
@@ -31,8 +31,13 @@
 // input image f32, the distance to suface from the camera position, if outside, depth is 0
 // if the depth is to the backside of a tri (viewing from inside) depth is negative
 @group(2) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
+// two textures used to hold the last best result and write the new best result too
+// previous best results
+@group(2) @binding(1) var offsetOptimisationTextureOld : texture_2d<f32>;
+// a texture to write the best results too
+@group(2) @binding(2) var offsetOptimisationTextureNew : texture_storage_2d<rg32float, write>;
 // output image after ray marching into volume
-@group(2) @binding(1) var outputImage : texture_storage_2d<bgra8unorm, write>;
+@group(2) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
 
 
 struct KDTreeNode {
@@ -137,7 +142,7 @@ fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32>
 
     if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
         return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
-    } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
+    } else if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0) {
         return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
     } else {
         // not in this cell
@@ -308,6 +313,21 @@ fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
     return ray;
 }
 
+fn getPrevOptimisationSample(x : u32, y : u32) -> OptimisationSample {
+    var texel = textureLoad(offsetOptimisationTextureOld, vec2<u32>(x, y), 0);
+    return OptimisationSample(texel[0], texel[1]);
+}
+
+fn storeOptimisationSample(coords : vec2<u32>, sample : OptimisationSample) {
+    textureStore(offsetOptimisationTextureNew, coords, vec4<f32>(sample.offset, sample.depth, 0, 0));
+}
+
+// generate a new random f32 value [0, 1]
+fn getRandF32(seed : u32) -> f32 {
+    var randU32 = randomU32(globalInfo.time ^ seed);
+    return f32(randU32)/exp2(32);
+}
+
 
 // workgroups work on 2d tiles of the input image
 @compute @workgroup_size({{WGSizeX}}, {{WGSizeY}}, 1)
@@ -342,18 +362,49 @@ fn main(
         return;
     }
 
-    // generate a random f32 value if needed
-    var randVal : f32;
-    if (passFlags.randStart) {
-        // compute a random f32 value between 0 and 1
-        var randU32 = randomU32(
-            localIndex ^ globalInfo.time
-        );
-        randVal = f32(randU32)/exp2(32);
+    
+    var marchResult : RayMarchResult;
+    // generate a new sampling threshold
+    var randomVal = getRandF32(id.x ^ id.y);
+    var prevOffsetSample = getPrevOptimisationSample(id.x, id.y);
+
+    var offset : f32;
+
+    if(passFlags.optimiseOffset) {
+        // get the previous value
+        // if sampling threshold < t
+        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
+        if (randomVal < t) {
+            // generate new offset
+            var newOffset = getRandF32(id.x ^ id.y ^ 782035u);
+            // march with the new offset
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, newOffset);
+            offset = newOffset;
+            if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+                // if the surface is closer
+                // store the new offset and depth
+                storeOptimisationSample(id.xy, OptimisationSample(newOffset, marchResult.surfaceDepth));
+            }
+        } else {
+            // march with existing offset
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, prevOffsetSample.offset);
+            // store depth into texture
+            storeOptimisationSample(id.xy, OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth));
+            offset = prevOffsetSample.offset;
+        }
+    } else if (passFlags.randStart) {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, randomVal);
+        offset = randomVal;
+    } else {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, 0);
+        offset = 0;
     }
 
     // march the ray through the volume
-    var fragCol = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, randVal);
-
-    setPixel(id.xy, fragCol);
+    if (passFlags.showOffset) {
+        setPixel(id.xy, vec4<f32>(offset, 0, 0, 1));
+    } else {
+        setPixel(id.xy, marchResult.fragCol);
+    }
 }

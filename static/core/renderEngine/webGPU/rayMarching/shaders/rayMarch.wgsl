@@ -14,15 +14,24 @@
 // ray marching data
 // threshold, data matrix, march parameters
 @group(1) @binding(0) var<uniform> passInfo : RayMarchPassInfo;
-//  data texture
+// data texture
 @group(1) @binding(1) var data : texture_3d<f32>;
 
+// best optimisation 
+@group(2) @binding(0) var offsetOptimisationTextureOld : texture_2d<f32>;
+
 struct VertexOut {
-    @builtin(position) clipPosition : vec4<f32>,
+    @builtin(position) outPosition : vec4<f32>,
     @location(0) inPosition : vec3<f32>,
     @location(1) worldPosition : vec4<f32>,
-    @location(2) eye : vec3<f32>,    
+    @location(2) eye : vec3<f32>,
+    @location(3) @interpolate(perspective, center) clipPosition : vec4<f32>
 };
+
+struct FragmentOut {
+    @location(0) fragCol : vec4<f32>,
+    @location(1) optimiseOut : vec4<f32>
+}
 
 // load a specific value
 fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
@@ -54,6 +63,20 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
 
 }
 
+// takes device coords (-1 to 1)
+fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
+    var textureDims : vec2<u32> = textureDimensions(offsetOptimisationTextureOld);
+    var texCoords = vec2<u32>(vec2<f32>(textureDims) * 0.5 * vec2<f32>(x + 1, -y + 1));
+    var texel = textureLoad(offsetOptimisationTextureOld, texCoords, 0);
+    return OptimisationSample(texel[0], texel[1]);
+}
+
+// generate a new random f32 value [0, 1]
+fn getRandF32(seed : u32) -> f32 {
+    var randU32 = randomU32(globalInfo.time ^ seed);
+    return f32(randU32)/exp2(32);
+}
+
 
 @vertex
 fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
@@ -63,7 +86,8 @@ fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
     out.inPosition = position;
     out.worldPosition = objectInfo.otMat * vec4<f32>(position, 1.0);
     out.eye = vert.xyz;
-    out.clipPosition = globalInfo.camera.pMat * globalInfo.camera.mvMat * out.worldPosition;
+    out.outPosition = globalInfo.camera.pMat * globalInfo.camera.mvMat * out.worldPosition;
+    out.clipPosition = out.outPosition;
 
     return out;
 }
@@ -72,7 +96,7 @@ fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
 fn fragment_main(
     fragInfo: VertexOut,
     @builtin(front_facing) front_facing : bool
-) -> @location(0) vec4<f32>
+) -> FragmentOut
 {   
     // get the flags governing this pass
     var passFlags : RayMarchPassFlags = getFlags(passInfo.flags);
@@ -80,6 +104,8 @@ fn fragment_main(
     var dataSize : vec3<f32> = passInfo.dataSize;
     // initialise the fragment colour to the background
     var fragCol = vec4<f32>(1, 1, 1, 0);
+
+    var deviceCoords = fragInfo.clipPosition.xy / fragInfo.clipPosition.w;
 
     // set the camera pos to be fixed id that flag is set
     var cameraPos : vec3<f32>;
@@ -109,26 +135,59 @@ fn fragment_main(
         // return vec4<f32>(0, 0, 1, 0.5);
     }
 
+    var offsetSample : OptimisationSample = getPrevOptimisationSample(deviceCoords.x, deviceCoords.y);
+
     if (passFlags.showRayDirs) {
-        return vec4<f32>(ray.direction, 1);
+        // return vec4<f32>(ray.direction, 1);
+        return FragmentOut(vec4<f32>(ray.direction, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+    } else if (passFlags.showDeviceCoords) {
+            return FragmentOut(vec4<f32>(deviceCoords, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
     }
 
-    // generate a random f32 value if needed
-    var randVal : f32;
-    if (passFlags.randStart) {
-        // compute a random f32 value between 0 and 1
-        var randU32 = randomU32(
-            bitcast<u32>(fragInfo.worldPosition.x) ^ 
-            bitcast<u32>(fragInfo.worldPosition.y) ^
-            bitcast<u32>(fragInfo.worldPosition.z) ^
-            globalInfo.time
-        );
-        randVal = f32(randU32)/exp2(32);
+    var seed : u32 = bitcast<u32>(fragInfo.worldPosition.x) ^ bitcast<u32>(fragInfo.worldPosition.y) ^ bitcast<u32>(fragInfo.worldPosition.z);
+    
+    var marchResult : RayMarchResult;
+    // generate a new sampling threshold
+    var randomVal = getRandF32(seed);
+    var prevOffsetSample = offsetSample;
+
+    var offset : f32;
+
+    if(passFlags.optimiseOffset) {
+        // get the previous value
+        // if sampling threshold < t
+        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
+        if (randomVal < t) {
+            // generate new offset
+            var newOffset = getRandF32(seed ^ 782035u);
+            // march with the new offset
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, newOffset);
+            offset = newOffset;
+            if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+                // if the surface is closer
+                // store the new offset and depth
+                offsetSample = OptimisationSample(newOffset, marchResult.surfaceDepth);
+            }
+        } else {
+            // march with existing offset
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, prevOffsetSample.offset);
+            // store depth into texture
+            offsetSample = OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth);
+
+            offset = prevOffsetSample.offset;
+        }
+    } else if (passFlags.randStart) {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, randomVal);
+        offset = randomVal;
+    } else {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, 0);
+        offset = 0;
     }
 
+    if (passFlags.showOffset) {
+        return FragmentOut(vec4<f32>(offset, 0, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+    }
 
-    // march the ray through the volume
-    fragCol = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, randVal);
-
-    return fragCol;
+    return FragmentOut(marchResult.fragCol, vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
 }   
