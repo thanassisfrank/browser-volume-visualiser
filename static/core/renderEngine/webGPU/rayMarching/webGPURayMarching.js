@@ -55,6 +55,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         framesSinceMove: 0,
     };
 
+    this.getPassFlag = function(name) {
+        return this.passFlags[name];
+    }
+
+    this.setPassFlag = function(name, state) {
+        if (name == "optimiseOffset" || name == "showSurface" || name == "backStep") {
+            this.globalPassInfo.framesSinceMove = 0;
+        }
+        this.passFlags[name] = state;
+    }
+
     this.getPassFlagsUint = function() {
         var flags = 0;
         flags |= this.passFlags.phong          << 0 & 0b1 << 0;

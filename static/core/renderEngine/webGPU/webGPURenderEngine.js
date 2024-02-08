@@ -229,21 +229,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // console.log(renderables);
 
         for (let renderable of renderables) {
-            // var outputRenderPassDescriptor = {
-            //     colorAttachments: [{
-            //         clearValue: this.clearColor,
-            //         loadOp: "load",
-            //         storeOp: "store",
-            //         view: outputRenderAttachments.color.createView()
-            //     }],
-            //     depthStencilAttachment: {
-            //         depthClearValue: 1.0,
-            //         depthLoadOp: "load",
-            //         depthStoreOp: "store",
-            //         view: outputRenderAttachments.depth.createView()
-            //     }
-            // };
-
             var outputColourAttachment = {
                 clearValue: this.clearColor,
                 loadOp: "load",

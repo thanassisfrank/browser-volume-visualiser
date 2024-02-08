@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>struct</title>
+        <title>Volume visualiser</title>
         <style>
             body {
                 padding: 0px;
@@ -12,6 +12,7 @@
                 margin: 0px;
                 width: 100%;
                 height: 100%;
+                z-index: -1;
                 /* background-color: blue; */
             }
             .view-container {
@@ -46,6 +47,14 @@
                 height: 50px;
                 width: 100px;
             }
+            #ray-march-opts-container {
+                position: absolute;
+                padding: 5px;
+                right: 0px;
+                background: white;
+                border: 1px solid black;
+                z-index: 1;
+            }
         </style>
     </head>
     <body>
@@ -53,6 +62,21 @@
         <div id="frame-info">
             <canvas id="frame-time-graph"></canvas>
             <!-- <p id="frame-time">0ms</p> -->
+        </div>
+        <div id="ray-march-opts-container">
+            <input type="checkbox" class="ray-march-opt" name="showSurface"><label>Show surface</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showVolume"><label>Show volume</label><br>
+            <input type="checkbox" class="ray-march-opt" name="phong"><label>Phong</label><br>
+            <input type="checkbox" class="ray-march-opt" name="backStep"><label>Back step</label><br>
+            <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
+            <input type="checkbox" class="ray-march-opt" name="randStart"><label>Random offset</label><br>
+            <label>Debug</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
+            <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
         </div>
         <div id="view-container-container"></div>
         <div id="view-container-proto" class="view-container" style="display: none">
@@ -71,13 +95,24 @@
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
             import { FrameTimeGraph } from "./frameTimeGraph.js";
 
+            var setUpRayMarchOptions = (rayMarcher) => {
+                for (let elem of getClass("ray-march-opt")) {
+                    elem.checked = rayMarcher.getPassFlag(elem.name);
+                    elem.addEventListener("mousedown", (e) => {
+                        e.stopPropagation();
+                        return false;
+                    })
+                    elem.addEventListener("click", (e) => {
+                        rayMarcher.setPassFlag(elem.name, elem.checked);
+                    })
+                }
+            }
 
             // define the main function
             async function main() {
                 var canvas = get("c");
-
-                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"));
                 
+                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"));
 
                 // create a new rendering engine
                 var renderEngine = await createRenderEngine(canvas);
@@ -107,12 +142,14 @@
                 }
                 // setup data manager with these
                 dataManager.setConfigSet(allDatasets);
+                var camera = new Camera();
 
-                var newData = await dataManager.getDataObj("silicium");
+                
+                // load the dataset of interest
+                var newData = await dataManager.getDataObj("turbulence");
                 // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
                 // console.log(unstruct);
 
-                var camera = new Camera();
                 var newView = await viewManager.createView({
                     camera: camera,
                     data: newData,
@@ -123,13 +160,23 @@
                 document.body.addEventListener("keydown", function(e) {
                     switch (e.key) {
                         case " ":
+                            // print the camera position and threshold val
                             camera.printVals();
                             console.log("threshold", newView.threshold);
                             
                             break;
+                        case "r":
+                            // reset camera to initial position
+                            camera.moveToStart();
+                            break;
                         case "h":
-                            for (let elem of getClass("threshold")) {
-                                hide(elem);
+                            // toggle visiblity of overlay elements
+                            for (let elem of [...getClass("bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
+                                if (isVisible(elem)) {
+                                    hide(elem);
+                                } else {
+                                    show(elem);
+                                }
                             }
                             break;
                         case "Alt":
@@ -137,6 +184,9 @@
                             break;
                     }
                 });
+
+                // set up options
+                setUpRayMarchOptions(renderEngine.rayMarcher);
 
                 var resize = () => {
                     var canvasDims = setupCanvasDims(canvas);
@@ -152,6 +202,7 @@
                     var thisFrameStart = performance.now();
                     const dt = thisFrameStart - lastFrameStart;
                     lastFrameStart = thisFrameStart;
+
                     
                     // update the objects
                     frameTimeGraph.update(dt);

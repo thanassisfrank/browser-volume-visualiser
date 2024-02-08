@@ -373,7 +373,17 @@ fn main(
     if(passFlags.optimiseOffset) {
         // get the previous value
         // if sampling threshold < t
+        // exponential
+        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
+
+        // linear
         var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+
+        // square
+        // var t : f32 = 1;
+        // if (passInfo.framesSinceMove > 20) {
+        //     t = 0;
+        // }
         // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
         if (randomVal < t) {
             // generate new offset

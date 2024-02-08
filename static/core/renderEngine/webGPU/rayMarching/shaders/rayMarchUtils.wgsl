@@ -129,7 +129,7 @@ fn marchRay(
     rayStub : Ray, 
     dataSize : vec3<f32>,
     startInDataset : bool, 
-    randVal : f32
+    offset : f32
 ) -> RayMarchResult {
     var ray = rayStub;
     var enteredDataset = startInDataset;
@@ -219,9 +219,9 @@ fn marchRay(
         continuing {
             var thisStepSize = passInfo.stepSize;//*ray.length/10;
 
-            if (stepsInside == 1u && passFlags.randStart) {
-                // extend by a random amount
-                thisStepSize *= randVal;
+            if (stepsInside == 1u) {
+                // extend by the offset amount
+                thisStepSize *= offset;
             }
             ray = extendRay(ray, thisStepSize);
             lastAbove = thisAbove;

@@ -145,10 +145,9 @@ fn fragment_main(
     }
 
     var seed : u32 = bitcast<u32>(fragInfo.worldPosition.x) ^ bitcast<u32>(fragInfo.worldPosition.y) ^ bitcast<u32>(fragInfo.worldPosition.z);
-    
+
+    var randomVal : f32;
     var marchResult : RayMarchResult;
-    // generate a new sampling threshold
-    var randomVal = getRandF32(seed);
     var prevOffsetSample = offsetSample;
 
     var offset : f32;
@@ -156,8 +155,24 @@ fn fragment_main(
     if(passFlags.optimiseOffset) {
         // get the previous value
         // if sampling threshold < t
-        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+        
+        // exponential
         // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
+
+        // linear
+        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+
+        // square
+        // var t : f32 = 1;
+        // if (passInfo.framesSinceMove > 20) {
+        //     t = 0;
+        // }
+
+        if (t > 0) {
+            // generate a new sampling threshold
+            randomVal = getRandF32(seed);
+        }
+        
         if (randomVal < t) {
             // generate new offset
             var newOffset = getRandF32(seed ^ 782035u);
@@ -177,7 +192,10 @@ fn fragment_main(
 
             offset = prevOffsetSample.offset;
         }
+        offset = prevOffsetSample.offset;
     } else if (passFlags.randStart) {
+        // generate a random value
+        randomVal = getRandF32(seed);
         marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, randomVal);
         offset = randomVal;
     } else {
