@@ -35,6 +35,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
     this.passFlags = {
+        // sent to gpu
         phong: true,
         backStep: true,
         showNormals: false,
@@ -47,6 +48,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         optimiseOffset: true,
         showOffset: false,
         showDeviceCoords: false,
+
+        // not sent to gpu
+        cheapMove: false,
     };
 
     this.globalPassInfo = {
@@ -60,7 +64,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
     this.setPassFlag = function(name, state) {
-        if (name == "optimiseOffset" || name == "showSurface" || name == "backStep") {
+        if (name == "optimiseOffset" || name == "showSurface" || name == "backStep" || name == "cheapMove") {
             this.globalPassInfo.framesSinceMove = 0;
         }
         this.passFlags[name] = state;
@@ -81,6 +85,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showOffset     << 10 & 0b1 << 10;
         flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
         return flags;
+    }
+
+    this.getStepSize = function() {
+        var falloffFrames = 3;
+        if (this.passFlags.cheapMove && this.globalPassInfo.framesSinceMove < falloffFrames) {
+            var stepMaxScale = 3;
+            // linearly interpolate between max and 1 scales
+            return this.globalPassInfo.stepSize * (1 + (stepMaxScale - 1) * (1 - this.globalPassInfo.framesSinceMove/falloffFrames))
+        }
+        return this.globalPassInfo.stepSize;
     }
 
     this.setupEngine = async function() {
@@ -272,7 +286,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
         // console.log(dataObj.data.values.byteLength, dataObj.data.values);
-        renderData.buffers.values = webGPU.createFilledBuffer("f32", dataObj.data.values, usage);
+        renderData.buffers.values = webGPU.createFilledBuffer("f32", new Float32Array(dataObj.data.values), usage);
         renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage);
         renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage);
         renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage);
@@ -516,7 +530,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[1],
                     0, 0, 0,
                     ...renderable.passData.dataSize,
-                    this.globalPassInfo.stepSize,
+                    this.getStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, 0, // padding
                     ...renderable.passData.dMatInv,
@@ -625,7 +639,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[1],
                     0, 0, 0,
                     ...renderable.passData.dataSize,
-                    this.globalPassInfo.stepSize,
+                    this.getStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, 0, // padding
                     ...renderable.passData.dMatInv,

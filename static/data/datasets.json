@@ -1,6 +1,6 @@
 {
 	"engine": {
-		"name": "engine",
+		"name": "Engine",
 		"path": "data/engine_256x256x128_uint8.raw",
 		"type": "raw",
 		"complexAvailable": true,
@@ -26,7 +26,7 @@
 		"dataType": "uint8"
 	},
 	"magnetic": {
-		"name": "magnetic",
+		"name": "Magnetic",
 		"path": "data/magnetic_reconnection_512x512x512_float32.raw",
 		"type": "raw",
 		"complexAvailable": true,
@@ -52,7 +52,7 @@
 		"dataType": "float32"
 	},
 	"silicium": {
-		"name": "silicium",
+		"name": "Silicium",
 		"path": "data/silicium_98x34x34_uint8.raw",
 		"type": "raw",
 		"complexAvailable": true,

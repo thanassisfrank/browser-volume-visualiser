@@ -150,6 +150,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     this.setupSceneObject = function(sceneObj) {
         this.renderableManager.setupSceneObject(sceneObj);
     };
+    
+    this.cleanupSceneObj = function(sceneObj) {
+        this.renderableManager.clearRenderables(sceneObj);
+    }
 
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
@@ -200,6 +204,9 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         webGPU.device.queue.submit([commandEncoder.finish()]);
     };
 
+    this.clearScreen = async function () {
+        await this.getClearedRenderAttachments();
+    }
     // renders a view object, datasets
     // for now, all share a canvas
     this.renderView = async function (view) {

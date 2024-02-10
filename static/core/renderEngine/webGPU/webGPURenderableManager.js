@@ -48,6 +48,12 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         }
     }  
 
+    this.clearRenderables = function(sceneObj) {
+        for (let renderable of sceneObj.renderables) {
+            this.destroyRenderable(renderable);
+        }
+    }
+
     this.destroyRenderable = function(renderable) {
         // the important data is stored within renderData
         var textures = renderable.renderData.textures;

@@ -3,6 +3,9 @@
     <head>
         <title>Volume visualiser</title>
         <style>
+            * {
+                font-family:monospace;
+            }
             body {
                 padding: 0px;
                 margin: 0px;
@@ -22,7 +25,7 @@
                 height: 100%;
                 /* border: 1px solid blue; */
             }
-            .frame {
+            .view-frame {
                 position: absolute;
                 width: calc(100%);
                 height: calc(100%);
@@ -35,6 +38,18 @@
                 padding: 5px;
                 background: white;
                 border: 1px solid black;
+                z-index: 1;
+            }
+            .view-info {
+                padding: 1px;
+                margin: 0px;
+                text-align: left
+            }
+            .view-dataset-name {
+                font-weight: bold;
+            }
+            .view-close {
+                color:crimson
             }
             #frame-info {
                 position: absolute;
@@ -55,14 +70,27 @@
                 border: 1px solid black;
                 z-index: 1;
             }
+            .clickable {
+                text-decoration-line: underline;
+                text-decoration-style: wavy;
+                font-weight: bold;
+            }
+            .clickable:hover {
+                cursor: pointer;
+            }
+            #create-view-btn {
+                color:darkgreen;
+            }
         </style>
     </head>
     <body>
+        <!-- The main canvas onto which all views are drawn -->
         <canvas id="c"></canvas>
+
         <div id="frame-info">
             <canvas id="frame-time-graph"></canvas>
-            <!-- <p id="frame-time">0ms</p> -->
         </div>
+
         <div id="ray-march-opts-container">
             <input type="checkbox" class="ray-march-opt" name="showSurface"><label>Show surface</label><br>
             <input type="checkbox" class="ray-march-opt" name="showVolume"><label>Show volume</label><br>
@@ -70,22 +98,42 @@
             <input type="checkbox" class="ray-march-opt" name="backStep"><label>Back step</label><br>
             <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
             <input type="checkbox" class="ray-march-opt" name="randStart"><label>Random offset</label><br>
+            <label>Performance</label><br>
+            <input type="checkbox" class="ray-march-opt" name="cheapMove"><label>Cheap move</label><br>
             <label>Debug</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
             <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
             <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
         </div>
+
+        <div id="add-view-container" class="bottom-bar">
+            <select id="data-select"></select><br>
+            <input type="checkbox" class="dataset-opt" name="createUnstructured"><label>Make unstruct</label><br>
+            <label id="create-view-btn" class="clickable">Create new</label>
+        </div>
+
+        <!-- 
+        The container into which views will be pushed
+        In this page, this covers the screen 
+        -->
         <div id="view-container-container"></div>
+
+        <!-- The prototypical view-container that will be cloned for each view-->
         <div id="view-container-proto" class="view-container" style="display: none">
-            <div class="frame">
-                <div class="bottom-bar">
-                    <input type="range" class="threshold">
+            <div class="view-frame">
+                <div class="bottom-bar view-bottom-bar">
+                    <p class="view-dataset-name view-info"></p>
+                    <p class="view-dataset-size view-info"></p>
+                    <input type="range" class="view-threshold">
+                    <p class="view-info">Threshold: <span class="view-threshold-value"></span></p>
+                    <label class="view-close view-info clickable">Close</label>
                 </div>
             </div>
         </div>
+
         <script type="module">
             import {get, getClass, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositionCanvas, parseXML, IntervalTree, OldIntervalTree, timer} from "./core/utils.js";
 
@@ -108,6 +156,16 @@
                 }
             }
 
+            var populateDataOptions = (dataManager) => {
+                var dataOptions = get("data-select");
+                for (let id in dataManager.configSet) {
+                    var elem = document.createElement("OPTION");
+                    elem.value = id;                
+                    elem.innerText = dataManager.configSet[id].name;
+                    dataOptions.appendChild(elem);
+                }
+            }
+            
             // define the main function
             async function main() {
                 var canvas = get("c");
@@ -118,6 +176,8 @@
                 var renderEngine = await createRenderEngine(canvas);
                 await renderEngine.setup();
                 await renderEngine.rayMarcher.setupEngine();
+                // set up options elements
+                setUpRayMarchOptions(renderEngine.rayMarcher);
 
 
                 const serverDatasets = await fetch("/data/datasets.json")
@@ -140,21 +200,41 @@
                         f: (x, y, z) => Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2))
                     }
                 }
+                
                 // setup data manager with these
                 dataManager.setConfigSet(allDatasets);
                 var camera = new Camera();
+                populateDataOptions(dataManager);
 
-                
-                // load the dataset of interest
-                var newData = await dataManager.getDataObj("turbulence");
-                // var unstruct = await dataManager.createUnstructuredFromStructured(newData);
-                // console.log(unstruct);
+                // set the max views
+                viewManager.maxViews = 1;
 
-                var newView = await viewManager.createView({
-                    camera: camera,
-                    data: newData,
-                    renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
-                }, renderEngine);
+                get("create-view-btn").addEventListener("click", async (e) => {
+                    var d = get("data-select");
+
+                    const selectedDataElem = d.options[d.selectedIndex];
+
+                    var newData = await dataManager.getDataObj(selectedDataElem.value);
+
+                    for (let opt of getClass("dataset-opt")) {
+                        if (!opt.checked) continue;
+                        switch (opt.name) {
+                            case "createUnstructured":
+                                dataManager.convertStructuredToUnstructured(newData);
+                                break;
+                        }
+                    }
+
+                    var newView = await viewManager.createView({
+                        camera: camera,
+                        data: newData,
+                        renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
+                    }, renderEngine);
+
+                    // hide the window
+                    hide(get("add-view-container"))                     
+                });
+
 
                 // shortcuts
                 document.body.addEventListener("keydown", function(e) {
@@ -171,7 +251,7 @@
                             break;
                         case "h":
                             // toggle visiblity of overlay elements
-                            for (let elem of [...getClass("bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
+                            for (let elem of [...getClass("view-bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
                                 if (isVisible(elem)) {
                                     hide(elem);
                                 } else {
@@ -185,9 +265,6 @@
                     }
                 });
 
-                // set up options
-                setUpRayMarchOptions(renderEngine.rayMarcher);
-
                 var resize = () => {
                     var canvasDims = setupCanvasDims(canvas);
                     // change camera aspect ratio
@@ -195,6 +272,7 @@
                     renderEngine.resizeRenderingContext();
                 }
                 resize();
+
                 window.addEventListener("resize", resize);
 
                 var lastFrameStart = performance.now();
@@ -211,15 +289,17 @@
                     
                     // render the scenes
                     // includes doing marching cubes/ray marching if required by object
-                    // renderEngine.clearScreen();
-                    for (let view of Object.values(viewManager.views)) {
-                        await renderEngine.renderView(view);
+                    var viewList = Object.values(viewManager.views);
+                    if (viewList.length == 0) {
+                        renderEngine.clearScreen();
+                    } else {
+                        for (let view of Object.values(viewManager.views)) {
+                            await renderEngine.renderView(view);
+                        }
                     }
                     
-                    // get("frame-time").innerText = Math.round(dt) + "ms";
                     // next frame
                     requestAnimationFrame(renderLoop);
-                    // setTimeout(() => {requestAnimationFrame(renderLoop)}, 3000);
                 };
                 renderLoop();
             }
