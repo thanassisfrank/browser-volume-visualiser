@@ -1,7 +1,7 @@
 // cellTree.js
 // allows creating a kd based cell tree
 
-const NODE_BYTE_LENGTH = 6*4;
+const NODE_BYTE_LENGTH = 8*4;
 
 // goes through each node, depth first
 // callBacks receive the current node
@@ -99,6 +99,8 @@ export function CellTree() {
         }
     
         var nodeQueue = [];
+        var cellsCountSum = 0;
+        var leavesCount = 0;
         // make a root node with the whols dataset
         var root = this.createNode(0, 0, points);
 
@@ -113,9 +115,12 @@ export function CellTree() {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
-            if (currentDepth > depth) continue;
-            // stop if the # cells is already low enough
-            if (parentNode.cells.length <= this.minLeafCells) continue;
+            // or stop if the # cells is already low enough
+            if (currentDepth > depth || parentNode.cells.length <= this.minLeafCells) {
+                cellsCountSum += parentNode.cells.length;
+                leavesCount++;
+                continue;
+            }
     
             var currentDimension = parentNode.splitDimension;
             var currentPoints = parentNode.points;
@@ -175,6 +180,8 @@ export function CellTree() {
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
+
+        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
     
         // return the tree object
         this.tree = root;
@@ -244,6 +251,7 @@ export function CellTree() {
         // tree has not been built
         if (!this.tree) return;
         var byteLength = this.getTreeByteLength();
+        console.log("tree buffer byte length: ", byteLength);
         // create a buffer to store the tree
         var treeBuffer = new ArrayBuffer(byteLength);
         // take the tree and pack it into a buffer representation

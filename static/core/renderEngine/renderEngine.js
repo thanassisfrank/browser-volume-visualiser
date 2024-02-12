@@ -65,6 +65,7 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
         buffers: {},
         textures: {},
         samplers: {},
+        bindGroups: {},
     };
 
     // data that is a reference to another renderable
@@ -73,6 +74,7 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
         buffers: {},
         textures: {},
         samplers: {},
+        bindGroups: {},
     }
 
     // additional data that doesn't need to be cleaned up

@@ -179,9 +179,12 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             indicesCount: renderable.indexCount,
             vertexBuffers: [renderable.renderData.buffers.vertex, renderable.renderData.buffers.normal],
             indexBuffer: renderable.renderData.buffers.index,
-            resources: [
-                [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
-            ],
+            bindGroups: {
+                0: webGPU.generateBG(
+                    thisPassDescriptor.bindGroupLayouts[0],
+                    [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
+                ),
+            },
             renderDescriptor: {
                 colorAttachments: [outputColourAttachment],
                 depthStencilAttachment: outputDepthAttachment

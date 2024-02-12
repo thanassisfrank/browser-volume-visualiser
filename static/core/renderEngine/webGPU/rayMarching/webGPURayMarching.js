@@ -364,6 +364,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             if (faceRenderMode == RenderableRenderModes.DATA_RAY_VOLUME) {
                 // structured
                 faceRenderable.sharedData.textures.data = dataRenderable.renderData.textures.data;
+                faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
+
+                faceRenderable.renderData.bindGroups.rayMarch0 = webGPU.generateBG(
+                    this.rayMarchPassDescriptor.bindGroupLayouts[0],
+                    [constsBuffer, faceRenderable.renderData.buffers.objectInfo],
+                );
+                faceRenderable.renderData.bindGroups.rayMarch1 =  webGPU.generateBG(
+                    this.rayMarchPassDescriptor.bindGroupLayouts[1],
+                    [faceRenderable.sharedData.buffers.passInfo, faceRenderable.sharedData.textures.data.createView()],
+                );
             } else {
                 // unstructured
                 faceRenderable.sharedData.buffers.values = dataRenderable.renderData.buffers.values;
@@ -374,9 +384,37 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
                 faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, "s cs cd", "face mesh consts");
                 faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, "s cs cd", "object info buffer s");
+                
+                faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
+                
+                faceRenderable.renderData.bindGroups.depth0 = webGPU.generateBG(
+                    this.depthRenderPassDescriptor.bindGroupLayouts[0],
+                    [
+                        constsBuffer, 
+                        faceRenderable.renderData.buffers.objectInfo
+                    ]
+                );
+                
+                faceRenderable.renderData.bindGroups.compute0 = webGPU.generateBG(
+                    this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
+                    [
+                        faceRenderable.renderData.buffers.consts, 
+                        faceRenderable.renderData.buffers.objectInfoStorage
+                    ],
+                );
+                faceRenderable.renderData.bindGroups.compute1 = webGPU.generateBG(
+                    this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
+                    [
+                        faceRenderable.sharedData.buffers.passInfo, 
+                        faceRenderable.sharedData.buffers.tree,
+                        faceRenderable.sharedData.buffers.positions,
+                        faceRenderable.sharedData.buffers.cellConnectivity,
+                        faceRenderable.sharedData.buffers.cellOffsets,
+                        faceRenderable.sharedData.buffers.values,
+                    ]
+                );
             }
 
-            faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
 
             // webGPU.readBuffer(faceRenderable.sharedData.buffers.tree, 0, 256).then(buff => console.log(new Uint32Array(buff)));
             meshRenderables.push(faceRenderable);
@@ -493,11 +531,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ],
                 depthStencilAttachment: outputDepthAttachment
             },
-            resources: [
-                [constsBuffer, renderable.renderData.buffers.objectInfo],
-                [renderable.sharedData.buffers.passInfo, renderable.sharedData.textures.data.createView()],
-                [this.offsetOptimisationTextureOld.createView()]
-            ],
+            bindGroups: {
+                0: renderable.renderData.bindGroups.rayMarch0,
+                1: renderable.renderData.bindGroups.rayMarch1,
+                2: webGPU.generateBG(
+                    this.rayMarchPassDescriptor.bindGroupLayouts[2],
+                    [this.offsetOptimisationTextureOld.createView()]
+                ),
+            },
             box: box,
             boundingBox: canvas.getBoundingClientRect(),
             vertexBuffers: [renderable.renderData.buffers.vertex],
@@ -558,12 +599,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         var depthPass = {
             ...this.depthRenderPassDescriptor,
             renderDescriptor: attachments,
-            resources: [
-                [
-                    constsBuffer, 
-                    renderable.renderData.buffers.objectInfo
-                ],
-            ],
+            bindGroups: {
+                0: renderable.renderData.bindGroups.depth0
+            },
             box: box,
             boundingBox: ctx.canvas.getBoundingClientRect(),
             vertexBuffers: [renderable.renderData.buffers.vertex],
@@ -583,26 +621,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         var rayMarchComputePass = {
             ...this.computeRayMarchPassDescriptor,
-            resources: [
-                [
-                    renderable.renderData.buffers.consts, 
-                    renderable.renderData.buffers.objectInfoStorage
-                ],
-                [
-                    renderable.sharedData.buffers.passInfo, 
-                    renderable.sharedData.buffers.tree,
-                    renderable.sharedData.buffers.positions,
-                    renderable.sharedData.buffers.cellConnectivity,
-                    renderable.sharedData.buffers.cellOffsets,
-                    renderable.sharedData.buffers.values,
-                ],
-                [
-                    this.depthTexture.createView(),
-                    this.offsetOptimisationTextureOld.createView(),
-                    this.offsetOptimisationTextureNew.createView(),
-                    outputColourAttachment.view
-                ]
-            ],
+            bindGroups: {
+                0: renderable.renderData.bindGroups.compute0,
+                1: renderable.renderData.bindGroups.compute1,
+                2: webGPU.generateBG(
+                    this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
+                    [
+                        this.depthTexture.createView(),
+                        this.offsetOptimisationTextureOld.createView(),
+                        this.offsetOptimisationTextureNew.createView(),
+                        outputColourAttachment.view
+                    ]
+                ),
+            },
             workGroups: WGs
         }
 

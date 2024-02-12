@@ -609,10 +609,10 @@ export function WebGPUBase (verbose) {
 
     // encodes a GPU pass onto the command encoder
     this.encodeGPUPass = function(commandEncoder, passObj) {
-        var bindGroups = [];
-        for (let i = 0; i < passObj.resources.length; i++) {
-            bindGroups.push(this.generateBG(passObj.bindGroupLayouts[i], passObj.resources[i]));
-        }
+        // var bindGroups = [];
+        // for (let i = 0; i < passObj.resources.length; i++) {
+        //     bindGroups.push(this.generateBG(passObj.bindGroupLayouts[i], passObj.resources[i]));
+        // }
         if (passObj.passType == this.PassTypes.RENDER) {
             const passEncoder = commandEncoder.beginRenderPass(passObj.renderDescriptor);
             var box = passObj.box;
@@ -638,8 +638,8 @@ export function WebGPUBase (verbose) {
             for (let i = 0; i < passObj.vertexBuffers.length; i++) {
                 passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
             }
-            for (let i = 0; i < bindGroups.length; i++) {
-                passEncoder.setBindGroup(i, bindGroups[i]);
+            for (let i in passObj.bindGroups) {
+                passEncoder.setBindGroup(i, passObj.bindGroups[i]);
             }
             if (passObj.indexed) {
                 passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
@@ -651,8 +651,8 @@ export function WebGPUBase (verbose) {
         } else if (passObj.passType == this.PassTypes.COMPUTE) {
             const passEncoder = commandEncoder.beginComputePass();
             passEncoder.setPipeline(passObj.pipeline);
-            for (let i = 0; i < bindGroups.length; i++) {
-                passEncoder.setBindGroup(i, bindGroups[i]);
+            for (let i in passObj.bindGroups) {
+                passEncoder.setBindGroup(i, passObj.bindGroups[i]);
             }
             passEncoder.dispatchWorkgroups(...passObj.workGroups);
             passEncoder.end();
