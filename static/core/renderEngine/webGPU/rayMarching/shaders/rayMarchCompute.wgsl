@@ -117,6 +117,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
 fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var x = queryPoint.x;
     var y = queryPoint.y;
     var z = queryPoint.z;
@@ -169,6 +170,7 @@ fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> 
 }
 
 // this implementation uses the scalar triple product
+fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
 fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var p = queryPoint;
     var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
@@ -247,6 +249,7 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             i++;
             continue;
         }
+        var tetFactors = pointInTetDet(queryPoint, cell);
         var tetFactors = pointInTetDet(queryPoint, cell);
         if (length(tetFactors) == 0) {
             i++;
@@ -338,6 +341,25 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
         return 0;
     };
     return dot(cell.values, cell.factors);
+}
+
+fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
+    var queryPoint = vec3<f32>(x, y, z);
+
+    var leafNode : KDTreeNode;
+    var lastBox = lastLeavesBox[threadIndex];
+    // look at the previous leaf node queried
+    if (pointInAABB(queryPoint, lastBox)) {
+        // still in last leaf
+        var leafNode = makeNodeFrom(lastBox.val);
+    } else {
+        // gone to new leaf
+        var result = getContainingLeafNode(queryPoint);
+        leafNode = result.node;
+        lastBox = result.box;
+    }
+
+    return getNearestDataValue(queryPoint, leafNode);
 }
 
 fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
