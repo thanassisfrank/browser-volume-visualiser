@@ -116,7 +116,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
-fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var x = queryPoint.x;
     var y = queryPoint.y;
     var z = queryPoint.z;
@@ -169,7 +169,7 @@ fn pointInTetFast(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32>
 }
 
 // this implementation uses the scalar triple product
-fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var p = queryPoint;
     var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
     var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
@@ -247,7 +247,7 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             i++;
             continue;
         }
-        var tetFactors = pointInTetFast(queryPoint, cell);
+        var tetFactors = pointInTetDet(queryPoint, cell);
         if (length(tetFactors) == 0) {
             i++;
             continue;
@@ -262,6 +262,52 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
     }
     return cell;
 }
+
+fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
+    var p0 = queryPoint;
+    var cell : InterpolationCell;
+
+    // check the cells in the leaf node found
+    var cellsPtr = leafNode.leaf; // go to where cells are stored
+    var cellID : u32;
+
+    // minimum squared distance
+    var minDistSq : f32;
+    // value of closest point
+    var closestVal : f32;
+
+    var i = 0u;
+    loop {
+        if (i >= leafNode.cellCount) {break;}
+        // go through and check all the contained cells
+        cellID = dataTree.buffer[cellsPtr + i];
+        // create a cell from the data
+
+        // figure out if cell is inside using barycentric coords
+        var pointsOffset : u32 = cellOffsets.buffer[cellID];
+        var j = 0u;
+        // read all the point positions
+        loop {
+            // get the coords of the point as an array 3
+            var thisPointIndex = cellConnectivity.buffer[pointsOffset + j];
+            cell.points[j] = vertexPositions.buffer[thisPointIndex];
+            var p1 = cell.points[j];
+            if (
+                (j == 0u && i == 0u) || 
+                minDistSq > pow(p0[0] - p1[0], 2) + pow(p0[1] - p1[1], 2) + pow(p0[2] - p1[2], 2)
+            ) 
+            {
+                closestVal = vertexData.buffer[cellConnectivity.buffer[pointsOffset + j]];
+            }
+            j++;
+            if (j > 3u) {break;}
+        }
+        i++;
+    }
+
+    return closestVal;
+}
+
 
 
 // sampling unstructred mesh data
@@ -290,6 +336,25 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
         return 0;
     };
     return dot(cell.values, cell.factors);
+}
+
+fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
+    var queryPoint = vec3<f32>(x, y, z);
+
+    var leafNode : KDTreeNode;
+    var lastBox = lastLeavesBox[threadIndex];
+    // look at the previous leaf node queried
+    if (pointInAABB(queryPoint, lastBox)) {
+        // still in last leaf
+        var leafNode = makeNodeFrom(lastBox.val);
+    } else {
+        // gone to new leaf
+        var result = getContainingLeafNode(queryPoint);
+        leafNode = result.node;
+        lastBox = result.box;
+    }
+
+    return getNearestDataValue(queryPoint, leafNode);
 }
 
 
