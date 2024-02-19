@@ -36,13 +36,20 @@ struct RayMarchPassFlags {
 struct RayMarchResult {
     fragCol : vec4<f32>,
     surfaceDepth : f32
-}
+};
 
 // offset optimisation sample
 struct OptimisationSample {
     offset: f32,
     depth: f32,
-}
+};
+
+// axis aligned bounding box with a value slot
+struct AABB {
+    min : vec3<f32>,
+    max : vec3<f32>,
+    val : u32,
+};
 
 // functions ======================================================================================
 
@@ -62,6 +69,17 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 10)) != 0,
         (flagUint & (1u << 11)) != 0,
     );
+};
+
+// test if a given point is within an AABB
+fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
+    if (p.x < box.min.x || p.y < box.min.y || p.z < box.min.z) {
+        return false;
+    }
+    if (p.x > box.max.x || p.y > box.max.y || p.z > box.max.z) {
+        return false;
+    }
+    return true;
 };
 
 // recovers the normal (gradient) of the data at the given point
@@ -108,11 +126,7 @@ fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit
 // attenuates a background colour by a medium colour
 // takes the absorption coefficients as input and converts into transmission factors
 fn attenuateCol(inCol : vec4<f32>, absorptionCol : vec3<f32>) -> vec4<f32> {
-    var transmission = vec3<f32>(
-        exp2(-absorptionCol.r),
-        exp2(-absorptionCol.g),
-        exp2(-absorptionCol.b),
-    );
+    var transmission = exp2(-absorptionCol);
     return vec4<f32>(
         inCol.r * transmission.r,
         inCol.g * transmission.g,
@@ -131,6 +145,7 @@ fn marchRay(
     startInDataset : bool, 
     offset : f32
 ) -> RayMarchResult {
+    var dataBox : AABB = AABB(vec3<f32>(0), dataSize, 0u);
     var ray = rayStub;
     var enteredDataset = startInDataset;
 
@@ -155,11 +170,7 @@ fn marchRay(
         }
         var tipDataPos = toDataSpace(ray.tip); // the tip in data space
         // check if tip has left data
-        if (
-            tipDataPos.x > dataSize.x - 1 || tipDataPos.x < 0 ||
-            tipDataPos.y > dataSize.y - 1 || tipDataPos.y < 0 ||
-            tipDataPos.z > dataSize.z - 1 || tipDataPos.z < 0
-        ) {
+        if (!pointInAABB(tipDataPos, dataBox)) {
             // have gone all the way through the dataset
             if (enteredDataset) {
                 break;
@@ -168,6 +179,7 @@ fn marchRay(
             enteredDataset = true;
             stepsInside++;
 
+            // sample the dataset, this is an external function 
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
             if (sampleVal > passInfo.threshold) {
                 thisAbove = true;
@@ -212,6 +224,11 @@ fn marchRay(
                 if (passFlags.showVolume) {
                     // acumulate colour
                     volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                    // check if the volume is too opaque
+                    var cutoff : f32 = 10;
+                    if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
+                        break;
+                    }
                 }
             }
         }

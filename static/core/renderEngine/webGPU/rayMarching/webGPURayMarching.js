@@ -240,7 +240,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             webGPU.PassTypes.COMPUTE,
             {},
             computeRayMarchBindGroupLayouts,
-            {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y}},
+            {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y, WGVol: this.WGSize.x * this.WGSize.y}},
             "ray march pass (compute)"
         )
 

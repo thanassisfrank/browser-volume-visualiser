@@ -40,6 +40,7 @@
 @group(2) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
 
 
+
 struct KDTreeNode {
     splitDimension : u32, // the dimensions of the split
     splitVal : f32,       // the value this node is split at into left and right
@@ -48,6 +49,11 @@ struct KDTreeNode {
     leftPtr : u32,        // where the left child is
     rightPtr : u32,       // where the right child is
 };
+
+struct KDTreeResult {
+    node : KDTreeNode,
+    box : AABB,
+}
 
 struct InterpolationCell {
     points : array<array<f32, 3>, 4>,
@@ -60,31 +66,42 @@ struct Sample {
     valid : bool
 };
 
+// // used to keep a track of the last leaves sampled
+var<workgroup> lastLeavesBox : array<AABB, {{WGVol}}>;
+var<workgroup> datasetBox : AABB;
+
+var<private> threadIndex : u32;
 
 
-fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
+fn makeNodeFrom(index : u32) -> KDTreeNode {
+    return KDTreeNode(
+        dataTree.buffer[index + 0],
+        bitcast<f32>(dataTree.buffer[index + 1]),
+        dataTree.buffer[index + 2],
+        dataTree.buffer[index + 3],
+        dataTree.buffer[index + 4],
+        dataTree.buffer[index + 5],
+    );
+}
+
+fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     // traverse the data tree (kdtree) to find the correct leaf node
     var depth = 0;
     var currNodePtr : u32 = 0u;
     var currNode : KDTreeNode;
+    var box : AABB = datasetBox;
     loop {
         // make a node at the current position
-        currNode = KDTreeNode(
-                         dataTree.buffer[currNodePtr + 0],
-            bitcast<f32>(dataTree.buffer[currNodePtr + 1]),
-                         dataTree.buffer[currNodePtr + 2],
-                         dataTree.buffer[currNodePtr + 3],
-                         dataTree.buffer[currNodePtr + 4],
-                         dataTree.buffer[currNodePtr + 5],
-
-        );
-        // break;
+        currNode = makeNodeFrom(currNodePtr);
+        box.val = currNodePtr;
         if (currNode.cellCount == 0) {
             // have to carry on down the tree
             if (queryPoint[currNode.splitDimension] <= currNode.splitVal) {
                 currNodePtr = currNode.leftPtr;
+                box.max[currNode.splitDimension] = currNode.splitVal;
             } else {
                 currNodePtr = currNode.rightPtr;
+                box.min[currNode.splitDimension] = currNode.splitVal;
             }
             depth++;
         } else {
@@ -94,7 +111,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeNode {
 
     }
 
-    return currNode;
+    return KDTreeResult(currNode, box);
 }
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
@@ -184,23 +201,19 @@ fn pointInTet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     }
 }
 
-fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
-    var xMax = max(cell.points[0][0], max(cell.points[1][0], max(cell.points[2][0], cell.points[3][0])));
-    var xMin = min(cell.points[0][0], min(cell.points[1][0], min(cell.points[2][0], cell.points[3][0])));
+fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
+    var minVec = vec3<f32>(
+        min(cell.points[0][0], min(cell.points[1][0], min(cell.points[2][0], cell.points[3][0]))),
+        min(cell.points[0][1], min(cell.points[1][1], min(cell.points[2][1], cell.points[3][1]))),
+        min(cell.points[0][2], min(cell.points[1][2], min(cell.points[2][2], cell.points[3][2]))),
+    );
+    var maxVec = vec3<f32>(
+        max(cell.points[0][0], max(cell.points[1][0], max(cell.points[2][0], cell.points[3][0]))),
+        max(cell.points[0][1], max(cell.points[1][1], max(cell.points[2][1], cell.points[3][1]))),
+        max(cell.points[0][2], max(cell.points[1][2], max(cell.points[2][2], cell.points[3][2]))),
+    );
 
-    if (queryPoint.x < xMin || queryPoint.x >= xMax) {return vec4<f32>(0);};
-
-    var yMax = max(cell.points[0][1], max(cell.points[1][1], max(cell.points[2][1], cell.points[3][1])));
-    var yMin = min(cell.points[0][1], min(cell.points[1][1], min(cell.points[2][1], cell.points[3][1])));
-
-    if (queryPoint.y < yMin || queryPoint.y >= yMax) {return vec4<f32>(0);};
-
-    var zMax = max(cell.points[0][2], max(cell.points[1][2], max(cell.points[2][2], cell.points[3][2])));
-    var zMin = min(cell.points[0][2], min(cell.points[1][2], min(cell.points[2][2], cell.points[3][2])));
-
-    if (queryPoint.z < zMin || queryPoint.z >= zMax) {return vec4<f32>(0);};
-
-    return vec4<f32>(1);
+    return pointInAABB(queryPoint, AABB(minVec, maxVec, 0u));
 }
 
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> InterpolationCell {
@@ -230,11 +243,10 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
         }
 
         // check cell bounding box
-        var boundFactors = pointInTetBounds(queryPoint, cell);
-        if (length(boundFactors) == 0) {
+        if(!pointInTetBounds(queryPoint, cell)) {
             i++;
             continue;
-        };
+        }
         var tetFactors = pointInTetFast(queryPoint, cell);
         if (length(tetFactors) == 0) {
             i++;
@@ -258,11 +270,20 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
 fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     var queryPoint = vec3<f32>(x, y, z);
 
-    var leafNode : KDTreeNode = getContainingLeafNode(queryPoint);
-    // return f32(leafNode.leaf)/5000;
+    var leafNode : KDTreeNode;
+    var lastBox = lastLeavesBox[threadIndex];
+    // look at the previous leaf node queried
+    if (pointInAABB(queryPoint, lastBox)) {
+        // still in last leaf
+        var leafNode = makeNodeFrom(lastBox.val);
+    } else {
+        // gone to new leaf
+        var result = getContainingLeafNode(queryPoint);
+        leafNode = result.node;
+        lastBox = result.box;
+    }
 
     var cell : InterpolationCell = getContainingCell(queryPoint, leafNode);
-    // return cell.values[0];
 
     // interpolate value
     if (length(cell.factors) == 0) {
@@ -337,6 +358,13 @@ fn main(
     @builtin(workgroup_id) wgid : vec3<u32>,
     @builtin(num_workgroups) wgnum : vec3<u32>
 ) {  
+
+    threadIndex = localIndex;
+    if (threadIndex == 1u) {
+        datasetBox = AABB(vec3<f32>(0), passInfo.dataSize, 0);
+    }
+    workgroupBarrier();
+
     var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image and on the mesh
     if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1 || !pixelOnVolume(id.x, id.y)) {
