@@ -63,6 +63,10 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
 
 }
 
+fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
+    return getDataValue(u32(round(x)), u32(round(y)), u32(round(z)));
+}
+
 // takes device coords (-1 to 1)
 fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
     var textureDims : vec2<u32> = textureDimensions(offsetOptimisationTextureOld);

@@ -30,6 +30,7 @@ struct RayMarchPassFlags {
     optimiseOffset: bool,
     showOffset: bool,
     showDeviceCoords: bool,
+    sampleNearest: bool,
 };
 
 // the return value of the ray-march function
@@ -56,18 +57,19 @@ struct AABB {
 // create a flags struct from the u32
 fn getFlags(flagUint : u32) -> RayMarchPassFlags {
     return RayMarchPassFlags(
-        (flagUint & (1u << 0)) != 0,
-        (flagUint & (1u << 1)) != 0,
-        (flagUint & (1u << 2)) != 0,
-        (flagUint & (1u << 3)) != 0,
-        (flagUint & (1u << 4)) != 0,
-        (flagUint & (1u << 5)) != 0,
-        (flagUint & (1u << 6)) != 0,
-        (flagUint & (1u << 7)) != 0,
-        (flagUint & (1u << 8)) != 0,
-        (flagUint & (1u << 9)) != 0,
+        (flagUint & (1u << 0 )) != 0,
+        (flagUint & (1u << 1 )) != 0,
+        (flagUint & (1u << 2 )) != 0,
+        (flagUint & (1u << 3 )) != 0,
+        (flagUint & (1u << 4 )) != 0,
+        (flagUint & (1u << 5 )) != 0,
+        (flagUint & (1u << 6 )) != 0,
+        (flagUint & (1u << 7 )) != 0,
+        (flagUint & (1u << 8 )) != 0,
+        (flagUint & (1u << 9 )) != 0,
         (flagUint & (1u << 10)) != 0,
         (flagUint & (1u << 11)) != 0,
+        (flagUint & (1u << 12)) != 0,
     );
 };
 
@@ -180,7 +182,11 @@ fn marchRay(
             stepsInside++;
 
             // sample the dataset, this is an external function 
-            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            if (passFlags.sampleNearest) {
+                sampleVal = sampleNearestDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            } else {
+                sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            }
             if (sampleVal > passInfo.threshold) {
                 thisAbove = true;
             } else {

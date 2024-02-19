@@ -48,6 +48,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         optimiseOffset: true,
         showOffset: false,
         showDeviceCoords: false,
+        sampleNearest: false,
 
         // not sent to gpu
         cheapMove: false,
@@ -72,18 +73,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.getPassFlagsUint = function() {
         var flags = 0;
-        flags |= this.passFlags.phong          << 0 & 0b1 << 0;
-        flags |= this.passFlags.backStep       << 1 & 0b1 << 1;
-        flags |= this.passFlags.showNormals    << 2 & 0b1 << 2;
-        flags |= this.passFlags.showVolume     << 3 & 0b1 << 3;
-        flags |= this.passFlags.fixedCamera    << 4 & 0b1 << 4;
-        flags |= this.passFlags.randStart      << 5 & 0b1 << 5;
-        flags |= this.passFlags.showSurface    << 6 & 0b1 << 6;
-        flags |= this.passFlags.showRayDirs    << 7 & 0b1 << 7;
-        flags |= this.passFlags.showRayLength  << 8 & 0b1 << 8;
-        flags |= this.passFlags.optimiseOffset << 9 & 0b1 << 9;
-        flags |= this.passFlags.showOffset     << 10 & 0b1 << 10;
+        flags |= this.passFlags.phong            << 0  & 0b1 << 0;
+        flags |= this.passFlags.backStep         << 1  & 0b1 << 1;
+        flags |= this.passFlags.showNormals      << 2  & 0b1 << 2;
+        flags |= this.passFlags.showVolume       << 3  & 0b1 << 3;
+        flags |= this.passFlags.fixedCamera      << 4  & 0b1 << 4;
+        flags |= this.passFlags.randStart        << 5  & 0b1 << 5;
+        flags |= this.passFlags.showSurface      << 6  & 0b1 << 6;
+        flags |= this.passFlags.showRayDirs      << 7  & 0b1 << 7;
+        flags |= this.passFlags.showRayLength    << 8  & 0b1 << 8;
+        flags |= this.passFlags.optimiseOffset   << 9  & 0b1 << 9;
+        flags |= this.passFlags.showOffset       << 10 & 0b1 << 10;
         flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
+        flags |= this.passFlags.sampleNearest    << 12 & 0b1 << 12;
         return flags;
     }
 
