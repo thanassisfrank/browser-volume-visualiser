@@ -5,25 +5,29 @@
 {{utils.wgsl}}
 {{rayMarchUtils.wgsl}}
 
-// data common to all rendering
+struct CombinedPassInfo {
+    @size(208) globalInfo : GlobalUniform,
+    @size(160) objectInfo : ObjectInfo,
+    @size(128) passInfo : RayMarchPassInfo,
+};
+
+// data important for drawing objects
 // camera mats, position
-@group(0) @binding(0) var<storage, read> globalInfo : GlobalUniform;
 // object matrix, colours
-@group(0) @binding(1) var<storage, read> objectInfo : ObjectInfo;
+// threshold, data matrix, march parameters
+@group(0) @binding(0) var<storage, read> combinedPassInfo : CombinedPassInfo;
 
 // ray marching data
-// threshold, data matrix, march parameters
-@group(1) @binding(0) var<storage, read> passInfo : RayMarchPassInfo;
 // data tree, leaves contain a list of intersecting cell ids
-@group(1) @binding(1) var<storage, read> dataTree : U32Buff; 
+@group(1) @binding(0) var<storage, read> dataTree : U32Buff; 
 // positions of each of the vertices in the mesh
-@group(1) @binding(2) var<storage, read> vertexPositions : PointsBuff;
+@group(1) @binding(1) var<storage, read> vertexPositions : PointsBuff;
 // what verts make up each cell, indexes into vertexPositions 
-@group(1) @binding(3) var<storage, read> cellConnectivity : U32Buff;
+@group(1) @binding(2) var<storage, read> cellConnectivity : U32Buff;
 // where the vert index list starts for each cell, indexes into cellConnectivity
-@group(1) @binding(4) var<storage, read> cellOffsets : U32Buff;
+@group(1) @binding(3) var<storage, read> cellOffsets : U32Buff;
 // the data values associated with each vertex
-@group(1) @binding(5) var<storage, read> vertexData : F32Buff;
+@group(1) @binding(4) var<storage, read> vertexData : F32Buff;
 // the types of each cell i.e. how many verts it has
 // @group(1) @binding(6) var<storage> cellTypes : U32Buff;
 
@@ -71,6 +75,9 @@ var<workgroup> lastLeavesBox : array<AABB, {{WGVol}}>;
 var<workgroup> datasetBox : AABB;
 
 var<private> threadIndex : u32;
+var<private> globalInfo : GlobalUniform;
+var<private> objectInfo : ObjectInfo;
+var<private> passInfo : RayMarchPassInfo;
 
 
 fn makeNodeFrom(index : u32) -> KDTreeNode {
@@ -116,7 +123,6 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
-fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
 fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var x = queryPoint.x;
     var y = queryPoint.y;
@@ -170,7 +176,6 @@ fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> 
 }
 
 // this implementation uses the scalar triple product
-fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
 fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
     var p = queryPoint;
     var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
@@ -249,7 +254,6 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             i++;
             continue;
         }
-        var tetFactors = pointInTetDet(queryPoint, cell);
         var tetFactors = pointInTetDet(queryPoint, cell);
         if (length(tetFactors) == 0) {
             i++;
@@ -362,25 +366,6 @@ fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
     return getNearestDataValue(queryPoint, leafNode);
 }
 
-fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
-    var queryPoint = vec3<f32>(x, y, z);
-
-    var leafNode : KDTreeNode;
-    var lastBox = lastLeavesBox[threadIndex];
-    // look at the previous leaf node queried
-    if (pointInAABB(queryPoint, lastBox)) {
-        // still in last leaf
-        var leafNode = makeNodeFrom(lastBox.val);
-    } else {
-        // gone to new leaf
-        var result = getContainingLeafNode(queryPoint);
-        leafNode = result.node;
-        lastBox = result.box;
-    }
-
-    return getNearestDataValue(queryPoint, leafNode);
-}
-
 
 fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
     var outCol = vec4<f32>(vec3<f32>(1-col.a), 0) + vec4<f32>(col.a*col.rgb, col.a);
@@ -447,6 +432,10 @@ fn main(
     @builtin(workgroup_id) wgid : vec3<u32>,
     @builtin(num_workgroups) wgnum : vec3<u32>
 ) {  
+
+    passInfo = combinedPassInfo.passInfo;
+    objectInfo = combinedPassInfo.objectInfo;
+    globalInfo = combinedPassInfo.globalInfo;
 
     threadIndex = localIndex;
     if (threadIndex == 1u) {

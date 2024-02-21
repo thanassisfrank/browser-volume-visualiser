@@ -19,7 +19,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.depthRenderPassDescriptor;
 
     // required: x*y*z <= 256 
-    this.WGSize = {x: 16, y: 16};
+    // optimal seems to be 8x8
+    this.WGSize = {x: 8, y: 8};
 
     this.materials = {
         frontMaterial: {
@@ -135,16 +136,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {type: "read-only-storage"}
                 },
-                {
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {type: "read-only-storage"}
-                },
             ], "computeRay0"),
             webGPU.createBindGroupLayout([
-                {
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {type: "read-only-storage"}
-                },
                 {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {type: "read-only-storage"}
@@ -294,14 +287,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage);
         // only handle tetrahedra for now
         // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
-        
-        // generate the tree
-        var cellTreeBuffer = dataObj.getCellTreeBuffer();
-        // console.log(new Uint32Array(cellTreeBuffer));
         // write the tree buffer
-        renderData.buffers.tree = webGPU.createFilledBuffer("u8", new Uint8Array(cellTreeBuffer), usage);
+        renderData.buffers.tree = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.cellTree), usage);
 
-        renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");
+        //renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");
 
         return renderable;
     }
@@ -384,10 +373,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.sharedData.buffers.cellOffsets = dataRenderable.renderData.buffers.cellOffsets;                
                 faceRenderable.sharedData.buffers.tree = dataRenderable.renderData.buffers.tree;
 
+                // setup buffers for compute ray march pass
                 faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, "s cs cd", "face mesh consts");
                 faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, "s cs cd", "object info buffer s");
-                
                 faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
+
+                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(512, "s cs cd", "combined ray march pass info");
+
                 
                 faceRenderable.renderData.bindGroups.depth0 = webGPU.generateBG(
                     this.depthRenderPassDescriptor.bindGroupLayouts[0],
@@ -400,14 +392,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.renderData.bindGroups.compute0 = webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
                     [
-                        faceRenderable.renderData.buffers.consts, 
-                        faceRenderable.renderData.buffers.objectInfoStorage
+                        faceRenderable.renderData.buffers.combinedPassInfo, 
                     ],
                 );
+
                 faceRenderable.renderData.bindGroups.compute1 = webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
                     [
-                        faceRenderable.sharedData.buffers.passInfo, 
                         faceRenderable.sharedData.buffers.tree,
                         faceRenderable.sharedData.buffers.positions,
                         faceRenderable.sharedData.buffers.cellConnectivity,
@@ -572,10 +563,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
                     0, 0, 0,
-                    ...renderable.passData.dataSize,
+                    ...renderable.passData.dataSize, 0,
                     this.getStepSize(),
                     this.globalPassInfo.maxRayLength,
-                    0, 0, 0, // padding
+                    0, 0, // padding
                     ...renderable.passData.dMatInv,
                 ])
             ]
@@ -611,15 +602,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             indicesCount: renderable.indexCount,
         }
 
+        // encode the depth pass
         webGPU.encodeGPUPass(commandEncoder, depthPass);
 
-        // do a full ray march pass to 
 
+        // do a full ray march pass
         var WGs = [
             Math.ceil(ctx.canvas.width/this.WGSize.x), 
             Math.ceil(ctx.canvas.height/this.WGSize.y)
         ];
-        // console.log(WGs);
         
         var rayMarchComputePass = {
             ...this.computeRayMarchPassDescriptor,
@@ -639,29 +630,38 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             workGroups: WGs
         }
 
-        // // encode the render pass
+        // encode the render pass
         webGPU.encodeGPUPass(commandEncoder, rayMarchComputePass);
 
         // write buffers
+        // global info buffer for depth pass
         webGPU.writeDataToBuffer(
             constsBuffer,
             [camera.serialise(), new Uint32Array([performance.now()])]
         );
-        webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.consts,
-            [camera.serialise(), new Uint32Array([performance.now()])]
-        );
+        // object info for depth pass
         webGPU.writeDataToBuffer(
             renderable.renderData.buffers.objectInfo, 
             [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
+        
+
+        // global info buffer for compute
         webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.objectInfoStorage, 
-            [new Float32Array(renderable.transform), renderable.serialisedMaterials]
-        );
-        webGPU.writeDataToBuffer(
-            renderable.sharedData.buffers.passInfo, 
+            renderable.renderData.buffers.combinedPassInfo,
             [
+                // global info
+                camera.serialise(),
+                new Uint32Array([
+                    performance.now(),
+                    0, 0, 0
+                ]),
+                
+                // object info
+                new Float32Array(renderable.transform), 
+                renderable.serialisedMaterials,
+
+                // pass info
                 new Uint32Array([
                     this.getPassFlagsUint(),
                     this.globalPassInfo.framesSinceMove,
@@ -671,14 +671,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
                     0, 0, 0,
-                    ...renderable.passData.dataSize,
+                    ...renderable.passData.dataSize, 0,
                     this.getStepSize(),
                     this.globalPassInfo.maxRayLength,
-                    0, 0, 0, // padding
+                    0, 0, // padding
                     ...renderable.passData.dMatInv,
-                ])
+                ]),
             ]
-        );
+        )
 
         device.queue.submit([commandEncoder.finish()]);
     }

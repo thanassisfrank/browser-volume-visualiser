@@ -4,6 +4,7 @@
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
 import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
+import { DataFormats } from "../../data/data.js";
 
 
 export function WebGPURenderableManager(webGPUBase, rayMarcher) {
@@ -44,9 +45,28 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             case SceneObjectTypes.EMPTY:
             case SceneObjectTypes.CAMERA:
             case SceneObjectTypes.LIGHT:
+            default:
                 break;
         }
     }  
+
+    this.updateSceneObject = function(dt, sceneObj) {
+        switch (sceneObj.objectType) {
+            case SceneObjectTypes.DATA:
+                this.updateDataRenderables(sceneObj);
+                break;
+            default:
+                break;
+        }
+        
+    }
+
+    this.updateDataRenderables = function(data) {
+        // propogate the threshold to its renderables
+        for (let renderable of data.renderables) {
+            renderable.passData.threshold = data.threshold;
+        }
+    }
 
     this.clearRenderables = function(sceneObj) {
         for (let renderable of sceneObj.renderables) {
@@ -143,6 +163,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             console.log("sorry, this data render mode is not supported yet");
         }
         if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
+            // setup the dataset for ray marching
             this.rayMarcher.setupRayMarch(data);
         }
     }

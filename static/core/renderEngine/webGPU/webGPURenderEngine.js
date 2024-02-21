@@ -150,6 +150,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     this.setupSceneObject = function(sceneObj) {
         this.renderableManager.setupSceneObject(sceneObj);
     };
+
+    this.updateSceneObject = function(dt, sceneObj) {
+        this.renderableManager.updateSceneObject(dt, sceneObj);
+    }
     
     this.cleanupSceneObj = function(sceneObj) {
         this.renderableManager.clearRenderables(sceneObj);

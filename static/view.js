@@ -162,9 +162,9 @@ export var viewManager = {
         if(get("add-view-container")) show(get("add-view-container"));
     },
 
-    update: function(dt, marchingCubesEngine) {
+    update: function(dt, renderEngine) {
         for (let key in this.views) {
-            this.views[key].update(dt, marchingCubesEngine);
+            this.views[key].update(dt, renderEngine);
         }
     },
     
@@ -198,6 +198,7 @@ function View(id, camera, data, renderMode, threshold) {
         this.sceneGraph.insertChild(this.data);
         this.sceneGraph.insertChild(new Axes(10));
         
+        // setup the renderables
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
             renderEngine.setupSceneObject(sceneObj);
         }
@@ -219,8 +220,9 @@ function View(id, camera, data, renderMode, threshold) {
         // propagate the threshold to where is it needed
         this.data.threshold = this.threshold;
 
-        for (let renderable of this.data.renderables) {
-            renderable.passData.threshold = this.threshold;
+        // update the renderables for the objects in the scene
+        for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
+            renderEngine.updateSceneObject(dt, sceneObj);
         }
     }
     this.getFrameElem = function() {

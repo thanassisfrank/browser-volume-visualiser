@@ -5,7 +5,7 @@ import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
-import { CellTree } from "./cellTree.js";
+import { getCellTreeBuffer } from "./cellTree.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
@@ -20,18 +20,17 @@ export const DataFormats = {
     UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
 }
 
+export const ResolutionModes = {
+    FULL:    0, // resolution is fixed at the maximum 
+    DYNAMIC: 1, // the resolution is variable
+}
+
 // object that manages data object instances
 // types of data object creatable:
 // - from a function
 //   a function is supplied as well as dimensions and the full dataset is generated on creation
 // - from a file (simple)
 //   a source path is specified and the whole dataset is loaded on creation
-// - from a file (complex)
-//   a dataset name is specified and a coars global set of data is loaded on creation
-//   when marching, a finer set of data for the threshold region can be requested
-// - from a VTS file
-//   structured grid is specified
-//   if the file is multiblock, a separate data object will be stored for each
 
 var dataManager = {
     datas: {},
@@ -203,7 +202,11 @@ var dataManager = {
                 }
             }
         }
+
+        // create the cell tree
+        dataObj.data.cellTree = getCellTreeBuffer(dataObj);
     },
+    
     addUser: function(data) {
         this.datas[data.id].users++;
         return  this.datas[data.id].users;
@@ -237,6 +240,8 @@ function Data(id) {
 
     // what kind of data file this contains
     this.dataFormat = DataFormats.EMPTY;
+    // how the data will be presented to the user
+    this.resolutionMode = ResolutionModes.FULL;
 
     // what this.data represents
     this.dataName = "";
@@ -250,6 +255,8 @@ function Data(id) {
         cellConnectivity: null,
         cellOffsets: null,
         cellTypes: null,
+        // spatial acceleration structure
+        cellTree: null,
     };
 
     // supplemental attributes
@@ -394,30 +401,6 @@ function Data(id) {
     }
     this.getName = function() {
         return this.config.name || "Unnamed data";
-    }
-
-    // generates the cell tree for fast lookups in unstructured data
-    this.getCellTreeBuffer = function() {
-        var maxDepth = 16;
-        var tree = new CellTree();
-        // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
-        tree.build(
-            3, 
-            maxDepth, 
-            this.data.positions, 
-            this.data.cellConnectivity,
-            this.data.cellOffsets,
-            this.data.cellTypes
-        );
-        var treeBuffer = tree.serialise();
-        // console.log("GOOD: positions");
-        // console.log(this.data.positions);
-        // console.log("connectivity");
-        // console.log(this.data.cellConnectivity);
-        // console.log("GOOD: cell offsets");
-        // console.log(this.data.cellOffsets);
-        // tree.printNodes();
-        return treeBuffer;
     }
 
     // returns a mat4 encoding object space -> data space

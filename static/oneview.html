@@ -286,7 +286,8 @@
                     // update the objects
                     frameTimeGraph.update(dt);
                     // does stuff like propagating threshold value, fetching required data
-                    viewManager.update(0, renderEngine);
+                    viewManager.update(dt, renderEngine);
+                    
                     
                     // render the scenes
                     // includes doing marching cubes/ray marching if required by object

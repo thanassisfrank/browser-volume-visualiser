@@ -1,5 +1,6 @@
 // cellTree.js
 // allows creating a kd based cell tree
+// manages
 
 const NODE_BYTE_LENGTH = 8*4;
 
@@ -45,6 +46,35 @@ var pivotFull = (a) => {
     });
     // console.log(sorted);
     return sorted[Math.floor(a.length/2) - 1];
+}
+
+// generates the cell tree for fast lookups in unstructured data
+export var getCellTreeBuffer = (dataObj) => {
+    var maxDepth = 16;
+    var tree = new CellTree();
+    // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
+    var t0 = performance.now();
+    tree.build(
+        3, 
+        maxDepth, 
+        dataObj.data.positions, 
+        dataObj.data.cellConnectivity,
+        dataObj.data.cellOffsets,
+        dataObj.data.cellTypes
+    );
+    var t1 = performance.now();
+    console.log("tree build took:", (t1 - t0)/1000, "s");
+    var treeBuffer = tree.serialise();
+    var t2 = performance.now();
+    console.log("tree serialise took:", (t2 - t1)/1000, "s");
+    // console.log("GOOD: positions");
+    // console.log(this.data.positions);
+    // console.log("connectivity");
+    // console.log(this.data.cellConnectivity);
+    // console.log("GOOD: cell offsets");
+    // console.log(this.data.cellOffsets);
+    // tree.printNodes();
+    return treeBuffer;
 }
    
 
@@ -186,6 +216,10 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
+    }
+    
+    this.buildIntoBuffer = function(dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes) {
+
     }
     // builds a tree by iteratively inserting cells until a node has > the limit
     // can pick cells randomly

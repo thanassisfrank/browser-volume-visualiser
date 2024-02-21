@@ -4,16 +4,17 @@
 // structs ========================================================================================
 
 // information needed for the ray marching pass
+// 128 bytes in total
 struct RayMarchPassInfo {
-    flags : u32,
-    framesSinceMove : u32,
-    threshold : f32,
-    dataLowLimit : f32,
-    dataHighLimit : f32,
-    dataSize : vec3<f32>,
-    stepSize : f32,
-    maxLength : f32,
-    dMatInv : mat4x4<f32>, // from world space -> data space
+    @size(4)  flags : u32,
+    @size(4)  framesSinceMove : u32,
+    @size(4)  threshold : f32,
+    @size(4)  dataLowLimit : f32,
+    @size(16) dataHighLimit : f32,
+    @size(16) dataSize : vec3<f32>,
+    @size(4)  stepSize : f32,
+    @size(12) maxLength : f32,
+    @size(64) dMatInv : mat4x4<f32>, // from world space -> data space
 };
 
 // a set of flags for settings within the pass

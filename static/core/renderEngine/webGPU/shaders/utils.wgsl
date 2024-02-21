@@ -19,10 +19,11 @@ struct U32Buff {
 };
 
 // used for shading surfaces according to the phong model
+// 48 bytes in total
 struct Material {
     @size(16) diffuseCol : vec3<f32>,
     @size(16) specularCol : vec3<f32>,
-    shininess : f32,
+    @size(16)  shininess : f32,
 };
 
 // a global light with colour and direction
@@ -34,26 +35,28 @@ struct DirectionalLight {
 // information about the scene's camera
 // 192 bytes in total
 struct Camera {
-    pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
-    mvMat : mat4x4<f32>, // camera view matrix
+    @size(64) pMat : mat4x4<f32>,  // camera perspective matrix (viewport transform)
+    @size(64) mvMat : mat4x4<f32>, // camera view matrix
     @size(16) position : vec3<f32>,
     @size(16) upDirection : vec3<f32>,
     @size(16) rightDirection : vec3<f32>,
-    fovy : f32,
-    fovx : f32,
+    @size(4)  fovy : f32,
+    @size(12) fovx : f32,
 };
 
 // common global information struct for all render passes
+// 208 bytes in total
 struct GlobalUniform {
-    camera : Camera,
-    time : u32, // time in ms
+    @size(192) camera : Camera,
+    @size(16) time : u32, // time in ms
 };
 
 // specific info for the object being rendered
+// 160 bytes in total
 struct ObjectInfo {
-    otMat : mat4x4<f32>, // object transform matrix
-    frontMaterial : Material, // material for front facing frags
-    backMaterial : Material // material for back facing frags
+    @size(64) otMat : mat4x4<f32>, // object transform matrix
+    @size(48) frontMaterial : Material, // material for front facing frags
+    @size(48) backMaterial : Material // material for back facing frags
 };
 
 // general purpose ray struct
