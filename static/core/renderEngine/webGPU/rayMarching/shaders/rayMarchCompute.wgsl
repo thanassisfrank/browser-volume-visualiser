@@ -11,6 +11,17 @@ struct CombinedPassInfo {
     @size(128) passInfo : RayMarchPassInfo,
 };
 
+struct KDTreeNode {
+    @size(4) splitVal : f32,       // the value this node is split at into left and right
+    @size(4) cellCount: u32,       // # cells within this node
+    @size(4) leftPtr : u32,        // where the left child is or cells location
+    @size(4) rightPtr : u32,       // where the right child is
+};
+
+struct TreeNodesBuff {
+    buffer : array<KDTreeNode>, 
+};
+
 // data important for drawing objects
 // camera mats, position
 // object matrix, colours
@@ -19,15 +30,16 @@ struct CombinedPassInfo {
 
 // ray marching data
 // data tree, leaves contain a list of intersecting cell ids
-@group(1) @binding(0) var<storage, read> dataTree : U32Buff; 
+@group(1) @binding(0) var<storage, read> treeNodes : TreeNodesBuff;
+@group(1) @binding(1) var<storage, read> treeCells : U32Buff; 
 // positions of each of the vertices in the mesh
-@group(1) @binding(1) var<storage, read> vertexPositions : PointsBuff;
+@group(1) @binding(2) var<storage, read> vertexPositions : PointsBuff;
 // what verts make up each cell, indexes into vertexPositions 
-@group(1) @binding(2) var<storage, read> cellConnectivity : U32Buff;
+@group(1) @binding(3) var<storage, read> cellConnectivity : U32Buff;
 // where the vert index list starts for each cell, indexes into cellConnectivity
-@group(1) @binding(3) var<storage, read> cellOffsets : U32Buff;
+@group(1) @binding(4) var<storage, read> cellOffsets : U32Buff;
 // the data values associated with each vertex
-@group(1) @binding(4) var<storage, read> vertexData : F32Buff;
+@group(1) @binding(5) var<storage, read> vertexData : F32Buff;
 // the types of each cell i.e. how many verts it has
 // @group(1) @binding(6) var<storage> cellTypes : U32Buff;
 
@@ -43,16 +55,6 @@ struct CombinedPassInfo {
 // output image after ray marching into volume
 @group(2) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
 
-
-
-struct KDTreeNode {
-    splitDimension : u32, // the dimensions of the split
-    splitVal : f32,       // the value this node is split at into left and right
-    cellCount: u32,       // # cells within this node
-    leaf : u32,           // location of cells start in buffer
-    leftPtr : u32,        // where the left child is
-    rightPtr : u32,       // where the right child is
-};
 
 struct KDTreeResult {
     node : KDTreeNode,
@@ -80,37 +82,28 @@ var<private> objectInfo : ObjectInfo;
 var<private> passInfo : RayMarchPassInfo;
 
 
-fn makeNodeFrom(index : u32) -> KDTreeNode {
-    return KDTreeNode(
-        dataTree.buffer[index + 0],
-        bitcast<f32>(dataTree.buffer[index + 1]),
-        dataTree.buffer[index + 2],
-        dataTree.buffer[index + 3],
-        dataTree.buffer[index + 4],
-        dataTree.buffer[index + 5],
-    );
-}
-
 fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     // traverse the data tree (kdtree) to find the correct leaf node
     var depth = 0;
+    var splitDimension = 0;
     var currNodePtr : u32 = 0u;
     var currNode : KDTreeNode;
     var box : AABB = datasetBox;
     loop {
         // make a node at the current position
-        currNode = makeNodeFrom(currNodePtr);
+        currNode = treeNodes.buffer[currNodePtr];//makeNodeFrom(currNodePtr);
         box.val = currNodePtr;
         if (currNode.cellCount == 0) {
             // have to carry on down the tree
-            if (queryPoint[currNode.splitDimension] <= currNode.splitVal) {
+            if (queryPoint[splitDimension] <= currNode.splitVal) {
                 currNodePtr = currNode.leftPtr;
-                box.max[currNode.splitDimension] = currNode.splitVal;
+                box.max[splitDimension] = currNode.splitVal;
             } else {
                 currNodePtr = currNode.rightPtr;
-                box.min[currNode.splitDimension] = currNode.splitVal;
+                box.min[splitDimension] = currNode.splitVal;
             }
             depth++;
+            splitDimension = depth % 3;
         } else {
             // got to the bottom
             break;
@@ -227,14 +220,14 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
     var cell : InterpolationCell;
 
     // check the cells in the leaf node found
-    var cellsPtr = leafNode.leaf; // go to where cells are stored
+    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
     var foundCell = false;
     var cellID : u32;
     var i = 0u;
     loop {
         if (i >= leafNode.cellCount) {break;}
         // go through and check all the contained cells
-        cellID = dataTree.buffer[cellsPtr + i];
+        cellID = treeCells.buffer[cellsPtr + i];
         // create a cell from the data
 
         // figure out if cell is inside using barycentric coords
@@ -275,7 +268,7 @@ fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
     var cell : InterpolationCell;
 
     // check the cells in the leaf node found
-    var cellsPtr = leafNode.leaf; // go to where cells are stored
+    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
     var cellID : u32;
 
     // minimum squared distance
@@ -287,7 +280,7 @@ fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
     loop {
         if (i >= leafNode.cellCount) {break;}
         // go through and check all the contained cells
-        cellID = dataTree.buffer[cellsPtr + i];
+        cellID = treeCells.buffer[cellsPtr + i];
         // create a cell from the data
 
         // figure out if cell is inside using barycentric coords
@@ -330,7 +323,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     // look at the previous leaf node queried
     if (pointInAABB(queryPoint, lastBox)) {
         // still in last leaf
-        var leafNode = makeNodeFrom(lastBox.val);
+        var leafNode = treeNodes.buffer[lastBox.val];
     } else {
         // gone to new leaf
         var result = getContainingLeafNode(queryPoint);
@@ -355,7 +348,7 @@ fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
     // look at the previous leaf node queried
     if (pointInAABB(queryPoint, lastBox)) {
         // still in last leaf
-        var leafNode = makeNodeFrom(lastBox.val);
+        var leafNode = treeNodes.buffer[lastBox.val];
     } else {
         // gone to new leaf
         var result = getContainingLeafNode(queryPoint);

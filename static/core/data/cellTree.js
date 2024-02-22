@@ -2,7 +2,7 @@
 // allows creating a kd based cell tree
 // manages
 
-const NODE_BYTE_LENGTH = 8*4;
+const NODE_BYTE_LENGTH = 4 * 4;
 
 // goes through each node, depth first
 // callBacks receive the current node
@@ -49,7 +49,10 @@ var pivotFull = (a) => {
 }
 
 // generates the cell tree for fast lookups in unstructured data
-export var getCellTreeBuffer = (dataObj) => {
+// returns two buffers:
+//   the nodes of the tree (leaves store indices into second buffer)
+//   the lists of cells present in each leaf node 
+export var getCellTreeBuffers = (dataObj) => {
     var maxDepth = 16;
     var tree = new CellTree();
     // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
@@ -64,17 +67,10 @@ export var getCellTreeBuffer = (dataObj) => {
     );
     var t1 = performance.now();
     console.log("tree build took:", (t1 - t0)/1000, "s");
-    var treeBuffer = tree.serialise();
+    var treeBuffers = tree.serialise();
     var t2 = performance.now();
     console.log("tree serialise took:", (t2 - t1)/1000, "s");
-    // console.log("GOOD: positions");
-    // console.log(this.data.positions);
-    // console.log("connectivity");
-    // console.log(this.data.cellConnectivity);
-    // console.log("GOOD: cell offsets");
-    // console.log(this.data.cellOffsets);
-    // tree.printNodes();
-    return treeBuffer;
+    return treeBuffers;
 }
    
 
@@ -236,89 +232,101 @@ export function CellTree() {
         );
         
         return treeByteLength;
-            
-        // var nodeQueue = [tree];
-        // while (nodeQueue.length > 0) {
-        //     var currNode = nodeQueue.pop()
-        //     treeValueLength += nodeValueLength;
-        //     if (currNode.left == null) {
-        //         // this is a leaf node, add its cells
-        //         treeValueLength += currNode.cells.length;
-        //     } else {
-        //         // continue down the tree
-        //         nodeQueue.push(currNode.left, currNode.right);
-        //     }
-        // }
+    }
+    this.getTreeNodeCount = function() {
+        var count = 0;
+        forEachDepth(this.tree,
+            () => {count++},
+            () => {},
+            () => {}
+        ); 
+        return count;
+    }
+    this.getTreeCellsCount = function() {
+        var count = 0;
+        forEachDepth(this.tree,
+            () => {},
+            (node) => {count += node.cells.length},
+            () => {}
+        );
+        return count;
     }
     // writes the node to the given array buffer at the offset position
     // tied to the definition of the nodes in the shader
     this.writeNodeToBuffer = function(buffer, byteOffset, node) {
         // struct KDTreeNode {
-        //     splitDimension : u32,
         //     splitVal : f32,
         //     cellCount: u32,
-        //     cellsPtr : u32,           
         //     leftPtr : u32,
         //     rightPtr : u32,
         // };
         var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        u32View[0] = node.splitDimension;
+        // u32View[0] = node.splitDimension;
         var loc = node.cells ? node.cells.length : 0;
-        u32View[2] = loc;
+        u32View[1] = loc;
         var f32View = new Float32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        f32View[1] = node.splitVal;
+        f32View[0] = node.splitVal;
     }
     this.writeChildLocation = function(buffer, byteOffset, childLocation, isLeft) {
         var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
         if (isLeft) {
-            u32View[4] = childLocation;
+            u32View[2] = childLocation;
         } else {
-            u32View[5] = childLocation;
+            u32View[3] = childLocation;
         }
     }
     this.writeCellsLocation = function(buffer, byteOffset, cellsLocation) {
         var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        u32View[3] = cellsLocation;
+        u32View[2] = cellsLocation;
     }
     // returns the tree as a buffer
     this.serialise = function() {
         // tree has not been built
         if (!this.tree) return;
-        var byteLength = this.getTreeByteLength();
-        console.log("tree buffer byte length: ", byteLength);
-        // create a buffer to store the tree
-        var treeBuffer = new ArrayBuffer(byteLength);
+        // var byteLength = this.getTreeByteLength();
+        var totalNodeCount = this.getTreeNodeCount();
+        var totalCellsCount = this.getTreeCellsCount();
+        console.log("tree nodes buffer byte length: ", totalNodeCount * NODE_BYTE_LENGTH);
+        console.log("tree cells buffer byte length: ", totalCellsCount * 4);
+        // create a buffer to store the tree nodes
+        var nodesBuffer = new ArrayBuffer(totalNodeCount*NODE_BYTE_LENGTH);
+        // create a buffer to store
+        var cellsBuffer = new Uint32Array(totalCellsCount);
         // take the tree and pack it into a buffer representation
-        var nextByteOffset = 0;
+        var nextNodeByteOffset = 0;
+        var nextCellsByteOffset = 0;
         forEachBreadth(
             this.tree,
             // run for every node
             (node) => {
-                node.byteLocation = nextByteOffset;
-                this.writeNodeToBuffer(treeBuffer, node.byteLocation, node);
+                node.byteLocation = nextNodeByteOffset;
+                this.writeNodeToBuffer(nodesBuffer, node.byteLocation, node);
                 // write location at the parent node
                 var parent = node.parent;
                 if (parent) {
                     if (parent.left == node) {
-                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation/4, true);
+                        this.writeChildLocation(nodesBuffer, parent.byteLocation, node.byteLocation/NODE_BYTE_LENGTH, true);
                     } else {
-                        this.writeChildLocation(treeBuffer, parent.byteLocation, node.byteLocation/4, false);
+                        this.writeChildLocation(nodesBuffer, parent.byteLocation, node.byteLocation/NODE_BYTE_LENGTH, false);
                     }
                 }
-                nextByteOffset += NODE_BYTE_LENGTH;
+                nextNodeByteOffset += NODE_BYTE_LENGTH;
             }, 
             // run only for leaf nodex
             (node) => {
-                node.cellsByteLocation = nextByteOffset;
-                new Uint32Array(treeBuffer, nextByteOffset, node.cells.length).set(node.cells);
-                this.writeCellsLocation(treeBuffer, node.byteLocation, node.cellsByteLocation/4);
-                nextByteOffset += node.cells.length*4;
+                node.cellsByteLocation = nextCellsByteOffset;
+                new Uint32Array(cellsBuffer.buffer, node.cellsByteLocation, node.cells.length).set(node.cells);
+                this.writeCellsLocation(nodesBuffer, node.byteLocation, node.cellsByteLocation/4);
+                nextCellsByteOffset += node.cells.length*4;
             }, 
             // run only for branch nodes
             (node) => {}
         );
 
-        return treeBuffer;
+        return {
+            nodes: nodesBuffer,
+            cells: cellsBuffer
+        }
     }
 
     // print the tree node info

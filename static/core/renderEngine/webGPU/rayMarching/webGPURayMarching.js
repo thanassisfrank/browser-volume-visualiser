@@ -158,6 +158,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {type: "read-only-storage"}
                 },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {type: "read-only-storage"}
+                },
             ], "computeRay1"),
             webGPU.createBindGroupLayout([
                 {
@@ -288,7 +292,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // only handle tetrahedra for now
         // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
         // write the tree buffer
-        renderData.buffers.tree = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.cellTree), usage);
+        renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage);
+        renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+
 
         //renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");
 
@@ -371,7 +377,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.sharedData.buffers.positions = dataRenderable.renderData.buffers.positions;
                 faceRenderable.sharedData.buffers.cellConnectivity = dataRenderable.renderData.buffers.cellConnectivity;
                 faceRenderable.sharedData.buffers.cellOffsets = dataRenderable.renderData.buffers.cellOffsets;                
-                faceRenderable.sharedData.buffers.tree = dataRenderable.renderData.buffers.tree;
+                faceRenderable.sharedData.buffers.treeNodes = dataRenderable.renderData.buffers.treeNodes;
+                faceRenderable.sharedData.buffers.treeCells = dataRenderable.renderData.buffers.treeCells;
 
                 // setup buffers for compute ray march pass
                 faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, "s cs cd", "face mesh consts");
@@ -399,7 +406,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.renderData.bindGroups.compute1 = webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
                     [
-                        faceRenderable.sharedData.buffers.tree,
+                        faceRenderable.sharedData.buffers.treeNodes,
+                        faceRenderable.sharedData.buffers.treeCells,
                         faceRenderable.sharedData.buffers.positions,
                         faceRenderable.sharedData.buffers.cellConnectivity,
                         faceRenderable.sharedData.buffers.cellOffsets,

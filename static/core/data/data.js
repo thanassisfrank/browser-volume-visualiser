@@ -5,7 +5,7 @@ import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
-import { getCellTreeBuffer } from "./cellTree.js";
+import { getCellTreeBuffers } from "./cellTree.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
@@ -204,7 +204,9 @@ var dataManager = {
         }
 
         // create the cell tree
-        dataObj.data.cellTree = getCellTreeBuffer(dataObj);
+        const treeBuffers = getCellTreeBuffers(dataObj);
+        dataObj.data.treeNodes = treeBuffers.nodes;
+        dataObj.data.treeCells = treeBuffers.cells;
     },
     
     addUser: function(data) {
