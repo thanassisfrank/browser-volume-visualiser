@@ -212,7 +212,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     };
 
     this.clearScreen = async function () {
-        await this.getClearedRenderAttachments();
+        var clearedAttachments = await this.getClearedRenderAttachments();
+        clearedAttachments.depth.destroy();
     }
     // renders a view object, datasets
     // for now, all share a canvas
