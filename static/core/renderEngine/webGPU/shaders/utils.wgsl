@@ -127,3 +127,14 @@ fn randomU32(seed : u32) -> u32 {
 fn scalarTriple(a : vec3<f32>, b : vec3<f32>, c : vec3<f32>) -> f32 {
     return dot(a, cross(b, c));
 }
+
+// takes a u32 and converts to a pseudo-random colour
+fn u32ToCol(val : u32) -> vec3<f32> {
+    var newU32 = randomU32(val); // move apart those close together
+    var mask : u32 = 0x3ff;
+    return normalize(vec3<f32>(
+        f32( newU32 &  mask),
+        f32((newU32 & (mask << 10)) >> 10),
+        f32((newU32 & (mask << 20)) >> 20),
+    ));
+}

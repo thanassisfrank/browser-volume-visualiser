@@ -141,11 +141,18 @@ fn fragment_main(
 
     var offsetSample : OptimisationSample = getPrevOptimisationSample(deviceCoords.x, deviceCoords.y);
 
+    if (passFlags.showCells) {
+        var dataPos = toDataSpace(ray.tip);
+        var cellIndex = u32(floor(dataPos.x) + floor(dataPos.y) * dataSize.x + floor(dataPos.z) * dataSize.x * dataSize.y);
+        return FragmentOut(vec4<f32>(u32ToCol(cellIndex), 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+    }
+
+
     if (passFlags.showRayDirs) {
         // return vec4<f32>(ray.direction, 1);
         return FragmentOut(vec4<f32>(ray.direction, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
     } else if (passFlags.showDeviceCoords) {
-            return FragmentOut(vec4<f32>(deviceCoords, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+        return FragmentOut(vec4<f32>(deviceCoords, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
     }
 
     var seed : u32 = bitcast<u32>(fragInfo.worldPosition.x) ^ bitcast<u32>(fragInfo.worldPosition.y) ^ bitcast<u32>(fragInfo.worldPosition.z);

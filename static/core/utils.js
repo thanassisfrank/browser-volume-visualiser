@@ -52,6 +52,14 @@ export var getFirstOfClass = (className) => {
     return document.getElementsByClassName(className)[0];
 }
 
+export var getInputClassAsObj = (className) => {
+    var out = {};
+    for (let input of getClass(className)) {
+        out[input.name] = input;
+    }
+    return out;
+}
+
 export const sin30 = Math.sin(Math.PI/6);
 export const cos30 = Math.cos(Math.PI/6);
 

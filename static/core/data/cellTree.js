@@ -2,6 +2,7 @@
 // allows creating a kd based cell tree
 // manages
 
+
 const NODE_BYTE_LENGTH = 4 * 4;
 
 // goes through each node, depth first
@@ -48,6 +49,40 @@ var pivotFull = (a) => {
     return sorted[Math.floor(a.length/2) - 1];
 }
 
+
+
+
+// struct KDTreeNode {
+//     splitVal : f32,
+//     cellCount: u32,
+//     leftPtr : u32,
+//     rightPtr : u32,
+// };
+var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, leftPtr, rightPtr) => {
+    var f32View = new Float32Array(buffer, byteOffset, 1);
+    if (splitVal !== null) f32View[0] = splitVal;
+    var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
+    if (cellCount !== null) u32View[1] = cellCount;
+    if (leftPtr !== null) u32View[2] = leftPtr;
+    if (rightPtr !== null) u32View[3] = rightPtr;
+}
+
+var writeNodeObjToBuffer = (buffer, byteOffset, node) => {
+    writeNodeToBuffer(buffer, byteOffset, node.splitVal, node.cellCount, node.leftPtr, node.rightPtr)
+}
+
+var readNodeFromBuffer = (buffer, byteOffset) => {
+    var f32View = new Float32Array(buffer, byteOffset, 1);
+    var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
+    return {
+        splitVal: f32View[0],
+        cellCount: u32View[1],
+        leftPtr: u32View[2],
+        rightPtr: u32View[3],
+    }
+}
+
+
 // generates the cell tree for fast lookups in unstructured data
 // returns two buffers:
 //   the nodes of the tree (leaves store indices into second buffer)
@@ -68,9 +103,151 @@ export var getCellTreeBuffers = (dataObj) => {
     var t1 = performance.now();
     console.log("tree build took:", (t1 - t0)/1000, "s");
     var treeBuffers = tree.serialise();
+    tree.tree = null; // clear the unused tree
     var t2 = performance.now();
     console.log("tree serialise took:", (t2 - t1)/1000, "s");
     return treeBuffers;
+}
+// updates the dynamic tree buffers based on camera location
+// cameraCoords is dataset-relative
+export var updateDynamicTreeBuffers = (dataObj, cameraCoords) => {
+    // the # nodes in the dynamic buffer
+    var nodeCount = dataObj.data.dynamicNodes.byteLength/NODE_BYTE_LENGTH;
+    // calculate the scores for the current leaf nodes, true leaf or pruned
+    // score is the visual size/ideal visual size
+    // higher score -> split
+    // lower score  -> merge
+    var scores = new Float32Array();
+    var nodes = [];
+    while (nodes.length > 0) {
+
+    }
+
+    // select the n leaves with the highest score to split
+
+    // select the n leaves with the lowest scores to merge
+    // make sure only one out of each sibling pair is in this list
+
+    // make sure the lowest and highest lists don't share any leaves
+    
+    // merge the leaves with the highest scores with their siblings (delete 2)
+
+    // split the leaves with the lowest scores (write 2)
+    // these go into the left-over locations from deleted nodes
+
+}
+
+// creates an f32 buffer which contains an average value for each node
+// stored breadth first
+export var createNodeValuesBuffer = (dataObj) => {
+    var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
+    var nodeVals
+}
+
+// create the buffers used for dynamic data resolution
+// for the first iteration, this only modifies the treenodes buffer
+export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
+    var fullNodes = dataObj.data.treeNodes;
+    // create the empty cache buffers at the given maximum size
+    var dynamicNodes = new ArrayBuffer(maxNodes * NODE_BYTE_LENGTH);
+    // find the depth of the tree 
+    // fill the dynamic buffer from the full tree buffer, breadth first
+    var currNodeIndex = 0; // where to write the next node
+
+    var rootNode = readNodeFromBuffer(fullNodes, 0);
+    console.log(rootNode);
+    writeNodeToBuffer(dynamicNodes, 0, rootNode.splitVal, 0, 0, 0);
+    currNodeIndex++;
+    
+    // var dynamicRootNode = readNodeFromBuffer(dynamicNodes, 0);
+    // console.log(dynamicRootNode);
+    
+    var currDepth = 0;
+    while (currNodeIndex < maxNodes) {
+        // loop through all the nodes at this level of the tree 
+        // try to add both their children
+        addLayer: {
+            for (let i = 0; i < Math.pow(2, currDepth); i++) {
+                // the parent node as it currently is in dynamic nodes
+                var currParent = readNodeFromBuffer(dynamicNodes, 0);
+                // the parent node in the full tree buffer
+                var currParentFull = rootNode;
+                var parentLoc = 0;
+                var parentLocFull = 0;
+
+                // console.log(currParent);
+                // navigate to the next node to add children too
+                for (let j = 0; j < currDepth; j++) {
+                    // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
+                    if ((i >> (currDepth - j - 1)) & 1 != 0) {
+                        // go right
+                        parentLoc = currParent.rightPtr * NODE_BYTE_LENGTH;
+                        parentLocFull = currParentFull.rightPtr * NODE_BYTE_LENGTH;
+                        // console.log("r");
+                    } else {
+                        // go left
+                        parentLoc = currParent.leftPtr * NODE_BYTE_LENGTH;
+                        parentLocFull = currParentFull.leftPtr * NODE_BYTE_LENGTH;
+                        // console.log("l");
+                        
+                    }
+                    currParent = readNodeFromBuffer(dynamicNodes, parentLoc);
+                    currParentFull = readNodeFromBuffer(fullNodes, parentLocFull);
+                    // console.log(currParentFull);
+                    // console.log(currParent);
+                }
+                // console.log(parentLoc);
+                // got to the node we want to add children to
+                // check if there is room to add the children
+                if (currNodeIndex < maxNodes - 2) {
+                    // update parent so it is not a pruned leaf node
+                    writeNodeToBuffer(
+                        dynamicNodes, 
+                        parentLoc, 
+                        currParent.splitVal, 
+                        0, 
+                        currNodeIndex, 
+                        currNodeIndex + 1
+                    )
+                    
+                    // fetch the left node from the full buffer and write to dynamic as pruned leaf
+                    var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
+                    writeNodeToBuffer(
+                        dynamicNodes, 
+                        currNodeIndex * NODE_BYTE_LENGTH, 
+                        leftNode.splitVal, 
+                        0, 
+                        0, 
+                        0
+                    );
+                    // fetch the right node from the full buffer and write to dynamic as pruned leaf
+                    var rightNode = readNodeFromBuffer(fullNodes, currParentFull.rightPtr * NODE_BYTE_LENGTH);
+                    writeNodeToBuffer(
+                        dynamicNodes, 
+                        (currNodeIndex + 1)* NODE_BYTE_LENGTH, 
+                        rightNode.splitVal, 
+                        0, 
+                        0, 
+                        0
+                    )
+                }
+                currNodeIndex += 2;
+                if (currNodeIndex >= maxNodes) break addLayer;
+            }
+        } 
+        currDepth++;
+    }
+    console.log("written up to depth of", currDepth);
+    console.log("written", currNodeIndex - 1, "nodes");
+    console.log("made dynamic tree node buffer");
+    for (let i = 0; i < dynamicNodes.byteLength/NODE_BYTE_LENGTH; i++) {
+        // console.log(readNodeFromBuffer(dynamicNodes, i * NODE_BYTE_LENGTH));
+    }
+    return dynamicNodes;
+}
+
+export var estimateLeafAvg = (dataObj) => {
+    
 }
    
 
@@ -251,34 +428,6 @@ export function CellTree() {
         );
         return count;
     }
-    // writes the node to the given array buffer at the offset position
-    // tied to the definition of the nodes in the shader
-    this.writeNodeToBuffer = function(buffer, byteOffset, node) {
-        // struct KDTreeNode {
-        //     splitVal : f32,
-        //     cellCount: u32,
-        //     leftPtr : u32,
-        //     rightPtr : u32,
-        // };
-        var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        // u32View[0] = node.splitDimension;
-        var loc = node.cells ? node.cells.length : 0;
-        u32View[1] = loc;
-        var f32View = new Float32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        f32View[0] = node.splitVal;
-    }
-    this.writeChildLocation = function(buffer, byteOffset, childLocation, isLeft) {
-        var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        if (isLeft) {
-            u32View[2] = childLocation;
-        } else {
-            u32View[3] = childLocation;
-        }
-    }
-    this.writeCellsLocation = function(buffer, byteOffset, cellsLocation) {
-        var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-        u32View[2] = cellsLocation;
-    }
     // returns the tree as a buffer
     this.serialise = function() {
         // tree has not been built
@@ -295,19 +444,19 @@ export function CellTree() {
         // take the tree and pack it into a buffer representation
         var nextNodeByteOffset = 0;
         var nextCellsByteOffset = 0;
-        forEachBreadth(
+        forEachDepth(
             this.tree,
             // run for every node
             (node) => {
                 node.byteLocation = nextNodeByteOffset;
-                this.writeNodeToBuffer(nodesBuffer, node.byteLocation, node);
+                writeNodeToBuffer(nodesBuffer, node.byteLocation, node.splitVal, node.cells?.length ?? 0, null, null);
                 // write location at the parent node
                 var parent = node.parent;
                 if (parent) {
                     if (parent.left == node) {
-                        this.writeChildLocation(nodesBuffer, parent.byteLocation, node.byteLocation/NODE_BYTE_LENGTH, true);
+                        writeNodeToBuffer(nodesBuffer, parent.byteLocation, null, null, node.byteLocation/NODE_BYTE_LENGTH, null);
                     } else {
-                        this.writeChildLocation(nodesBuffer, parent.byteLocation, node.byteLocation/NODE_BYTE_LENGTH, false);
+                        writeNodeToBuffer(nodesBuffer, parent.byteLocation, null, null, null, node.byteLocation/NODE_BYTE_LENGTH);
                     }
                 }
                 nextNodeByteOffset += NODE_BYTE_LENGTH;
@@ -316,7 +465,7 @@ export function CellTree() {
             (node) => {
                 node.cellsByteLocation = nextCellsByteOffset;
                 new Uint32Array(cellsBuffer.buffer, node.cellsByteLocation, node.cells.length).set(node.cells);
-                this.writeCellsLocation(nodesBuffer, node.byteLocation, node.cellsByteLocation/4);
+                writeNodeToBuffer(nodesBuffer, node.byteLocation, null, null, node.cellsByteLocation/4, 0);
                 nextCellsByteOffset += node.cells.length*4;
             }, 
             // run only for branch nodes

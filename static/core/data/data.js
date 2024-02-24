@@ -5,7 +5,7 @@ import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
-import { getCellTreeBuffers } from "./cellTree.js";
+import { createDynamicTreeBuffers, getCellTreeBuffers } from "./cellTree.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
@@ -92,11 +92,12 @@ var dataManager = {
         return newData;
     },
     // takes a data object with format STRUCTURED and converts to UNSTRUCTRED with tetrahedral cells
-    convertStructuredToUnstructured: function(dataObj) {
+    convertStructuredToUnstructured: function(dataObj, resolutionMode) {
         if (dataObj.dataFormat != DataFormats.STRUCTURED) return;
 
-        // change type
+        // change type and resolution mode
         dataObj.dataFormat = DataFormats.UNSTRUCTURED;
+        dataObj.resolutionMode = resolutionMode;
         
         // build the cell data
         var pointCount = dataObj.data.values.length;
@@ -207,6 +208,9 @@ var dataManager = {
         const treeBuffers = getCellTreeBuffers(dataObj);
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
+        if (resolutionMode == ResolutionModes.DYNAMIC) {
+            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 500);
+        }
     },
     
     addUser: function(data) {
@@ -258,7 +262,10 @@ function Data(id) {
         cellOffsets: null,
         cellTypes: null,
         // spatial acceleration structure
-        cellTree: null,
+        treeNodes: null,
+        treeCells: null,
+        dynamicTreeNodes: null,
+        dynamicTreeCells: null,
     };
 
     // supplemental attributes

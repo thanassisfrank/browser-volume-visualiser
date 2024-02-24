@@ -104,6 +104,8 @@
             <label>Debug</label><br>
             <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showCells"><label>Data cells</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNodes"><label>Tree nodes</label><br>
             <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
             <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
@@ -113,6 +115,7 @@
         <div id="add-view-container" class="bottom-bar">
             <select id="data-select"></select><br>
             <input type="checkbox" class="dataset-opt" name="createUnstructured"><label>Make unstruct</label><br>
+            <input type="checkbox" class="dataset-opt" name="dynamicResolution"><label>Dynamic res</label><br>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -136,9 +139,9 @@
         </div>
 
         <script type="module">
-            import {get, getClass, isVisible, show, hide, removeAllChildren, setupCanvasDims, repositionCanvas, parseXML, IntervalTree, OldIntervalTree, timer} from "./core/utils.js";
+            import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims} from "./core/utils.js";
 
-            import { dataManager } from "./core/data/data.js";
+            import { dataManager, ResolutionModes } from "./core/data/data.js";
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
             import { viewManager } from "./view.js";
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
@@ -213,16 +216,15 @@
                 get("create-view-btn").addEventListener("click", async (e) => {
                     var d = get("data-select");
 
-                    const selectedDataElem = d.options[d.selectedIndex];
+                    var newData = await dataManager.getDataObj(d.options[d.selectedIndex].value);
 
-                    var newData = await dataManager.getDataObj(selectedDataElem.value);
+                    var opts = getInputClassAsObj("dataset-opt");
 
-                    for (let opt of getClass("dataset-opt")) {
-                        if (!opt.checked) continue;
-                        switch (opt.name) {
-                            case "createUnstructured":
-                                dataManager.convertStructuredToUnstructured(newData);
-                                break;
+                    if (opts.createUnstructured.checked) {
+                        if (opts.dynamicResolution.checked) {
+                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.DYNAMIC);
+                        } else {
+                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL);
                         }
                     }
 

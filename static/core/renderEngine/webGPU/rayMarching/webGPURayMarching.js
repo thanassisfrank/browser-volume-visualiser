@@ -2,7 +2,7 @@
 // implements the ray marching algorithm with webgpu
 
 import {mat4} from "https://cdn.skypack.dev/gl-matrix";
-import { DataFormats } from "../../../data/data.js";
+import { DataFormats, ResolutionModes } from "../../../data/data.js";
 import { clampBox } from "../../../utils.js";
 import { Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 
@@ -50,6 +50,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showOffset: false,
         showDeviceCoords: false,
         sampleNearest: false,
+        showCells: false,
+        showNodes: false,
 
         // not sent to gpu
         cheapMove: false,
@@ -66,7 +68,12 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
     this.setPassFlag = function(name, state) {
-        if (name == "optimiseOffset" || name == "showSurface" || name == "backStep" || name == "cheapMove") {
+        if (
+            name == "optimiseOffset" || 
+            name == "showSurface" || 
+            name == "backStep" || 
+            name == "cheapMove"
+        ) {
             this.globalPassInfo.framesSinceMove = 0;
         }
         this.passFlags[name] = state;
@@ -87,6 +94,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showOffset       << 10 & 0b1 << 10;
         flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
         flags |= this.passFlags.sampleNearest    << 12 & 0b1 << 12;
+        flags |= this.passFlags.showCells        << 13 & 0b1 << 13;
+        flags |= this.passFlags.showNodes        << 14 & 0b1 << 14;
         return flags;
     }
 
@@ -292,8 +301,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // only handle tetrahedra for now
         // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
         // write the tree buffer
-        renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage);
-        renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+        if (dataObj.resolutionMode == ResolutionModes.FULL) {
+            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage);
+            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+        } else if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
+            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage);
+            // TEMP
+            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+        }
+        
 
 
         //renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");

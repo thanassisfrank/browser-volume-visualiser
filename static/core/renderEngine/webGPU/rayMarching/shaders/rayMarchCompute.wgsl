@@ -11,11 +11,32 @@ struct CombinedPassInfo {
     @size(128) passInfo : RayMarchPassInfo,
 };
 
+// tree nodes can be in one of 3 states:
+// (? => node signature  # => value info)
+// > branch
+//   > has a left and right child
+//   > doesn't reference any cells
+//   ? cellCount = 0; leftPtr != rightPtr
+//   # no value info stored
+// > true leaf
+//   > the true bottom of the tree
+//   > references a list of cells
+//   ? cellCount > 0; rightPtr = 0
+//   # associated cells contain values
+// > pruned leaf
+//   > a node at the base of the tree
+//   > doesn't reference any cells
+//   ? cellCount = 0; rightPtr = 0
+//   # splitVal contains average node value
 struct KDTreeNode {
-    @size(4) splitVal : f32,       // the value this node is split at into left and right
-    @size(4) cellCount: u32,       // # cells within this node
-    @size(4) leftPtr : u32,        // where the left child is or cells location
-    @size(4) rightPtr : u32,       // where the right child is
+    // the spatial coordinate to split into l/r or node sample value
+    @size(4) splitVal : f32,
+    // # cells within this node
+    @size(4) cellCount: u32,
+    // where the left child is or cells location
+    @size(4) leftPtr : u32,
+    // where the right child is
+    @size(4) rightPtr : u32,
 };
 
 struct TreeNodesBuff {
@@ -82,6 +103,7 @@ var<private> objectInfo : ObjectInfo;
 var<private> passInfo : RayMarchPassInfo;
 
 
+// returns the lowest node in the tree which contains the query point
 fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     // traverse the data tree (kdtree) to find the correct leaf node
     var depth = 0;
@@ -93,7 +115,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
         // make a node at the current position
         currNode = treeNodes.buffer[currNodePtr];//makeNodeFrom(currNodePtr);
         box.val = currNodePtr;
-        if (currNode.cellCount == 0) {
+        if (currNode.rightPtr != 0u) {
             // have to carry on down the tree
             if (queryPoint[splitDimension] <= currNode.splitVal) {
                 currNodePtr = currNode.leftPtr;
@@ -327,17 +349,26 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     } else {
         // gone to new leaf
         var result = getContainingLeafNode(queryPoint);
+        // cache the left node for the next sample along the ray
         leafNode = result.node;
         lastBox = result.box;
     }
 
-    var cell : InterpolationCell = getContainingCell(queryPoint, leafNode);
+    // sample the leaf depending on what type it is
+    if (leafNode.cellCount > 0) {
+        // true leaf, sample the cells within
+        var cell : InterpolationCell = getContainingCell(queryPoint, leafNode);
+        // interpolate value
+        if (length(cell.factors) == 0) {
+            return 0;
+        };
+        return dot(cell.values, cell.factors);
+    } else {
+        // pruned leaf, sample the node itself
+        return leafNode.splitVal;
+    }
 
-    // interpolate value
-    if (length(cell.factors) == 0) {
-        return 0;
-    };
-    return dot(cell.values, cell.factors);
+    
 }
 
 fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
@@ -460,6 +491,17 @@ fn main(
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
         return;
     }
+    if (passFlags.showCells) {
+        setPixel(id.xy, vec4<f32>(u32ToCol(id.x + imageSize.x * id.y), 1));
+        return;
+    }
+    if (passFlags.showNodes) {
+        var dataPos : vec3<f32> = toDataSpace(ray.tip);
+        var nodeLoc : u32 = getContainingLeafNode(dataPos).box.val;
+        setPixel(id.xy, vec4<f32>(u32ToCol(nodeLoc), 1));
+        return;
+    }
+    
 
     
     var marchResult : RayMarchResult;
