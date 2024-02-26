@@ -11,6 +11,7 @@ import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
 import { RenderableTypes } from "./core/renderEngine/renderEngine.js";
 import { DataFormats, dataManager } from "./core/data/data.js";
+import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
 
 
@@ -202,8 +203,9 @@ function View(id, camera, data, renderMode, threshold) {
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
             renderEngine.setupSceneObject(sceneObj);
         }
-
-        this.updateThreshold(this.threshold);
+        // updateDynamicTreeBuffers(this.data, this.sceneGraph.activeCamera.getEyePos());
+        console.log(this.sceneGraph.activeCamera.getEyePos());
+        this.update(0, renderEngine);
         
     }     
     this.updateThreshold = async function(val) {
@@ -219,6 +221,9 @@ function View(id, camera, data, renderMode, threshold) {
     this.update = async function (dt, renderEngine) {
         // propagate the threshold to where is it needed
         this.data.threshold = this.threshold;
+
+        // need to find the camera position in world space
+        updateDynamicTreeBuffers(this.data, this.sceneGraph.activeCamera.getEyePos());
 
         // update the renderables for the objects in the scene
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {

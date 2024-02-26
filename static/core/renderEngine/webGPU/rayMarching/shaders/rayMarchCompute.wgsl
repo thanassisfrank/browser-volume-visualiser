@@ -32,7 +32,9 @@ struct KDTreeNode {
     // the spatial coordinate to split into l/r or node sample value
     @size(4) splitVal : f32,
     // # cells within this node
-    @size(4) cellCount: u32,
+    @size(4) cellCount : u32,
+    // where the parent node is
+    @size(4) parentPtr : u32,
     // where the left child is or cells location
     @size(4) leftPtr : u32,
     // where the right child is
@@ -492,13 +494,22 @@ fn main(
         return;
     }
     if (passFlags.showCells) {
-        setPixel(id.xy, vec4<f32>(u32ToCol(id.x + imageSize.x * id.y), 1));
+        // setPixel(id.xy, vec4<f32>(u32ToCol(id.x + imageSize.x * id.y), 1));
+        // random from node location in buffer
+        var dataPos : vec3<f32> = toDataSpace(ray.tip);
+        var result : KDTreeResult = getContainingLeafNode(dataPos);
+        // semi-random from node location
+        setPixel(id.xy, vec4<f32>(u32ToCol(result.box.val), 1));
         return;
     }
     if (passFlags.showNodes) {
+        // random from node location in buffer
         var dataPos : vec3<f32> = toDataSpace(ray.tip);
-        var nodeLoc : u32 = getContainingLeafNode(dataPos).box.val;
-        setPixel(id.xy, vec4<f32>(u32ToCol(nodeLoc), 1));
+        var result : KDTreeResult = getContainingLeafNode(dataPos);
+        // semi-random from node location
+        // setPixel(id.xy, vec4<f32>(u32ToCol(nodeLoc.box.val), 1));
+        // the split value
+        setPixel(id.xy, vec4<f32>(vec3<f32>(result.node.splitVal/100), 1));
         return;
     }
     

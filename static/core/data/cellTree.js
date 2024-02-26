@@ -2,8 +2,15 @@
 // allows creating a kd based cell tree
 // manages
 
+import { VecMath } from "../VecMath.js";
 
-const NODE_BYTE_LENGTH = 4 * 4;
+
+const NODE_BYTE_LENGTH = 5 * 4;
+
+const ChildTypes = {
+    LEFT: 0,
+    RIGHT: 1,
+}
 
 // goes through each node, depth first
 // callBacks receive the current node
@@ -54,31 +61,32 @@ var pivotFull = (a) => {
 
 // struct KDTreeNode {
 //     splitVal : f32,
-//     cellCount: u32,
+//     cellCount : u32,
+//     parentPtr : u32,
 //     leftPtr : u32,
 //     rightPtr : u32,
 // };
-var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, leftPtr, rightPtr) => {
+var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, parentPtr, leftPtr, rightPtr) => {
     var f32View = new Float32Array(buffer, byteOffset, 1);
-    if (splitVal !== null) f32View[0] = splitVal;
+    if (splitVal != null) f32View[0] = splitVal;
     var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
-    if (cellCount !== null) u32View[1] = cellCount;
-    if (leftPtr !== null) u32View[2] = leftPtr;
-    if (rightPtr !== null) u32View[3] = rightPtr;
+    if (cellCount != null) u32View[1] = cellCount;
+    if (parentPtr != null) u32View[2] = parentPtr;
+    if (leftPtr != null) u32View[3] = leftPtr;
+    if (rightPtr != null) u32View[4] = rightPtr;
 }
 
-var writeNodeObjToBuffer = (buffer, byteOffset, node) => {
-    writeNodeToBuffer(buffer, byteOffset, node.splitVal, node.cellCount, node.leftPtr, node.rightPtr)
-}
-
+// be careful as the elements of the node still reference the underlying buffer
 var readNodeFromBuffer = (buffer, byteOffset) => {
     var f32View = new Float32Array(buffer, byteOffset, 1);
     var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
     return {
-        splitVal: f32View[0],
-        cellCount: u32View[1],
-        leftPtr: u32View[2],
-        rightPtr: u32View[3],
+        thisPtr: byteOffset/NODE_BYTE_LENGTH,
+        splitVal:  f32View.slice(0, 1)[0],
+        cellCount: u32View.slice(1, 2)[0],
+        parentPtr: u32View.slice(2, 3)[0],
+        leftPtr:   u32View.slice(3, 4)[0],
+        rightPtr:  u32View.slice(4, 5)[0],
     }
 }
 
@@ -108,21 +116,156 @@ export var getCellTreeBuffers = (dataObj) => {
     console.log("tree serialise took:", (t2 - t1)/1000, "s");
     return treeBuffers;
 }
+
+// returns the box covering this node from the direct parent node's box
+// takes parent box, if its left and split dimension
+export var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
+    var thisBox = {
+        min: [parentBox.min[0], parentBox.min[1], parentBox.min[2]], 
+        max: [parentBox.max[0], parentBox.max[1], parentBox.max[2]], 
+    };
+
+    // var thisBox = {min: parentBox.min, max: parentBox.max};
+
+    if (childType == ChildTypes.LEFT) {
+        thisBox.max[splitDimension] = splitVal;
+    } else {
+        thisBox.min[splitDimension] = splitVal;
+    }
+    return thisBox;
+}
+
+
+// calculates a score for the box
+// box size/distance from camera
+export var calcBoxScore = (box, cameraCoords) => {
+    // get corner-to-corner length of the box
+    var length = VecMath.magnitude(VecMath.vecMinus(box.min, box.max));
+    var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
+    var dist = VecMath.magnitude(VecMath.vecMinus(cameraCoords, mid));
+
+    return length/dist;
+}
+
+
+// calculate the scores for the current leaf nodes, true leaf or pruned
+// returns a list of high and low scoring nodes, count long
+// each node also contains the ptr to themselves in the full tree buffer
+// assumes camera coords is in the dataset coordinate space
+export var getNodeScores = (dataObj, cameraCoords, count) => {
+    var dynamicNodes = dataObj.data.dynamicTreeNodes;
+    var fullNodes = dataObj.data.treeNodes;
+    var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
+    // higher score, big box -> split
+    var highScores = [];
+    // lower score, small box -> merge
+    var lowScores = [];
+
+    var insertScore = (arr, elem, comp) => {
+        var added = false;
+        for (let i = 0; i < arr.length; i++) {
+            if (comp(elem, arr[i])) {
+                arr.splice(i, 0, elem);
+                added = true;
+                break;
+            }
+        }
+        if (!added && arr.length < count) arr.push(elem);
+
+        if (arr.length > count) arr.pop();
+    }
+    // figure out the box of the current node
+    var getThisBox = (currNode) => {
+        // console.log(currNode);
+        if (currNode.parentPtr == currNode.thisPtr) {
+            // root node
+            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
+        }
+        var parentBox = currBoxes[currBoxes.length - 1];
+        return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
+    }
+
+    // the boxes of all of the parents of the current node
+    var currBoxes = [];
+    // the next nodes to process
+    var nodes = [readNodeFromBuffer(dynamicNodes, 0)];
+    var currDepth = 0; // depth of node currently being processed
+    var processed = 0;
+    while (nodes.length > 0 && processed < nodeCount * 3) {
+        processed++;
+        var str = "";
+        for (let node of nodes) {
+            str += node.thisPtr + " ";
+        }
+        // console.log(str);
+        // console.log("depth: ", currDepth);
+        // console.log(currBoxes.slice());
+        var currNode = nodes.pop();
+        if (currNode.rightPtr == 0) {
+            // this is a leaf node, get its score
+            // console.log("leaf")
+            // console.log(getThisBox(currNode));
+            var score = calcBoxScore(getThisBox(currNode), cameraCoords);
+            currNode.score = score;
+            // console.log(score);
+            insertScore(highScores, currNode, (a, b) => a.score > b.score);
+            insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
+            // write score into node for now
+            writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
+            // right is done after left, going back up the tree now  
+            if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
+        } else {
+            // this is a branch
+            // console.log("branch")
+            if (currDepth == currBoxes.length) {
+                // console.log("down")
+                // going down, depth
+                currBoxes.push(getThisBox(currNode));
+                currDepth++;
+
+                // push itself to handle going back up the tree
+                nodes.push(currNode);
+
+                // get the ptr to the children in the full buffer
+                var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
+                // add its children to the next nodes
+                nodes.push({
+                    ...readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH), 
+                    thisFullPtr: currFullNode.rightPtr,
+                    childType: ChildTypes.RIGHT,
+                    parentSplit: currNode.splitVal,
+                });
+                nodes.push({
+                    ...readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH), 
+                    thisFullPtr: currFullNode.leftPtr,
+                    childType: ChildTypes.LEFT,
+                    parentSplit: currNode.splitVal,
+                });
+            } else {
+                // console.log("up")
+                // going back up
+                currBoxes.pop();
+                if (currNode.childType == ChildTypes.RIGHT) currDepth--;  
+            }
+        }
+
+        
+    }
+
+    return {
+        high: highScores,
+        low: lowScores
+    }
+}
+
+
+
 // updates the dynamic tree buffers based on camera location
 // cameraCoords is dataset-relative
 export var updateDynamicTreeBuffers = (dataObj, cameraCoords) => {
-    // the # nodes in the dynamic buffer
-    var nodeCount = dataObj.data.dynamicNodes.byteLength/NODE_BYTE_LENGTH;
-    // calculate the scores for the current leaf nodes, true leaf or pruned
-    // score is the visual size/ideal visual size
-    // higher score -> split
-    // lower score  -> merge
-    var scores = new Float32Array();
-    var nodes = [];
-    while (nodes.length > 0) {
-
-    }
-
+    // get the node scores, n lowest highest
+    var scores = getNodeScores(dataObj, cameraCoords, 10);
+    // console.log(scores);
     // select the n leaves with the highest score to split
 
     // select the n leaves with the lowest scores to merge
@@ -137,12 +280,23 @@ export var updateDynamicTreeBuffers = (dataObj, cameraCoords) => {
 
 }
 
+
 // creates an f32 buffer which contains an average value for each node
 // stored breadth first
 export var createNodeValuesBuffer = (dataObj) => {
+    var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
-    var nodeVals
+    var nodeVals = new Float32Array(nodeCount);
+
+    // loop through the nodes, depth first and bottom up
+    var nodes = [readNodeFromBuffer(treeNodes, 0)];
+    var currNode;
+    while (nodes.length > 0) {
+        currNode = nodes.pop();
+
+    }
 }
+
 
 // create the buffers used for dynamic data resolution
 // for the first iteration, this only modifies the treenodes buffer
@@ -156,12 +310,9 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
 
     var rootNode = readNodeFromBuffer(fullNodes, 0);
     console.log(rootNode);
-    writeNodeToBuffer(dynamicNodes, 0, rootNode.splitVal, 0, 0, 0);
+    writeNodeToBuffer(dynamicNodes, 0, rootNode.splitVal, 0, 0, 0, 0);
     currNodeIndex++;
-    
-    // var dynamicRootNode = readNodeFromBuffer(dynamicNodes, 0);
-    // console.log(dynamicRootNode);
-    
+        
     var currDepth = 0;
     while (currNodeIndex < maxNodes) {
         // loop through all the nodes at this level of the tree 
@@ -175,7 +326,6 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                 var parentLoc = 0;
                 var parentLocFull = 0;
 
-                // console.log(currParent);
                 // navigate to the next node to add children too
                 for (let j = 0; j < currDepth; j++) {
                     // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
@@ -183,20 +333,14 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                         // go right
                         parentLoc = currParent.rightPtr * NODE_BYTE_LENGTH;
                         parentLocFull = currParentFull.rightPtr * NODE_BYTE_LENGTH;
-                        // console.log("r");
                     } else {
                         // go left
                         parentLoc = currParent.leftPtr * NODE_BYTE_LENGTH;
                         parentLocFull = currParentFull.leftPtr * NODE_BYTE_LENGTH;
-                        // console.log("l");
-                        
                     }
                     currParent = readNodeFromBuffer(dynamicNodes, parentLoc);
                     currParentFull = readNodeFromBuffer(fullNodes, parentLocFull);
-                    // console.log(currParentFull);
-                    // console.log(currParent);
                 }
-                // console.log(parentLoc);
                 // got to the node we want to add children to
                 // check if there is room to add the children
                 if (currNodeIndex < maxNodes - 2) {
@@ -206,6 +350,7 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                         parentLoc, 
                         currParent.splitVal, 
                         0, 
+                        null,
                         currNodeIndex, 
                         currNodeIndex + 1
                     )
@@ -216,7 +361,8 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                         dynamicNodes, 
                         currNodeIndex * NODE_BYTE_LENGTH, 
                         leftNode.splitVal, 
-                        0, 
+                        0,
+                        parentLoc/NODE_BYTE_LENGTH, 
                         0, 
                         0
                     );
@@ -227,6 +373,7 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                         (currNodeIndex + 1)* NODE_BYTE_LENGTH, 
                         rightNode.splitVal, 
                         0, 
+                        parentLoc/NODE_BYTE_LENGTH, 
                         0, 
                         0
                     )
@@ -449,14 +596,38 @@ export function CellTree() {
             // run for every node
             (node) => {
                 node.byteLocation = nextNodeByteOffset;
-                writeNodeToBuffer(nodesBuffer, node.byteLocation, node.splitVal, node.cells?.length ?? 0, null, null);
-                // write location at the parent node
                 var parent = node.parent;
+                writeNodeToBuffer(
+                    nodesBuffer, 
+                    node.byteLocation, 
+                    node.splitVal, 
+                    node.cells?.length ?? 0, 
+                    parent?.byteLocation/NODE_BYTE_LENGTH,
+                    null, 
+                    null
+                );
                 if (parent) {
+                    // write location at the parent node
                     if (parent.left == node) {
-                        writeNodeToBuffer(nodesBuffer, parent.byteLocation, null, null, node.byteLocation/NODE_BYTE_LENGTH, null);
+                        writeNodeToBuffer(
+                            nodesBuffer, 
+                            parent.byteLocation, 
+                            null, 
+                            null, 
+                            null,
+                            node.byteLocation/NODE_BYTE_LENGTH, 
+                            null
+                        );
                     } else {
-                        writeNodeToBuffer(nodesBuffer, parent.byteLocation, null, null, null, node.byteLocation/NODE_BYTE_LENGTH);
+                        writeNodeToBuffer(
+                            nodesBuffer, 
+                            parent.byteLocation, 
+                            null, 
+                            null, 
+                            null,
+                            null, 
+                            node.byteLocation/NODE_BYTE_LENGTH
+                        );
                     }
                 }
                 nextNodeByteOffset += NODE_BYTE_LENGTH;
@@ -465,7 +636,15 @@ export function CellTree() {
             (node) => {
                 node.cellsByteLocation = nextCellsByteOffset;
                 new Uint32Array(cellsBuffer.buffer, node.cellsByteLocation, node.cells.length).set(node.cells);
-                writeNodeToBuffer(nodesBuffer, node.byteLocation, null, null, node.cellsByteLocation/4, 0);
+                writeNodeToBuffer(
+                    nodesBuffer, 
+                    node.byteLocation, 
+                    null, 
+                    null, 
+                    null,
+                    node.cellsByteLocation/4, 
+                    0
+                );
                 nextCellsByteOffset += node.cells.length*4;
             }, 
             // run only for branch nodes

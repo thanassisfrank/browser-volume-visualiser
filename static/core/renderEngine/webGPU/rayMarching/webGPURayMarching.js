@@ -464,6 +464,18 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
 
+    //updates the renderables
+    this.updateDynamicDataObj = function(dataObj) {
+        for (let renderable of dataObj.renderables) {
+            if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
+                // update the dynamic tree buffer
+                // console.log("written");
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
+            }
+        }
+    }
+
+
     this.beginFrame = function(ctx, resized, cameraMoved, thresholdChanged) {
         if (cameraMoved || thresholdChanged) {
             this.globalPassInfo.framesSinceMove = 0;

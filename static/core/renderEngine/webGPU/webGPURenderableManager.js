@@ -4,7 +4,7 @@
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
 import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
-import { DataFormats } from "../../data/data.js";
+import { DataFormats, ResolutionModes } from "../../data/data.js";
 
 
 export function WebGPURenderableManager(webGPUBase, rayMarcher) {
@@ -65,6 +65,10 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         // propogate the threshold to its renderables
         for (let renderable of data.renderables) {
             renderable.passData.threshold = data.threshold;
+        }
+        if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME && data.resolutionMode == ResolutionModes.DYNAMIC) {
+            // setup the dataset for ray marching
+            this.rayMarcher.updateDynamicDataObj(data);
         }
     }
 
