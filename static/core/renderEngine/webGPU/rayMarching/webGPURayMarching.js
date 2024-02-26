@@ -51,7 +51,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showDeviceCoords: false,
         sampleNearest: false,
         showCells: false,
-        showNodes: false,
+        showNodeVals: false,
+        showNodeLoc: false,
+        showNodeDepth: false,
 
         // not sent to gpu
         cheapMove: false,
@@ -95,7 +97,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
         flags |= this.passFlags.sampleNearest    << 12 & 0b1 << 12;
         flags |= this.passFlags.showCells        << 13 & 0b1 << 13;
-        flags |= this.passFlags.showNodes        << 14 & 0b1 << 14;
+        flags |= this.passFlags.showNodeVals     << 14 & 0b1 << 14;
+        flags |= this.passFlags.showNodeLoc      << 15 & 0b1 << 15;
+        flags |= this.passFlags.showNodeDepth    << 16 & 0b1 << 16;
         return flags;
     }
 

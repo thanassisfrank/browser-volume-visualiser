@@ -82,6 +82,7 @@ struct TreeNodesBuff {
 struct KDTreeResult {
     node : KDTreeNode,
     box : AABB,
+    depth : u32,
 }
 
 struct InterpolationCell {
@@ -108,8 +109,8 @@ var<private> passInfo : RayMarchPassInfo;
 // returns the lowest node in the tree which contains the query point
 fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     // traverse the data tree (kdtree) to find the correct leaf node
-    var depth = 0;
-    var splitDimension = 0;
+    var depth : u32 = 0u;
+    var splitDimension : u32 = 0u;
     var currNodePtr : u32 = 0u;
     var currNode : KDTreeNode;
     var box : AABB = datasetBox;
@@ -135,7 +136,7 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 
     }
 
-    return KDTreeResult(currNode, box);
+    return KDTreeResult(currNode, box, depth);
 }
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
@@ -493,23 +494,28 @@ fn main(
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
         return;
     }
-    if (passFlags.showCells) {
-        // setPixel(id.xy, vec4<f32>(u32ToCol(id.x + imageSize.x * id.y), 1));
+    if (passFlags.showNodeVals) {
         // random from node location in buffer
         var dataPos : vec3<f32> = toDataSpace(ray.tip);
         var result : KDTreeResult = getContainingLeafNode(dataPos);
         // semi-random from node location
+        setPixel(id.xy, vec4<f32>(vec3<f32>(result.node.splitVal/100), 1));
+        return;
+    }
+    if (passFlags.showNodeLoc) {
+        // random from node location in buffer
+        var dataPos : vec3<f32> = toDataSpace(ray.tip);
+        var result : KDTreeResult = getContainingLeafNode(dataPos);
+        // semi-random col from node location
         setPixel(id.xy, vec4<f32>(u32ToCol(result.box.val), 1));
         return;
     }
-    if (passFlags.showNodes) {
+    if (passFlags.showNodeDepth) {
         // random from node location in buffer
         var dataPos : vec3<f32> = toDataSpace(ray.tip);
         var result : KDTreeResult = getContainingLeafNode(dataPos);
         // semi-random from node location
-        // setPixel(id.xy, vec4<f32>(u32ToCol(nodeLoc.box.val), 1));
-        // the split value
-        setPixel(id.xy, vec4<f32>(vec3<f32>(result.node.splitVal/100), 1));
+        setPixel(id.xy, vec4<f32>(u32ToCol(result.depth), 1));
         return;
     }
     

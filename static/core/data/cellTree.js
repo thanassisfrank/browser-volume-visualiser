@@ -117,9 +117,10 @@ export var getCellTreeBuffers = (dataObj) => {
     return treeBuffers;
 }
 
+
 // returns the box covering this node from the direct parent node's box
 // takes parent box, if its left and split dimension
-export var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
+var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
     var thisBox = {
         min: [parentBox.min[0], parentBox.min[1], parentBox.min[2]], 
         max: [parentBox.max[0], parentBox.max[1], parentBox.max[2]], 
@@ -138,7 +139,7 @@ export var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
 
 // calculates a score for the box
 // box size/distance from camera
-export var calcBoxScore = (box, cameraCoords) => {
+var calcBoxScore = (box, cameraCoords) => {
     // get corner-to-corner length of the box
     var length = VecMath.magnitude(VecMath.vecMinus(box.min, box.max));
     var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
@@ -151,8 +152,10 @@ export var calcBoxScore = (box, cameraCoords) => {
 // calculate the scores for the current leaf nodes, true leaf or pruned
 // returns a list of high and low scoring nodes, count long
 // each node also contains the ptr to themselves in the full tree buffer
+// threshold if the min score (size) that will be considered for splitting
 // assumes camera coords is in the dataset coordinate space
-export var getNodeScores = (dataObj, cameraCoords, count) => {
+var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
+    // console.log(threshold);
     var dynamicNodes = dataObj.data.dynamicTreeNodes;
     var fullNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
@@ -208,8 +211,8 @@ export var getNodeScores = (dataObj, cameraCoords, count) => {
             var score = calcBoxScore(getThisBox(currNode), cameraCoords);
             currNode.score = score;
             // console.log(score);
-            insertScore(highScores, currNode, (a, b) => a.score > b.score);
-            insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
+            if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
+            if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
             // write score into node for now
             writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
             // right is done after left, going back up the tree now  
@@ -229,17 +232,22 @@ export var getNodeScores = (dataObj, cameraCoords, count) => {
                 // get the ptr to the children in the full buffer
                 var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
                 // add its children to the next nodes
+                var leftNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
+                var rightNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
+                var bothLeaves = leftNode.rightPtr == 0 && rightNode.rightPtr == 0;
                 nodes.push({
-                    ...readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH), 
+                    ...leftNode, 
                     thisFullPtr: currFullNode.rightPtr,
                     childType: ChildTypes.RIGHT,
                     parentSplit: currNode.splitVal,
+                    bothSiblingsLeaves: bothLeaves,
                 });
                 nodes.push({
-                    ...readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH), 
+                    ...rightNode, 
                     thisFullPtr: currFullNode.leftPtr,
                     childType: ChildTypes.LEFT,
                     parentSplit: currNode.splitVal,
+                    bothSiblingsLeaves: bothLeaves,
                 });
             } else {
                 // console.log("up")
@@ -260,24 +268,160 @@ export var getNodeScores = (dataObj, cameraCoords, count) => {
 
 
 
+// make sure there are no nodes in both high and low
+// make sure those in high can be split
+// make sure low doesn't have any full sibling sets
+// make sure those in low have a sibling that is also a leaf
+var sanitiseNodeScores = (fullNodes, scores) => {
+    // make sure the lowest and highest lists don't intersect by not sharing parents
+    // this ensures there isn't duplicte nodes or siblings split across
+    // remove from high scores lists if there is
+    for (let i = scores.high.length - 1; i > -1; i--) {
+        let j;
+        let removed = false;
+        for (j = 0; j < scores.low.length; j++) {
+            if (scores.high[i].parentPtr == scores.low[j].parentPtr) {
+                // duplicate found
+                scores.high.splice(i, 1);
+                removed = true;
+                break;
+            }
+        }
+
+        // check if extra resolution available
+        if (!removed) {
+            var fullNode = readNodeFromBuffer(fullNodes, scores.high[i].thisFullPtr * NODE_BYTE_LENGTH);
+            if (fullNode.rightPtr == 0) {
+                // is a true leaf
+                scores.high.splice(i, 1);
+            }
+        }
+    }
+    // console.log(scores);
+
+    for (let i = scores.low.length - 1; i > -1; i--) {
+        var siblingIsLeaf = false;
+
+        // make sure only one out of each sibling pair is in low score lost
+        for (let j = i - 1; j > -1; j--) {
+            // console.log(scores.low.map(x => x.parentPtr), i, j);
+            if (i != j && scores.low[i].parentPtr == scores.low[j].parentPtr) {
+                // siblings found
+                scores.low.splice(i, 1); // i >= j
+                siblingIsLeaf = true;
+                break;
+            }
+        }
+
+        // // console.log(siblingIsLeaf);
+        // // make sure only nodes whose sibling is also a leaf are included in low
+        // if (!siblingIsLeaf) {
+        //     // console.log("looking")
+        //     var knownNode = scores.low[i]
+        //     var parentNode = readNodeFromBuffer(dynamicNodes, knownNode.parentPtr * NODE_BYTE_LENGTH);
+        //     if (knownNode.childType == ChildTypes.LEFT) {
+        //         // look at right child
+        //         var siblingPtr = parentNode.rightPtr;
+        //     } else {
+        //         var siblingPtr = parentNode.leftPtr;
+        //     }
+        //     var sibling = readNodeFromBuffer(dynamicNodes, siblingPtr * NODE_BYTE_LENGTH);
+        //     if (sibling.rightPtr != 0) {
+        //         // the sibling is not also a leaf, remove this one
+        //         scores.low.splice(i, 1); // i >= j
+        //     }
+        // }
+
+    }
+
+    return scores;
+}
+
+var changeNodeBufferContents = (dynamicNodes, fullNodes, scores) => {
+    // find the amount of changes we can now make
+    var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
+    changeCount = Math.min(1, changeCount);
+    console.log(changeCount);
+
+    // merge the leaves with the highest scores with their siblings (delete 2 per change)
+    var freePtrs = [];
+    for (let i = 0; i < changeCount; i++) {
+        // console.log("pruning", scores.low[i].parentPtr);
+        var parentNode = readNodeFromBuffer(dynamicNodes, scores.low[i].parentPtr * NODE_BYTE_LENGTH);
+        freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
+        // convert the parentNode to a pruned leaf
+        writeNodeToBuffer(
+            dynamicNodes, 
+            scores.low[i].parentPtr * NODE_BYTE_LENGTH,
+            null,
+            null,
+            null,
+            0,
+            0,
+        );
+
+        // console.log(readNodeFromBuffer(dynamicNodes, scores.low[i].parentPtr * NODE_BYTE_LENGTH));
+    }
+
+    // console.log(freePtrs);
+
+    // split the leaves with the lowest scores (write 2 per change)
+    for (let i = 0; i < freePtrs.length/2; i++) {
+        var thisNode = scores.high[i];
+        // console.log("splitting", thisNode.thisPtr);
+        var thisNodeFull = readNodeFromBuffer(fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
+        // update node to branch
+        writeNodeToBuffer(
+            dynamicNodes,
+            thisNode.thisPtr * NODE_BYTE_LENGTH,
+            thisNodeFull.splitVal, // important to re-write the split val
+            0,
+            null,
+            freePtrs[2*i],
+            freePtrs[2*i + 1]
+        )
+
+        // console.log(readNodeFromBuffer(dynamicNodes, thisNode.thisPtr * NODE_BYTE_LENGTH));
+        
+        // fetch the left node from the full buffer and write to dynamic as pruned leaf
+        var leftNode = readNodeFromBuffer(fullNodes, thisNodeFull.leftPtr * NODE_BYTE_LENGTH);
+        writeNodeToBuffer(
+            dynamicNodes, 
+            freePtrs[2*i] * NODE_BYTE_LENGTH, 
+            leftNode.splitVal, 
+            0,
+            thisNode.thisPtr, 
+            0, 
+            0
+        );
+
+        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i] * NODE_BYTE_LENGTH));
+        // fetch the right node from the full buffer and write to dynamic as pruned leaf
+        var rightNode = readNodeFromBuffer(fullNodes, thisNodeFull.rightPtr * NODE_BYTE_LENGTH);
+        writeNodeToBuffer(
+            dynamicNodes, 
+            freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
+            rightNode.splitVal, 
+            0,
+            thisNode.thisPtr, 
+            0, 
+            0
+        );
+
+        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i + 1] * NODE_BYTE_LENGTH));
+    }
+}
+
+
 // updates the dynamic tree buffers based on camera location
 // cameraCoords is dataset-relative
-export var updateDynamicTreeBuffers = (dataObj, cameraCoords) => {
+export var updateDynamicTreeBuffers = (dataObj, threshold, cameraCoords) => {
     // get the node scores, n lowest highest
-    var scores = getNodeScores(dataObj, cameraCoords, 10);
+    var scores = getNodeScores(dataObj, threshold, cameraCoords, 10);
+    scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
-    // select the n leaves with the highest score to split
-
-    // select the n leaves with the lowest scores to merge
-    // make sure only one out of each sibling pair is in this list
-
-    // make sure the lowest and highest lists don't share any leaves
-    
-    // merge the leaves with the highest scores with their siblings (delete 2)
-
-    // split the leaves with the lowest scores (write 2)
-    // these go into the left-over locations from deleted nodes
-
+    // update the dynamic buffer contents
+    changeNodeBufferContents(dataObj.data.dynamicTreeNodes, dataObj.data.treeNodes, scores);    
 }
 
 
@@ -392,6 +536,7 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
     }
     return dynamicNodes;
 }
+
 
 export var estimateLeafAvg = (dataObj) => {
     

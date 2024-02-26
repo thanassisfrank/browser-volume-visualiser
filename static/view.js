@@ -203,7 +203,7 @@ function View(id, camera, data, renderMode, threshold) {
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
             renderEngine.setupSceneObject(sceneObj);
         }
-        // updateDynamicTreeBuffers(this.data, this.sceneGraph.activeCamera.getEyePos());
+        // updateDynamicTreeBuffers(this.data, 30, this.sceneGraph.activeCamera.getEyePos());
         console.log(this.sceneGraph.activeCamera.getEyePos());
         this.update(0, renderEngine);
         
@@ -223,7 +223,7 @@ function View(id, camera, data, renderMode, threshold) {
         this.data.threshold = this.threshold;
 
         // need to find the camera position in world space
-        updateDynamicTreeBuffers(this.data, this.sceneGraph.activeCamera.getEyePos());
+        updateDynamicTreeBuffers(this.data, 0, this.sceneGraph.activeCamera.getEyePos());
 
         // update the renderables for the objects in the scene
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {

@@ -105,7 +105,9 @@
             <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
             <input type="checkbox" class="ray-march-opt" name="showCells"><label>Data cells</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNodes"><label>Tree nodes</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNodeVals"><label>Node values</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNodeLoc"><label>Node indexes</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showNodeDepth"><label>Node depth</label><br>
             <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
             <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
@@ -262,6 +264,10 @@
                                 }
                             }
                             break;
+                        case "u":
+                            // update view
+                            // Object.values(viewManager.views)[0].update(0, renderEngine);
+                            break;
                         case "Alt":
                             e.preventDefault();
                             break;
@@ -297,7 +303,7 @@
                     if (viewList.length == 0) {
                         renderEngine.clearScreen();
                     } else {
-                        for (let view of Object.values(viewManager.views)) {
+                        for (let view of viewList) {
                             await renderEngine.renderView(view);
                         }
                     }

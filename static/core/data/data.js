@@ -209,7 +209,7 @@ var dataManager = {
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
         if (resolutionMode == ResolutionModes.DYNAMIC) {
-            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 60);
+            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 128);
         }
     },
     
