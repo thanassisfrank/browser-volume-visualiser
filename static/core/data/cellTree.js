@@ -3,6 +3,7 @@
 // manages
 
 import { VecMath } from "../VecMath.js";
+import { mat4, vec4, vec3 } from "https://cdn.skypack.dev/gl-matrix";
 
 
 const NODE_BYTE_LENGTH = 5 * 4;
@@ -88,6 +89,13 @@ var readNodeFromBuffer = (buffer, byteOffset) => {
         leftPtr:   u32View.slice(3, 4)[0],
         rightPtr:  u32View.slice(4, 5)[0],
     }
+}
+
+var depthFirstTreeBufferTraverse = (
+    leafFunc,
+
+) => {
+
 }
 
 
@@ -214,7 +222,7 @@ var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
             if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
             if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
             // write score into node for now
-            writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
+            //writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
             // right is done after left, going back up the tree now  
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -256,8 +264,6 @@ var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
                 if (currNode.childType == ChildTypes.RIGHT) currDepth--;  
             }
         }
-
-        
     }
 
     return {
@@ -271,7 +277,6 @@ var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
 // make sure there are no nodes in both high and low
 // make sure those in high can be split
 // make sure low doesn't have any full sibling sets
-// make sure those in low have a sibling that is also a leaf
 var sanitiseNodeScores = (fullNodes, scores) => {
     // make sure the lowest and highest lists don't intersect by not sharing parents
     // this ensures there isn't duplicte nodes or siblings split across
@@ -312,34 +317,16 @@ var sanitiseNodeScores = (fullNodes, scores) => {
                 break;
             }
         }
-
-        // // console.log(siblingIsLeaf);
-        // // make sure only nodes whose sibling is also a leaf are included in low
-        // if (!siblingIsLeaf) {
-        //     // console.log("looking")
-        //     var knownNode = scores.low[i]
-        //     var parentNode = readNodeFromBuffer(dynamicNodes, knownNode.parentPtr * NODE_BYTE_LENGTH);
-        //     if (knownNode.childType == ChildTypes.LEFT) {
-        //         // look at right child
-        //         var siblingPtr = parentNode.rightPtr;
-        //     } else {
-        //         var siblingPtr = parentNode.leftPtr;
-        //     }
-        //     var sibling = readNodeFromBuffer(dynamicNodes, siblingPtr * NODE_BYTE_LENGTH);
-        //     if (sibling.rightPtr != 0) {
-        //         // the sibling is not also a leaf, remove this one
-        //         scores.low.splice(i, 1); // i >= j
-        //     }
-        // }
-
     }
 
     return scores;
 }
 
-var changeNodeBufferContents = (dynamicNodes, fullNodes, scores) => {
+
+var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, scores) => {
     // find the amount of changes we can now make
     var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
+    // cap this at 1
     changeCount = Math.min(1, changeCount);
     console.log(changeCount);
 
@@ -388,7 +375,7 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, scores) => {
         writeNodeToBuffer(
             dynamicNodes, 
             freePtrs[2*i] * NODE_BYTE_LENGTH, 
-            leftNode.splitVal, 
+            nodeVals[leftNode.thisPtr], 
             0,
             thisNode.thisPtr, 
             0, 
@@ -401,7 +388,7 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, scores) => {
         writeNodeToBuffer(
             dynamicNodes, 
             freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
-            rightNode.splitVal, 
+            nodeVals[rightNode.thisPtr], 
             0,
             thisNode.thisPtr, 
             0, 
@@ -421,24 +408,249 @@ export var updateDynamicTreeBuffers = (dataObj, threshold, cameraCoords) => {
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents
-    changeNodeBufferContents(dataObj.data.dynamicTreeNodes, dataObj.data.treeNodes, scores);    
+    changeNodeBufferContents(dataObj.data.dynamicTreeNodes, dataObj.data.treeNodes, dataObj.data.nodeVals, scores);    
+}
+
+
+
+// test if a given point is within an AABB
+var pointInAABB = (p, box) => {
+    if (p[0] < box.min[0] || p[1] < box.min[1] || p[2] < box.min[2]) {
+        return false;
+    }
+    if (p[0] > box.max[0] || p[1] > box.max[1] || p[2] > box.max[2]) {
+        return false;
+    }
+    return true;
+};
+
+// point in tet functions returns the barycentric coords if inside and all 0 if outside
+// this implementation uses the determinates of matrices - slightly faster
+var pointInTetDet = (queryPoint, cell) => {
+    var x = queryPoint[0];
+    var y = queryPoint[1];
+    var z = queryPoint[2];
+    var p = cell.points;
+    // compute the barycentric coords for the point
+    var lambda1 = mat4.determinant(mat4.fromValues(
+        1,       x,       y,       z,
+        1, p[1][0], p[1][1], p[1][2],
+        1, p[2][0], p[2][1], p[2][2],
+        1, p[3][0], p[3][1], p[3][2],
+    ));
+
+    var lambda2 = mat4.determinant(mat4.fromValues(
+        1, p[0][0], p[0][1], p[0][2],      
+        1,       x,       y,       z,      
+        1, p[2][0], p[2][1], p[2][2],      
+        1, p[3][0], p[3][1], p[3][2],      
+    ));
+
+    var lambda3 = mat4.determinant(mat4.fromValues(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1,       x,       y,       z,      
+        1, p[3][0], p[3][1], p[3][2],      
+    ));
+
+    var lambda4 = mat4.determinant(mat4.fromValues(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1, p[2][0], p[2][1], p[2][2],      
+        1,       x,       y,       z,      
+    ));
+
+    var vol = mat4.determinant(mat4.fromValues(
+        1, p[0][0], p[0][1], p[0][2],      
+        1, p[1][0], p[1][1], p[1][2],      
+        1, p[2][0], p[2][1], p[2][2],      
+        1, p[3][0], p[3][1], p[3][2],      
+    ));
+
+    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
+        return [-lambda1/vol, -lambda2/vol, -lambda3/vol, -lambda4/vol];
+    } else if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0) {
+        return [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol];
+    } else {
+        // not in this cell
+        return [0, 0, 0, 0];
+    }
+
+}
+
+var pointInTetBounds = (queryPoint, cell) => {
+    var minVec = [
+        Math.min(cell.points[0][0], Math.min(cell.points[1][0], Math.min(cell.points[2][0], cell.points[3][0]))),
+        Math.min(cell.points[0][1], Math.min(cell.points[1][1], Math.min(cell.points[2][1], cell.points[3][1]))),
+        Math.min(cell.points[0][2], Math.min(cell.points[1][2], Math.min(cell.points[2][2], cell.points[3][2]))),
+    ];
+
+    var maxVec = [
+        Math.max(cell.points[0][0], Math.max(cell.points[1][0], Math.max(cell.points[2][0], cell.points[3][0]))),
+        Math.max(cell.points[0][1], Math.max(cell.points[1][1], Math.max(cell.points[2][1], cell.points[3][1]))),
+        Math.max(cell.points[0][2], Math.max(cell.points[1][2], Math.max(cell.points[2][2], cell.points[3][2]))),
+    ];
+
+    return pointInAABB(queryPoint, {min: minVec, max: maxVec});
+}
+
+var getContainingCell = (dataObj, queryPoint, leafNode) => {
+    var cell = {
+        points : [
+            vec3.create(), vec3.create(), vec3.create(), vec3.create(),
+        ],
+        values : [0, 0, 0, 0],
+        factors : [0, 0, 0, 0]
+    };
+
+    // check the cells in the leaf node found
+    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
+    for (let i = 0; i < leafNode.cellCount; i++) {
+        // go through and check all the contained cells
+        var cellID = dataObj.data.treeCells[cellsPtr + i];
+        // create a cell from the data
+
+        // figure out if cell is inside using barycentric coords
+        var pointsOffset = dataObj.data.cellOffsets[cellID];
+        // read all the point positions
+        for (let j = 0; j < 4; j++) {
+            // get the coords of the point as an array 3
+            var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+            cell.points[j][0] = dataObj.data.positions[3 * thisPointIndex + 0];
+            cell.points[j][1] = dataObj.data.positions[3 * thisPointIndex + 1];
+            cell.points[j][2] = dataObj.data.positions[3 * thisPointIndex + 2];
+        }
+            
+
+        // check cell bounding box
+        if(!pointInTetBounds(queryPoint, cell)) continue;
+        var tetFactors = pointInTetDet(queryPoint, cell);
+        if (
+            tetFactors[0] == 0 && 
+            tetFactors[1] == 0 && 
+            tetFactors[2] == 0 && 
+            tetFactors[3] == 0
+        ) continue;
+        cell.values[0] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 0]];
+        cell.values[1] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 1]];
+        cell.values[2] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 2]];
+        cell.values[3] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 3]];
+
+        cell.factors = tetFactors;
+        break;
+    }
+    return cell;
+}
+
+// samples a given leaf at the given position
+var sampleLeaf = (dataObj, leafNode, queryPoint) => {
+    // true leaf, sample the cells within
+    var cell = getContainingCell(dataObj, queryPoint, leafNode);
+    // interpolate value
+    if (vec4.length(cell.factors) == 0) {
+        return 0;
+    };
+    return vec4.dot(cell.values, cell.factors);
+}
+
+var getLeafAverage = (dataObj, leafNode, leafBox) => {
+    var newQueryPoint = () => {
+        return [
+            Math.random() * (leafBox.max[0] - leafBox.min[0]) + leafBox.min[0],
+            Math.random() * (leafBox.max[1] - leafBox.min[1]) + leafBox.min[1],
+            Math.random() * (leafBox.max[2] - leafBox.min[2]) + leafBox.min[2],
+        ]
+    }
+    var sampleCount = 100;
+    var averageVal = 0;
+    for (let i = 0; i < sampleCount; i++) {
+        // sample the leaf node at random positions to find its average value
+        averageVal += sampleLeaf(dataObj, leafNode, newQueryPoint())/sampleCount;
+    }
+
+    return averageVal;
 }
 
 
 // creates an f32 buffer which contains an average value for each node
-// stored breadth first
+// the value for each node is at the same index in this buffer as it is in the tree buffer
 export var createNodeValuesBuffer = (dataObj) => {
     var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
     var nodeVals = new Float32Array(nodeCount);
 
-    // loop through the nodes, depth first and bottom up
-    var nodes = [readNodeFromBuffer(treeNodes, 0)];
-    var currNode;
-    while (nodes.length > 0) {
-        currNode = nodes.pop();
-
+    // figure out the box of the current node
+    var getThisBox = (currNode) => {
+        // console.log(currNode);
+        if (currNode.parentPtr == currNode.thisPtr) {
+            // root node
+            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
+        }
+        var parentBox = currBoxes[currBoxes.length - 1];
+        return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
     }
+
+    // the boxes of all of the parents of the current node
+    var currBoxes = [];
+    // the next nodes to process
+    var nodes = [readNodeFromBuffer(treeNodes, 0)];
+    var currDepth = 0; // depth of node currently being processed
+    var processed = 0;
+    while (nodes.length > 0 && processed < nodeCount * 3) {
+        processed++;
+        var currNode = nodes.pop();
+        if (currNode.rightPtr == 0) {
+            // this is a leaf node, get its average value directly
+            var averageVal = getLeafAverage(dataObj, currNode, getThisBox(currNode));
+            // write into the nodeVals buffer
+            nodeVals[currNode.thisPtr] = averageVal;
+            if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
+        } else {
+            // this is a branch
+            if (currDepth == currBoxes.length) {
+                // going down, depth
+                currBoxes.push(getThisBox(currNode));
+                currDepth++;
+
+                // push itself to handle going back up the tree
+                nodes.push(currNode);
+
+                // add its children to the next nodes
+                var leftNode = readNodeFromBuffer(treeNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
+                var rightNode = readNodeFromBuffer(treeNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
+                nodes.push({
+                    ...leftNode, 
+                    childType: ChildTypes.RIGHT,
+                    parentSplit: currNode.splitVal,
+                });
+                nodes.push({
+                    ...rightNode, 
+                    childType: ChildTypes.LEFT,
+                    parentSplit: currNode.splitVal,
+                });
+            } else {
+                // going back up
+                // calculate the node value from its childrens' values
+
+                // calculate weighting to give to left and right children
+                var splitDim = currDepth % 3;
+                var thisBox = currBoxes[currBoxes.length - 1];
+                var leftWeight = (currNode.splitVal - thisBox.min[splitDim]) / (thisBox.max[splitDim] - thisBox.min[splitDim]);
+                
+                // get the averages of its children
+                var leftAvg = nodeVals[currNode.leftPtr];
+                var rightAvg = nodeVals[currNode.rightPtr];
+
+                // write this average to the buffer
+                nodeVals[currNode.thisPtr] = leftAvg * leftWeight + rightAvg * (1 - leftWeight);
+
+                currBoxes.pop();
+                if (currNode.childType == ChildTypes.RIGHT) currDepth--;  
+            }
+        }
+    }
+
+    return nodeVals;
 }
 
 
@@ -535,11 +747,6 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
         // console.log(readNodeFromBuffer(dynamicNodes, i * NODE_BYTE_LENGTH));
     }
     return dynamicNodes;
-}
-
-
-export var estimateLeafAvg = (dataObj) => {
-    
 }
    
 

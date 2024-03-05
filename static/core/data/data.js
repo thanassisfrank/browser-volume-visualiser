@@ -5,7 +5,7 @@ import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
-import { createDynamicTreeBuffers, getCellTreeBuffers } from "./cellTree.js";
+import { createDynamicTreeBuffers, createNodeValuesBuffer, getCellTreeBuffers } from "./cellTree.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
@@ -209,7 +209,8 @@ var dataManager = {
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
         if (resolutionMode == ResolutionModes.DYNAMIC) {
-            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 128);
+            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 256);
+            dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
         }
     },
     

@@ -10,7 +10,7 @@ import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 
 import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
 import { RenderableTypes } from "./core/renderEngine/renderEngine.js";
-import { DataFormats, dataManager } from "./core/data/data.js";
+import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
 
@@ -223,7 +223,9 @@ function View(id, camera, data, renderMode, threshold) {
         this.data.threshold = this.threshold;
 
         // need to find the camera position in world space
-        updateDynamicTreeBuffers(this.data, 0, this.sceneGraph.activeCamera.getEyePos());
+        if (this.data.resolutionMode == ResolutionModes.DYNAMIC) {
+            updateDynamicTreeBuffers(this.data, 0.1, this.sceneGraph.activeCamera.getEyePos());
+        }
 
         // update the renderables for the objects in the scene
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {

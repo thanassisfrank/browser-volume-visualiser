@@ -143,8 +143,11 @@ fn fragment_main(
 
     if (passFlags.showCells) {
         var dataPos = toDataSpace(ray.tip);
-        var cellIndex = u32(floor(dataPos.x) + floor(dataPos.y) * dataSize.x + floor(dataPos.z) * dataSize.x * dataSize.y);
-        return FragmentOut(vec4<f32>(u32ToCol(cellIndex), 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+        var cellIndex : u32 = u32(floor(dataPos.x) + floor(dataPos.y) * dataSize.x + floor(dataPos.z) * dataSize.x * dataSize.y);
+        return FragmentOut(
+            vec4<f32>(u32ToCol(randomU32(cellIndex)), 1), 
+            vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0)
+        );
     }
 
 

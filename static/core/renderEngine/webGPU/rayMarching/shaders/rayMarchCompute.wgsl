@@ -139,6 +139,40 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     return KDTreeResult(currNode, box, depth);
 }
 
+
+// this implementation uses the scalar triple product
+fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+    var p = queryPoint;
+    var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
+    var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
+    var c = vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
+    var d = vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
+
+    var vap : vec3<f32> = p - a;
+    var vbp : vec3<f32> = p - b;
+
+    var vab : vec3<f32> = b - a;
+    var vac : vec3<f32> = c - a;
+    var vad : vec3<f32> = d - a;
+    var vbc : vec3<f32> = c - b;
+    var vbd : vec3<f32> = d - b;
+    
+    var lambda1 : f32 = scalarTriple(vbp, vbd, vbc);
+    var lambda2 : f32 = scalarTriple(vap, vac, vad);
+    var lambda3 : f32 = scalarTriple(vap, vad, vab);
+    var lambda4 : f32 = scalarTriple(vap, vab, vac);
+    var v : f32 = scalarTriple(vab, vac, vad);
+
+    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
+    } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
+        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
+    } else {
+        // not in this cell
+        return vec4<f32>(0);
+    }
+}
+
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
 fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
@@ -191,39 +225,6 @@ fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> 
         return vec4<f32>(0);
     }
 
-}
-
-// this implementation uses the scalar triple product
-fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
-    var p = queryPoint;
-    var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
-    var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
-    var c = vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
-    var d = vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
-
-    var vap : vec3<f32> = p - a;
-    var vbp : vec3<f32> = p - b;
-
-    var vab : vec3<f32> = b - a;
-    var vac : vec3<f32> = c - a;
-    var vad : vec3<f32> = d - a;
-    var vbc : vec3<f32> = c - b;
-    var vbd : vec3<f32> = d - b;
-    
-    var lambda1 : f32 = scalarTriple(vbp, vbd, vbc);
-    var lambda2 : f32 = scalarTriple(vap, vac, vad);
-    var lambda3 : f32 = scalarTriple(vap, vad, vab);
-    var lambda4 : f32 = scalarTriple(vap, vab, vac);
-    var v : f32 = scalarTriple(vab, vac, vad);
-
-    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
-    } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
-    } else {
-        // not in this cell
-        return vec4<f32>(0);
-    }
 }
 
 fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
@@ -507,7 +508,7 @@ fn main(
         var dataPos : vec3<f32> = toDataSpace(ray.tip);
         var result : KDTreeResult = getContainingLeafNode(dataPos);
         // semi-random col from node location
-        setPixel(id.xy, vec4<f32>(u32ToCol(result.box.val), 1));
+        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(result.box.val)), 1));
         return;
     }
     if (passFlags.showNodeDepth) {
@@ -515,7 +516,7 @@ fn main(
         var dataPos : vec3<f32> = toDataSpace(ray.tip);
         var result : KDTreeResult = getContainingLeafNode(dataPos);
         // semi-random from node location
-        setPixel(id.xy, vec4<f32>(u32ToCol(result.depth), 1));
+        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(result.depth)), 1));
         return;
     }
     
