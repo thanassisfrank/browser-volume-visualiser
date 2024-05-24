@@ -36,6 +36,8 @@ struct RayMarchPassFlags {
     showNodeVals: bool,
     showNodeLoc: bool,
     showNodeDepth: bool,
+    secantRoot: bool,
+    renderNodeVals: bool,
 };
 
 // the return value of the ray-march function
@@ -79,6 +81,8 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 14)) != 0,
         (flagUint & (1u << 15)) != 0,
         (flagUint & (1u << 16)) != 0,
+        (flagUint & (1u << 17)) != 0,
+        (flagUint & (1u << 18)) != 0,
     );
 };
 
@@ -95,7 +99,7 @@ fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
 
 // recovers the normal (gradient) of the data at the given point
 fn getDataNormal (x : f32, y : f32, z : f32) -> vec3<f32> {
-    var epsilon : f32 = 0.1;
+    var epsilon : f32 = 0.5;
     var gradient : vec3<f32>;
     var p0 = sampleDataValue(x, y, z);
     if (x > epsilon) {
@@ -146,6 +150,25 @@ fn attenuateCol(inCol : vec4<f32>, absorptionCol : vec3<f32>) -> vec4<f32> {
     );
 }
 
+// do linear interpolation to find the intersection point
+// returns a value between 0, 1
+// n0 is last, n1 is second to last
+fn linearBackStep(n0 : f32, n1 : f32) -> f32{
+    return n0/(n1-n0);
+}
+
+fn quadraticBackStep(n0 : f32, n1 : f32, n2 :f32) -> f32{
+    var c = n0;
+    var a = 0.5 * n0 + 3 * n1 + 0.5 * n2;
+    var b = 1.5 * n0 + 2 * n1 + 0.5 * n2;
+
+    var x0 = (-b - sqrt(pow(b, 2) - 4*a*c))/(2*a);
+    if (x0 > 0 || x0 < -1) {
+        x0 = (-b + sqrt(pow(b, 2) - 4*a*c))/(2*a);
+    }
+    return x0;
+}
+
 // marches a ray through a dataset volume, starting from the stub supplied
 // returns the colour from that ray
 fn marchRay(
@@ -170,9 +193,12 @@ fn marchRay(
     // march the ray
     var lastAbove = false;
     var lastSampleVal : f32;
+    var lastLastSampleVal : f32;
     var lastStepSize : f32 = 0;
     var sampleVal : f32;
     var thisAbove = false;
+
+    var foundSurface = false;
     var stepsInside = 0u;
     var i = 0u;
     loop {
@@ -206,10 +232,34 @@ fn marchRay(
                 if (thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u) {
                     // has been crossed, surface has been found
                     if (passFlags.backStep) {
-                        // find where exactly by lerp
-                        var backStep = lastStepSize/(sampleVal-lastSampleVal) * (sampleVal - passInfo.threshold);
-                        ray = extendRay(ray, -backStep);
+                        var iSec = 0u;
+
+                        var xn0 = 0.0;
+
+                        var xn1 = 0.0;
+                        var fn1 = sampleVal - passInfo.threshold;
+
+                        var xn2 = -lastStepSize;
+                        var fn2 = lastSampleVal - passInfo.threshold;
+                        loop {
+                            if (iSec >= 4u) {break;}
+                            if (iSec > 0u) {
+                                xn2 = xn1;
+                                fn2 = fn1;
+
+                                xn1 = xn0;
+                                var secRay = extendRay(ray, xn0);
+                                var secDataPos = toDataSpace(secRay.tip);
+                                fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z) - passInfo.threshold;
+                            }
+                            xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
+                            iSec++;
+                        }
+                        // adjust last step for correct volume integration
+                        lastStepSize += min(0, max(-lastStepSize, xn0));
+                        ray = extendRay(ray, xn0);
                         tipDataPos = toDataSpace(ray.tip);
+
                     }
 
                     // set the material
@@ -233,7 +283,7 @@ fn marchRay(
                     } else {
                         fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);
                     }
-                    break;
+                    foundSurface = true;
                 }
 
                 if (passFlags.showVolume) {
@@ -244,6 +294,10 @@ fn marchRay(
                     if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
                         break;
                     }
+                }
+
+                if (foundSurface) {
+                    break;
                 }
             }
         }
@@ -257,6 +311,7 @@ fn marchRay(
             }
             ray = extendRay(ray, thisStepSize);
             lastAbove = thisAbove;
+            lastLastSampleVal = lastSampleVal;
             lastSampleVal = sampleVal;
             lastStepSize = thisStepSize;
             i += 1u;

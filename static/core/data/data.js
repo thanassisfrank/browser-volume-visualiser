@@ -5,7 +5,7 @@ import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
 import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
-import { createDynamicTreeBuffers, createNodeValuesBuffer, getCellTreeBuffers } from "./cellTree.js";
+import { addNodeValsToFullTree, createDynamicTreeBuffers, createNodeValuesBuffer, createNodeCornerValuesBuffer, getCellTreeBuffers } from "./cellTree.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
@@ -91,18 +91,43 @@ var dataManager = {
 
         return newData;
     },
+    downsampleStructured: function(dataObj, scale) {
+        var fullDataSize = dataObj.getDataSize(); // the size in data points
+        var dataSize = [
+            Math.floor((fullDataSize[0] - 1)/scale), 
+            Math.floor((fullDataSize[1] - 1)/scale), 
+            Math.floor((fullDataSize[2] - 1)/scale), 
+        ];
+        dataObj.setDataSize(dataSize);
+        
+        var temp = new Float32Array(dataSize[0]*dataSize[1]*dataSize[2]);
+        // write values
+        let thisIndex;
+        let thisFullIndex;
+        for (let k = 0; k < dataSize[2]; k++) { // loop z
+            for (let j = 0; j < dataSize[1]; j++) { // loop y
+                for (let i = 0; i < dataSize[0]; i++) { // loop x
+                    thisIndex = k * dataSize[0] * dataSize[1] + j * dataSize[0] + i;
+                    thisFullIndex = (k * fullDataSize[0] * fullDataSize[1] + j * fullDataSize[0] + i) * scale;
+                    temp[thisIndex] = dataObj.data.values[thisFullIndex];
+                }
+            }
+        }
+        dataObj.data.values = temp;
+    },
     // takes a data object with format STRUCTURED and converts to UNSTRUCTRED with tetrahedral cells
-    convertStructuredToUnstructured: function(dataObj, resolutionMode) {
+    // resolution specified the stride within which to create the unstructured cells
+    convertStructuredToUnstructured: function(dataObj, resolutionMode, leafCells, dynamicNodeCount, nodeVals, cornerVals) {
         if (dataObj.dataFormat != DataFormats.STRUCTURED) return;
 
         // change type and resolution mode
         dataObj.dataFormat = DataFormats.UNSTRUCTURED;
         dataObj.resolutionMode = resolutionMode;
-        
+
         // build the cell data
-        var pointCount = dataObj.data.values.length;
         var dataSize = dataObj.getDataSize(); // the size in data points
-        console.log(dataSize);
+
+        var pointCount = dataSize[0] * dataSize[1] * dataSize[2];
         var cubesCount = (dataSize[0] - 1)*(dataSize[1] - 1)*(dataSize[2] - 1);
         var tetsCount = cubesCount * 5;
         
@@ -204,13 +229,28 @@ var dataManager = {
             }
         }
 
+        
+
         // create the cell tree
-        const treeBuffers = getCellTreeBuffers(dataObj);
+        const treeBuffers = getCellTreeBuffers(dataObj, leafCells);
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
-        if (resolutionMode == ResolutionModes.DYNAMIC) {
-            dataObj.data.dynamicTreeNodes = createDynamicTreeBuffers(dataObj, 256);
+
+        // need at least an empty buffer here, the render engine expects
+        dataObj.data.cornerValues = new Float32Array(64);
+
+        if (nodeVals) {
             dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
+            addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
+        }
+        if (cornerVals) {
+            dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
+        }
+
+        if (resolutionMode == ResolutionModes.DYNAMIC) {
+            var dynamicBuffers = createDynamicTreeBuffers(dataObj, dynamicNodeCount);
+            dataObj.data.dynamicTreeNodes = dynamicBuffers.nodes;
+            dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
         }
     },
     
@@ -279,7 +319,7 @@ function Data(id) {
     // includes scaling of the grid
     this.dataTransformMat = mat4.create();
 
-    this.createSimple = async function(config) {
+    this.createSimple = async function(config, scale) {
         this.config = config;
         if (config.f) {
             this.dataFormat = DataFormats.STRUCTURED;
@@ -405,6 +445,9 @@ function Data(id) {
     // for structured formats, this returns the dimensions of the data grid in # data points
     this.getDataSize = function() {
         return this.size;
+    }
+    this.setDataSize = function(size) {
+        this.size = size;
     }
     this.getValues = function() {
         return this.data.values;

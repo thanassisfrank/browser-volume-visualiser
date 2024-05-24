@@ -54,6 +54,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showNodeVals: false,
         showNodeLoc: false,
         showNodeDepth: false,
+        quadraticBackStep: false,
+        renderNodeVals: false,
 
         // not sent to gpu
         cheapMove: false,
@@ -83,27 +85,29 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.getPassFlagsUint = function() {
         var flags = 0;
-        flags |= this.passFlags.phong            << 0  & 0b1 << 0;
-        flags |= this.passFlags.backStep         << 1  & 0b1 << 1;
-        flags |= this.passFlags.showNormals      << 2  & 0b1 << 2;
-        flags |= this.passFlags.showVolume       << 3  & 0b1 << 3;
-        flags |= this.passFlags.fixedCamera      << 4  & 0b1 << 4;
-        flags |= this.passFlags.randStart        << 5  & 0b1 << 5;
-        flags |= this.passFlags.showSurface      << 6  & 0b1 << 6;
-        flags |= this.passFlags.showRayDirs      << 7  & 0b1 << 7;
-        flags |= this.passFlags.showRayLength    << 8  & 0b1 << 8;
-        flags |= this.passFlags.optimiseOffset   << 9  & 0b1 << 9;
-        flags |= this.passFlags.showOffset       << 10 & 0b1 << 10;
-        flags |= this.passFlags.showDeviceCoords << 11 & 0b1 << 11;
-        flags |= this.passFlags.sampleNearest    << 12 & 0b1 << 12;
-        flags |= this.passFlags.showCells        << 13 & 0b1 << 13;
-        flags |= this.passFlags.showNodeVals     << 14 & 0b1 << 14;
-        flags |= this.passFlags.showNodeLoc      << 15 & 0b1 << 15;
-        flags |= this.passFlags.showNodeDepth    << 16 & 0b1 << 16;
+        flags |= this.passFlags.phong             << 0  & 0b1 << 0;
+        flags |= this.passFlags.backStep          << 1  & 0b1 << 1;
+        flags |= this.passFlags.showNormals       << 2  & 0b1 << 2;
+        flags |= this.passFlags.showVolume        << 3  & 0b1 << 3;
+        flags |= this.passFlags.fixedCamera       << 4  & 0b1 << 4;
+        flags |= this.passFlags.randStart         << 5  & 0b1 << 5;
+        flags |= this.passFlags.showSurface       << 6  & 0b1 << 6;
+        flags |= this.passFlags.showRayDirs       << 7  & 0b1 << 7;
+        flags |= this.passFlags.showRayLength     << 8  & 0b1 << 8;
+        flags |= this.passFlags.optimiseOffset    << 9  & 0b1 << 9;
+        flags |= this.passFlags.showOffset        << 10 & 0b1 << 10;
+        flags |= this.passFlags.showDeviceCoords  << 11 & 0b1 << 11;
+        flags |= this.passFlags.sampleNearest     << 12 & 0b1 << 12;
+        flags |= this.passFlags.showCells         << 13 & 0b1 << 13;
+        flags |= this.passFlags.showNodeVals      << 14 & 0b1 << 14;
+        flags |= this.passFlags.showNodeLoc       << 15 & 0b1 << 15;
+        flags |= this.passFlags.showNodeDepth     << 16 & 0b1 << 16;
+        flags |= this.passFlags.secantRoot        << 17 & 0b1 << 17;
+        flags |= this.passFlags.renderNodeVals    << 18 & 0b1 << 18;
         return flags;
     }
 
-    this.getStepSize = function() {
+    this.calculateStepSize = function() {
         var falloffFrames = 3;
         if (this.passFlags.cheapMove && this.globalPassInfo.framesSinceMove < falloffFrames) {
             var stepMaxScale = 3;
@@ -111,6 +115,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             return this.globalPassInfo.stepSize * (1 + (stepMaxScale - 1) * (1 - this.globalPassInfo.framesSinceMove/falloffFrames))
         }
         return this.globalPassInfo.stepSize;
+    }
+    this.getStepSize = function() {
+        return this.globalPassInfo.stepSize;
+    }
+    this.setStepSize = function(step) {
+        this.globalPassInfo.stepSize = step;
+        this.globalPassInfo.framesSinceMove = 0;
     }
 
     this.setupEngine = async function() {
@@ -151,6 +162,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 },
             ], "computeRay0"),
             webGPU.createBindGroupLayout([
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {type: "read-only-storage"}
+                },
                 {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {type: "read-only-storage"}
@@ -307,9 +322,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // write the tree buffer
         if (dataObj.resolutionMode == ResolutionModes.FULL) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage);
+            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.cornerValues, usage);
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
         } else if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage);
+            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.dynamicCornerValues, usage);
             // TEMP
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
         }
@@ -399,6 +416,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.sharedData.buffers.cellOffsets = dataRenderable.renderData.buffers.cellOffsets;                
                 faceRenderable.sharedData.buffers.treeNodes = dataRenderable.renderData.buffers.treeNodes;
                 faceRenderable.sharedData.buffers.treeCells = dataRenderable.renderData.buffers.treeCells;
+                faceRenderable.sharedData.buffers.cornerValues = dataRenderable.renderData.buffers.cornerValues;
 
                 // setup buffers for compute ray march pass
                 faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, "s cs cd", "face mesh consts");
@@ -432,6 +450,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         faceRenderable.sharedData.buffers.cellConnectivity,
                         faceRenderable.sharedData.buffers.cellOffsets,
                         faceRenderable.sharedData.buffers.values,
+                        faceRenderable.sharedData.buffers.cornerValues,
                     ]
                 );
             }
@@ -475,6 +494,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 // update the dynamic tree buffer
                 // console.log("written");
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValues, [dataObj.data.dynamicCornerValues]);
             }
         }
     }
@@ -604,7 +624,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[1],
                     0, 0, 0,
                     ...renderable.passData.dataSize, 0,
-                    this.getStepSize(),
+                    this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, // padding
                     ...renderable.passData.dMatInv,
@@ -712,7 +732,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[1],
                     0, 0, 0,
                     ...renderable.passData.dataSize, 0,
-                    this.getStepSize(),
+                    this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, // padding
                     ...renderable.passData.dMatInv,

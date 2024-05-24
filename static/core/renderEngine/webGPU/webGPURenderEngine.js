@@ -27,7 +27,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     this.ctx;
     this.canvasResized = true;
 
-    this.clearColor = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    this.clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
 
     this.meshRenderPipeline;
     this.pointsRenderPipeline;

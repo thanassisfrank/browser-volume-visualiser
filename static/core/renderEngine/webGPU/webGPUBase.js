@@ -344,7 +344,7 @@ export function WebGPUBase (verbose) {
 
     // works for any usage, doesnt have to include mapwrite
     this.createFilledBuffer = function(type, data, usage) {
-        const byteLength = data.byteLength;
+        const byteLength = Math.max(32, data.byteLength);
         var buffer = this.device.createBuffer({
             size: byteLength,
             usage: usage,

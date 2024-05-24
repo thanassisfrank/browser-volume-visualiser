@@ -8,6 +8,8 @@ export function FrameTimeGraph(canvas) {
     this.canvas = canvas;
     // the ms at the top of the plot
     this.max = 100;
+    this.historyLength = 100;
+    this.lastSamples = [];
     
     // colours
     this.bgCol = [0, 0, 0, 0];
@@ -17,8 +19,15 @@ export function FrameTimeGraph(canvas) {
         this.ctx.fillStyle = "rgba(" + this.bgCol[0] + "," + this.bgCol[1] + "," + this.bgCol[2] + "," + this.bgCol[3] + ")";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
+    this.storeSample = function(newSample) {
+        this.lastSamples.unshift(newSample);
+        if (this.lastSamples.length > this.historyLength) {
+            this.lastSamples.pop()
+        }
+    }
     // adds a new sample to the graph (ms)
     this.update = function(newSample) {
+        this.storeSample(newSample);
         // shift old values one pixel to the left
         var oldImg = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.putImageData(oldImg, -1, 0);
@@ -53,6 +62,14 @@ export function FrameTimeGraph(canvas) {
         }
         var newImg = new ImageData(newImgData, 1);
         this.ctx.putImageData(newImg, this.canvas.width - 1, 0);
+    }
+
+    this.getAverage = function() {
+        var total = 0;
+        for (let i = 0; i < this.lastSamples.length; i++) {
+            total += this.lastSamples[i];
+        }
+        return total/this.lastSamples.length;
     }
 
     this.init();

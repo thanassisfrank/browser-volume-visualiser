@@ -189,11 +189,24 @@ function View(id, camera, data, renderMode, threshold) {
     this.init = function(renderEngine) {
         // setup camera position
         camera.setProjMat();
-        camera.setStartPosition(data.getMidPoint(), 1*data.getMaxLength(), 0, 0);
+        camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
+        switch (data.dataName) {
+            case "Silicium":
+                camera.setStartPosition(data.getMidPoint(), 0.5*data.getMaxLength(), 0, 0);
+                break;
+            case "Engine":
+                camera.setStartPosition(data.getMidPoint(), 207, 48.5, -15);
+                break;
+            case "Magnetic":
+                // camera.setStartPosition(data.getMidPoint(), 460, 0, 0);
+                camera.setStartPosition(data.getMidPoint(), 103, 180, 0);
+                this.updateThreshold(1);
+                break;
+        }
         camera.moveToStart();
         // define what rendering type will be performed on dataset object
         this.data.renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-        this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+        //this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
         // setup the scene
         this.sceneGraph.insertChild(this.camera, undefined, true);
         this.sceneGraph.insertChild(this.data);

@@ -174,6 +174,7 @@ fn fragment_main(
         // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
 
         // linear
+        //20 was used before
         var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
 
         // square

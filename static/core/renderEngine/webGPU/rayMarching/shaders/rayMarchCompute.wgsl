@@ -31,7 +31,7 @@ struct CombinedPassInfo {
 struct KDTreeNode {
     // the spatial coordinate to split into l/r or node sample value
     @size(4) splitVal : f32,
-    // # cells within this node
+    // # cells within this node 
     @size(4) cellCount : u32,
     // where the parent node is
     @size(4) parentPtr : u32,
@@ -44,6 +44,10 @@ struct KDTreeNode {
 struct TreeNodesBuff {
     buffer : array<KDTreeNode>, 
 };
+
+struct CornerValuesBuff {
+    buffer : array<array<f32, 8> >
+}
 
 // data important for drawing objects
 // camera mats, position
@@ -63,6 +67,9 @@ struct TreeNodesBuff {
 @group(1) @binding(4) var<storage, read> cellOffsets : U32Buff;
 // the data values associated with each vertex
 @group(1) @binding(5) var<storage, read> vertexData : F32Buff;
+// sampled values for the corners of the node bounding boxes in the tree
+@group(1) @binding(6) var<storage, read> cornerValues : CornerValuesBuff;
+
 // the types of each cell i.e. how many verts it has
 // @group(1) @binding(6) var<storage> cellTypes : U32Buff;
 
@@ -96,7 +103,7 @@ struct Sample {
     valid : bool
 };
 
-// // used to keep a track of the last leaves sampled
+// used to keep a track of the last leaves sampled
 var<workgroup> lastLeavesBox : array<AABB, {{WGVol}}>;
 var<workgroup> datasetBox : AABB;
 
@@ -104,6 +111,7 @@ var<private> threadIndex : u32;
 var<private> globalInfo : GlobalUniform;
 var<private> objectInfo : ObjectInfo;
 var<private> passInfo : RayMarchPassInfo;
+var<private> passFlags : RayMarchPassFlags;
 
 
 // returns the lowest node in the tree which contains the query point
@@ -336,6 +344,30 @@ fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
     return closestVal;
 }
 
+// interpolate inside of a node as a hex cell
+// id of the leaf node is stored in the val of the box
+fn interpolateinNode(p : vec3<f32>, leafBox : AABB) -> f32 {
+    var vals : array<f32, 8> = cornerValues.buffer[leafBox.val];
+    // lerp in z direction
+    var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
+    var zLerped = array(
+        mix(vals[0], vals[4], zFac), // 00
+        mix(vals[2], vals[6], zFac), // 01
+        mix(vals[1], vals[5], zFac), // 10
+        mix(vals[3], vals[7], zFac), // 11
+    );
+    // lerp in y direction
+    var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
+    var yLerped = array(
+        mix(zLerped[0], zLerped[1], yFac),
+        mix(zLerped[2], zLerped[3], yFac)
+    );
+    // lerp in x direction
+    var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
+
+    return mix(yLerped[0], yLerped[1], xFac);
+}
+
 
 
 // sampling unstructred mesh data
@@ -368,8 +400,12 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
         };
         return dot(cell.values, cell.factors);
     } else {
-        // pruned leaf, sample the node itself
-        return leafNode.splitVal;
+        // pruned leaf, sample the node as a cell from its corner values
+        if (passFlags.renderNodeVals) {
+            return leafNode.splitVal;
+        } else {
+            return interpolateinNode(queryPoint, lastBox);
+        }
     }
 
     
@@ -479,7 +515,7 @@ fn main(
     }
 
     // get the flags governing this pass
-    var passFlags : RayMarchPassFlags = getFlags(passInfo.flags);
+    passFlags = getFlags(passInfo.flags);
 
     // calculate the world position of the starting fragment
     var ray = getRay(id.x, id.y, globalInfo.camera);

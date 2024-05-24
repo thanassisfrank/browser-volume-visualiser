@@ -112,12 +112,18 @@
             <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
             <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
             <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
+            <input type="checkbox" class="ray-march-opt" name="renderNodeVals"><label>Render Nodes</label><br>
         </div>
 
         <div id="add-view-container" class="bottom-bar">
             <select id="data-select"></select><br>
-            <input type="checkbox" class="dataset-opt" name="createUnstructured" checked><label>Make unstruct</label><br>
-            <input type="checkbox" class="dataset-opt" name="dynamicResolution" checked><label>Dynamic res</label><br>
+            <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br>
+            <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Make unstruct</label><br>
+            <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
+            <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
+            <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Dyn nodes</label><br>
+            <input type="checkbox" class="dataset-opt" name="nodeValues"><label>Node vals</label><br>
+            <input type="checkbox" class="dataset-opt" name="cornerValues"><label>Corner vals</label><br>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -221,12 +227,25 @@
                     var newData = await dataManager.getDataObj(d.options[d.selectedIndex].value);
 
                     var opts = getInputClassAsObj("dataset-opt");
+                    console.log(opts);
+                    var scale = parseInt(opts.downsample.value);
+
+                    if(scale > 1) {
+                        dataManager.downsampleStructured(newData, scale);
+                    }
 
                     if (opts.createUnstructured.checked) {
                         if (opts.dynamicResolution.checked) {
-                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.DYNAMIC);
+                            dataManager.convertStructuredToUnstructured(
+                                newData, 
+                                ResolutionModes.DYNAMIC, 
+                                parseInt(opts.leafCells.value),
+                                parseInt(opts.dynamicNodes.value),
+                                opts.nodeValues.checked,
+                                opts.cornerValues.checked
+                            );
                         } else {
-                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL);
+                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL, parseInt(opts.leafCells.value));
                         }
                     }
 
@@ -243,12 +262,26 @@
 
                 // shortcuts
                 document.body.addEventListener("keydown", function(e) {
+                    var currView = Object.values(viewManager.views)[0];
                     switch (e.key) {
                         case " ":
                             // print the camera position and threshold val
                             camera.printVals();
-                            console.log("threshold", newView.threshold);
+                            console.log("threshold", currView.threshold);
                             
+                            break;
+                        case "f":
+                            const avg = frameTimeGraph.getAverage();
+                            console.log("avg ft ", frameTimeGraph.historyLength, "samples:", avg, "ms");
+                            alert(avg + "ms");
+                            break;
+                        case "p":
+                            const image = canvas.toDataURL('image/png');
+                            var dlElem = document.createElement('a');
+                            dlElem.download = 'canvas_image.png';
+                            dlElem.href = image;
+                            dlElem.click();
+                            dlElem.remove();
                             break;
                         case "r":
                             // reset camera to initial position
@@ -266,11 +299,28 @@
                             break;
                         case "u":
                             // update view
-                            // Object.values(viewManager.views)[0].update(0, renderEngine);
+                            currView.update(0, renderEngine);
+                            break;
+                        case "o":
+                            renderEngine.canvasResized = true;
+                            renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
                             break;
                         case "Alt":
                             e.preventDefault();
                             break;
+                        case "ArrowUp":
+                            var oldStep = renderEngine.rayMarcher.getStepSize();
+                            var newStep = oldStep * 2;
+                            console.log("inc step size:", newStep);
+                            renderEngine.rayMarcher.setStepSize(newStep);
+                            break;
+                        case "ArrowDown":
+                            var oldStep = renderEngine.rayMarcher.getStepSize();
+                            var newStep = oldStep * 0.5;
+                            console.log("dec step size:", newStep);
+                            renderEngine.rayMarcher.setStepSize(newStep);
+                            break;
+
                     }
                 });
 
@@ -311,6 +361,7 @@
                     // next frame
                     requestAnimationFrame(renderLoop);
                 };
+                
                 renderLoop();
             }
             // window.addEventListener("load", main);
