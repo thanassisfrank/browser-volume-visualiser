@@ -163,9 +163,9 @@ export var viewManager = {
         if(get("add-view-container")) show(get("add-view-container"));
     },
 
-    update: function(dt, renderEngine) {
+    update: function(dt, renderEngine, cameraFollowPath) {
         for (let key in this.views) {
-            this.views[key].update(dt, renderEngine);
+            this.views[key].update(dt, renderEngine, cameraFollowPath);
         }
     },
     
@@ -192,14 +192,18 @@ function View(id, camera, data, renderMode, threshold) {
         camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
         switch (data.dataName) {
             case "Silicium":
-                camera.setStartPosition(data.getMidPoint(), 0.5*data.getMaxLength(), 0, 0);
+                camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
+                break;
+            case "Turbulence":
+                camera.setStartPosition(data.getMidPoint(), 108, 0, -34.5);
+                camera.setTarget([0, 20.68874256329051, 0]);
                 break;
             case "Engine":
                 camera.setStartPosition(data.getMidPoint(), 207, 48.5, -15);
                 break;
             case "Magnetic":
-                // camera.setStartPosition(data.getMidPoint(), 460, 0, 0);
-                camera.setStartPosition(data.getMidPoint(), 103, 180, 0);
+                camera.setStartPosition(data.getMidPoint(), 460, 0, 0);
+                // camera.setStartPosition(data.getMidPoint(), 103, 180, 0);
                 this.updateThreshold(1);
                 break;
         }
@@ -231,7 +235,15 @@ function View(id, camera, data, renderMode, threshold) {
         this.thresholdChanged = false;
         return changed;
     }
-    this.update = async function (dt, renderEngine) {
+    this.update = async function (dt, renderEngine, cameraFollowPath) {
+        console.log(cameraFollowPath)
+        if (cameraFollowPath) {
+            if (this.camera.th < 720) {
+                const degPerSec = 90;
+                this.camera.addToTh(dt*degPerSec/1000);
+            }
+        }
+        
         // propagate the threshold to where is it needed
         this.data.threshold = this.threshold;
 

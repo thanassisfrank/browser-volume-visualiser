@@ -175,7 +175,7 @@ fn fragment_main(
 
         // linear
         //20 was used before
-        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
+        var t : f32 = 1 - f32(passInfo.framesSinceMove)/30.0;
 
         // square
         // var t : f32 = 1;
@@ -219,7 +219,7 @@ fn fragment_main(
     }
 
     if (passFlags.showOffset) {
-        return FragmentOut(vec4<f32>(offset, 0, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+        return FragmentOut(vec4<f32>(offset, offset, offset, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
     }
 
     return FragmentOut(marchResult.fragCol, vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));

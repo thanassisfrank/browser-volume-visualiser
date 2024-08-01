@@ -259,6 +259,7 @@
                     hide(get("add-view-container"))                     
                 });
 
+                var cameraFollowPath = false;
 
                 // shortcuts
                 document.body.addEventListener("keydown", function(e) {
@@ -274,6 +275,9 @@
                             const avg = frameTimeGraph.getAverage();
                             console.log("avg ft ", frameTimeGraph.historyLength, "samples:", avg, "ms");
                             alert(avg + "ms");
+                            break;
+                        case "l":
+                            console.log(frameTimeGraph.lastSamples[0]);
                             break;
                         case "p":
                             const image = canvas.toDataURL('image/png');
@@ -297,6 +301,9 @@
                                 }
                             }
                             break;
+                        case "m":
+                            cameraFollowPath = !cameraFollowPath;
+                            break
                         case "u":
                             // update view
                             currView.update(0, renderEngine);
@@ -344,7 +351,8 @@
                     // update the objects
                     frameTimeGraph.update(dt);
                     // does stuff like propagating threshold value, fetching required data
-                    viewManager.update(dt, renderEngine);
+                    viewManager.update(dt, renderEngine, cameraFollowPath);
+
                     
                     
                     // render the scenes

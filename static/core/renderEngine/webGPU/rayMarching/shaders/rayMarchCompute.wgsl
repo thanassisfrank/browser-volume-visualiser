@@ -462,7 +462,7 @@ fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
 
     // calculate the ray direction
     var ray : Ray;
-    var aspect = camera.fovx/camera.fovy;
+    var aspect = camera.fovx / camera.fovy;
     var unormRay = fwd 
         + xProp*tan(camera.fovy/2)*aspect*normalize(camera.rightDirection) 
         - yProp*tan(camera.fovy/2)*normalize(camera.upDirection);

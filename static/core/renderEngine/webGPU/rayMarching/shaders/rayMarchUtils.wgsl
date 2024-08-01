@@ -290,7 +290,7 @@ fn marchRay(
                     // acumulate colour
                     volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
                     // check if the volume is too opaque
-                    var cutoff : f32 = 10;
+                    var cutoff : f32 = 1000;
                     if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
                         break;
                     }
@@ -324,7 +324,7 @@ fn marchRay(
     }
 
     if (passFlags.showRayLength) {
-        fragCol = vec4<f32>(ray.length/100, 0, 0, 1);  
+        fragCol = vec4<f32>(ray.length/1000, ray.length/1000, ray.length/1000, 1);  
     }
 
     return RayMarchResult(fragCol, ray.length);

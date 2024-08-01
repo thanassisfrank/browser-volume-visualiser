@@ -319,9 +319,9 @@ export function Camera(id) {
                 // reset start position
                 this.startMove(x, y, z, mode);
             }
-            const diffX = x;// - this.mouseStart[0];
-            const diffY = y;// - this.mouseStart[1];
-            const diffZ = z;// - this.mouseStart[2];
+            const diffX = x; // - this.mouseStart[0];
+            const diffY = y; // - this.mouseStart[1];
+            const diffZ = z; // - this.mouseStart[2];
             if (mode == "pan" || mode == "dolly") {
                 var vec = [-diffX/10, diffY/10, diffZ/10];
                 vec3.rotateX(vec, vec, [0, 0, 0], toRads(this.phi));
