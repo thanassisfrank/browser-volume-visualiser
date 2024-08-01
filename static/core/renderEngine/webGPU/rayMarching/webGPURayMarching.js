@@ -17,6 +17,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.rayMarchPassDescriptor;
     this.depthRenderPassDescriptor;
+    this.computeRayMarchPassDescriptor;
 
     // required: x*y*z <= 256 
     // optimal seems to be 8x8
@@ -233,43 +234,54 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         constsBuffer.unmap();
 
         // create code
-        var rayMarchCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarch.wgsl");
-        
-        this.rayMarchPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER, 
-            {
-                vertexLayout: webGPU.vertexLayouts.justPosition, 
-                colorAttachmentFormats: ["bgra8unorm", "rg32float"],
-                topology: "triangle-list", 
-                indexed: true
-            },
-            rayMarchBindGroupLayouts,
-            {str: rayMarchCode, formatObj: {}},
-            "ray march pass (vert-frag)"
-        );
+        var rayMarchPromise = webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarch.wgsl")
+            .then((rayMarchCode) => {
+                return webGPU.createPassDescriptor(
+                    webGPU.PassTypes.RENDER, 
+                    {
+                        vertexLayout: webGPU.vertexLayouts.justPosition, 
+                        colorAttachmentFormats: ["bgra8unorm", "rg32float"],
+                        topology: "triangle-list", 
+                        indexed: true
+                    },
+                    rayMarchBindGroupLayouts,
+                    {str: rayMarchCode, formatObj: {}},
+                    "ray march pass (vert-frag)"
+                );
+            });
 
-        var depthPassCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/depthPass.wgsl");
-        this.depthRenderPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER,
-            {
-                vertexLayout: webGPU.vertexLayouts.justPosition, 
-                colorAttachmentFormats: ["r32float"],
-                topology: "triangle-list", 
-                indexed: true,
-            },
-            [webGPU.bindGroupLayouts.render0],
-            {str: depthPassCode, formatObj: {}},
-            "depth pass"
-        );
+        var depthPassPromise = webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/depthPass.wgsl")
+            .then((depthPassCode) => {
+                return webGPU.createPassDescriptor(
+                    webGPU.PassTypes.RENDER,
+                    {
+                        vertexLayout: webGPU.vertexLayouts.justPosition, 
+                        colorAttachmentFormats: ["r32float"],
+                        topology: "triangle-list", 
+                        indexed: true,
+                    },
+                    [webGPU.bindGroupLayouts.render0],
+                    {str: depthPassCode, formatObj: {}},
+                    "depth pass"
+                );
+            })
+        
             
-        var computeRayMarchCode = await webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchCompute.wgsl");
-        this.computeRayMarchPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.COMPUTE,
-            {},
-            computeRayMarchBindGroupLayouts,
-            {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y, WGVol: this.WGSize.x * this.WGSize.y}},
-            "ray march pass (compute)"
-        )
+        var computeRayMarchPromise = webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchCompute.wgsl")
+            .then((computeRayMarchCode) => {
+                return webGPU.createPassDescriptor(
+                    webGPU.PassTypes.COMPUTE,
+                    {},
+                    computeRayMarchBindGroupLayouts,
+                    {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y, WGVol: this.WGSize.x * this.WGSize.y}},
+                    "ray march pass (compute)"
+                );
+            });
+        
+        var passDescriptors = await Promise.all([rayMarchPromise, depthPassPromise, computeRayMarchPromise]);
+        this.rayMarchPassDescriptor = passDescriptors[0];
+        this.depthRenderPassDescriptor = passDescriptors[1];
+        this.computeRayMarchPassDescriptor = passDescriptors[2];
 
     };
 

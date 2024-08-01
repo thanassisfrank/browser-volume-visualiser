@@ -37,7 +37,11 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     var shaderCode = webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
 
-    this.setup = async function() {        
+    this.setup = async function() {
+        // begin setting up modules
+        var rayMarcherSetupPromise = this.rayMarcher.setupEngine();
+
+        // setup this
         this.ctx = this.canvas.getContext("webgpu");
 
         // setup swapchain
@@ -88,7 +92,9 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             "lines render pass"
         );
 
-        return this.ctx;
+        await Promise.all([webGPU.waitForDone(), rayMarcherSetupPromise]);
+
+        return this;
     }
 
     this.beginFrame = function(cameraMoved, thresholdChanged) {

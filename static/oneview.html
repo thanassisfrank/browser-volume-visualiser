@@ -185,15 +185,24 @@
                 var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"));
 
                 // create a new rendering engine
-                var renderEngine = await createRenderEngine(canvas);
-                await renderEngine.setup();
-                await renderEngine.rayMarcher.setupEngine();
-                // set up options elements
-                setUpRayMarchOptions(renderEngine.rayMarcher);
+                // var renderEngine = await createRenderEngine(canvas);
+                // await renderEngine.setup();
+                // await renderEngine.rayMarcher.setupEngine();
+                var renderEnginePromise = createRenderEngine(canvas)
+                    .then((renderEngine) => renderEngine.setup())
+                    .then((renderEngine) => {
+                        setUpRayMarchOptions(renderEngine.rayMarcher);
+                        return renderEngine;
+                    });
+                
+                var serverDatasetsPromise = fetch("/data/datasets.json")
+                .then((res) => res.json());
+                
+                var startupResult = await Promise.all([renderEnginePromise, serverDatasetsPromise]);
+                var renderEngine = startupResult[0];
+                var serverDatasets = startupResult[1];
 
-
-                const serverDatasets = await fetch("/data/datasets.json")
-                    .then((res) => res.json());
+                
 
                 const allDatasets = {
                     ...serverDatasets,
