@@ -925,11 +925,9 @@ export var pivotRandom = (a) => {
     return samples.sort()[Math.floor(samples.length/2) - 1];
 }
 
+// expects typed array
 export var pivotFull = (a) => {
-    var sorted = a.sort((a, b) => {
-        if (a < b) return -1;
-        return 1;
-    });
+    var sorted = a.sort();
     // console.log(sorted);
     return sorted[Math.floor(a.length/2) - 1];
 }

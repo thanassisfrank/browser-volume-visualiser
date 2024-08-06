@@ -55,6 +55,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
         shaderCode = await shaderCode;
 
+        var t0 = performance.now();
+
         this.surfaceRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {
@@ -93,6 +95,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         );
 
         await Promise.all([webGPU.waitForDone(), rayMarcherSetupPromise]);
+
+        console.log(performance.now() - t0, "ms for pipeline creation");
 
         return this;
     }
@@ -185,10 +189,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
         var renderPass = {
             ...thisPassDescriptor,
-            vertsNum: renderable.vertexCount,
+            vertexCount: renderable.vertexCount,
             indicesCount: renderable.indexCount,
             vertexBuffers: [renderable.renderData.buffers.vertex, renderable.renderData.buffers.normal],
-            indexBuffer: renderable.renderData.buffers.index,
+            indexBuffer: renderable.renderData.buffers?.index,
             bindGroups: {
                 0: webGPU.generateBG(
                     thisPassDescriptor.bindGroupLayouts[0],

@@ -21,6 +21,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     // required: x*y*z <= 256 
     // optimal seems to be 8x8
+    // > 8x8 corresponds to 64 threads which is the size of 1 or 2 waves on Nvidia or AMD hardware
     this.WGSize = {x: 8, y: 8};
 
     this.materials = {
@@ -233,6 +234,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         new Float32Array(constsBuffer.getMappedRange()).set([5]);
         constsBuffer.unmap();
 
+        var t0 = performance.now();
+
         // create code
         var rayMarchPromise = webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarch.wgsl")
             .then((rayMarchCode) => {
@@ -282,6 +285,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         this.rayMarchPassDescriptor = passDescriptors[0];
         this.depthRenderPassDescriptor = passDescriptors[1];
         this.computeRayMarchPassDescriptor = passDescriptors[2];
+
+        console.log(performance.now() - t0, "ms for ray pipeline creation");
 
     };
 
@@ -484,6 +489,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             var dataRenderable = await this.createStructuredDataRenderable(dataObj);
         } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
             var dataRenderable = await this.createUnstructuredDataRenderable(dataObj);
+        } else {
+            throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
         }
 
         // webGPU.readBuffer(dataRenderable.renderData.buffers.tree, 0, 256)

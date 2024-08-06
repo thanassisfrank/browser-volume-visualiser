@@ -3,7 +3,7 @@
 
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
-import { SceneObjectTypes, SceneObjectRenderModes } from "../sceneObjects.js";
+import { SceneObjectTypes, SceneObjectRenderModes, defaultMaterial} from "../sceneObjects.js";
 import { DataFormats, ResolutionModes } from "../../data/data.js";
 
 
@@ -154,22 +154,44 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         mesh.renderables.push(renderable);
     }
 
+
     // perform the setup needed depending on the data render mode
     this.setupDataSceneObject = async function(data) {
         if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
             // move data points to a new mesh renderable
-            console.log("sorry, this data render mode is not supported yet");
+            try {
+                this.setupDataPointsMeshObject(data);
+            } catch (e) {
+                console.error("Unable to setup data object for DATA_POINTS render mode");
+                console.error(e);
+            }
         }
         if (data.renderMode & SceneObjectRenderModes.DATA_MARCH_SURFACE ||
             data.renderMode & SceneObjectRenderModes.DATA_MARCH_POINTS
         ) {
             // interface with marching cubes engine to move data to GPU
-            console.log("sorry, this data render mode is not supported yet");
+            console.warn("sorry, Marching cubes data render modes are not supported yet");
         }
         if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
             // setup the dataset for ray marching
-            this.rayMarcher.setupRayMarch(data);
+            try {
+                await this.rayMarcher.setupRayMarch(data);
+            } catch (e) {
+                console.error("Unable to setup data object for DATA_RAY_VOLUME render mode:", e);
+            }
         }
+    }
+
+    this.setupDataPointsMeshObject = function(data) {
+        var renderable = webGPU.meshRenderableFromArrays(
+            data.data.positions, 
+            new Float32Array(data.data.positions.length), 
+            new Uint32Array(64), 
+            RenderableRenderModes.MESH_POINTS
+        );
+        renderable.serialisedMaterials = webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
+
+        data.renderables.push(renderable);
     }
 
     this.setupAxesSceneObject = async function(axes) {

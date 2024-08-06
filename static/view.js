@@ -209,7 +209,7 @@ function View(id, camera, data, renderMode, threshold) {
         }
         camera.moveToStart();
         // define what rendering type will be performed on dataset object
-        this.data.renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+        this.data.renderMode = this.renderMode;
         //this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
         // setup the scene
         this.sceneGraph.insertChild(this.camera, undefined, true);
@@ -236,7 +236,7 @@ function View(id, camera, data, renderMode, threshold) {
         return changed;
     }
     this.update = async function (dt, renderEngine, cameraFollowPath) {
-        console.log(cameraFollowPath)
+        // console.log(cameraFollowPath)
         if (cameraFollowPath) {
             if (this.camera.th < 720) {
                 const degPerSec = 90;

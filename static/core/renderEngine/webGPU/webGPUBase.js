@@ -578,7 +578,7 @@ export function WebGPUBase (verbose) {
                 }
             }
 
-            console.log(pipelineDescriptor);
+            // console.log(pipelineDescriptor);
             // create the render pass object
             return {
                 passType: this.PassTypes.RENDER,
@@ -645,7 +645,8 @@ export function WebGPUBase (verbose) {
                 passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
                 passEncoder.drawIndexed(passObj.indicesCount);
             } else {
-                passEncoder.draw(passObj.vertCount);
+                passEncoder.draw(passObj.vertexCount);
+                // console.log("vertex count:", passObj.vertexCount);
             }
             passEncoder.end();
         } else if (passObj.passType == this.PassTypes.COMPUTE) {

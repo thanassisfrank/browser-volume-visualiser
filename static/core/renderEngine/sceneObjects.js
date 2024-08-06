@@ -139,6 +139,12 @@ export function SceneObject(objectType = SceneObjectTypes.EMPTY, renderMode = Sc
     this.getBoundaryPoints = () => {}
 }
 
+export const defaultMaterial = {
+    diffuseCol: [0, 0, 0],
+    specularCol: [1, 1, 1],
+    shininess: 100,
+};
+
 export function Mesh() {
     SceneObject.call(this, SceneObjectTypes.MESH, SceneObjectRenderModes.MESH_SURFACE);
 
@@ -156,16 +162,8 @@ export function Mesh() {
         this.indices = [];
         this.normals = [];
     };
-    this.frontMaterial = {
-        diffuseCol: [0, 0, 0],
-        specularCol: [1, 1, 1],
-        shininess: 100,
-    }
-    this.backMaterial = {
-        diffuseCol: [0, 0, 0],
-        specularCol: [1, 1, 1],
-        shininess: 100,
-    }
+    this.frontMaterial = {...defaultMaterial};
+    this.backMaterial = {...defaultMaterial};
     this.buffers = {};
 }
 

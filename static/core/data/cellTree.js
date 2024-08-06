@@ -1129,11 +1129,10 @@ export function CellTree(leafCells) {
             }
             var pointsOffset = cellOffsets[id];
             var results = [false, false];
+            var thisPointValue;
             for (let i = 0; i < pointsLength; i++) {
-                // index into the points array
-                var thisIndex = cellConnectivity[pointsOffset + i];
                 // the position of this point in the dimension that is being checked
-                var thisPointValue = points[thisIndex*dimensions + checkDimension];
+                thisPointValue = points[cellConnectivity[pointsOffset + i]*dimensions + checkDimension];
                 if (thisPointValue <= splitVal) results[0] = true;
                 if (thisPointValue > splitVal)  results[1] = true;
             }
@@ -1169,10 +1168,10 @@ export function CellTree(leafCells) {
             var currentPoints = parentNode.points;
     
             // make a set of points that is just the values in the current dimension
-            var thisDimValues = [];
+            var thisDimValues = new Float32Array(currentPoints.length/3);
             for (let i = currentDimension; i < currentPoints.length; i += dimensions) {
                 // console.log(i);
-                thisDimValues.push(currentPoints[i]);
+                thisDimValues[(i - currentDimension)/dimensions] = currentPoints[i];
             }
             
             // find the pivot 

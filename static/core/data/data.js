@@ -1,17 +1,15 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import {VecMath} from "../VecMath.js";
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
-import { newId, DATA_TYPES, xyzToA, volume, parseXML, rangesOverlap, IntervalTree, timer, buildCellKDTree,  } from "../utils.js";
-import { decompressB64Str, getNumPiecesFromVTS, getDataNamesFromVTS, getPointsFromVTS, getExtentFromVTS, getPointDataFromVTS, getDataLimitsFromVTS} from "./dataUnpacker.js"
+import { newId, DATA_TYPES} from "../utils.js";
 import { addNodeValsToFullTree, createDynamicTreeBuffers, createNodeValuesBuffer, createNodeCornerValuesBuffer, getCellTreeBuffers } from "./cellTree.js";
+import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
+import * as cgns from "./cgns_hdf5.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 
 export {dataManager};
-
-const blockSize = [4, 4, 4];
 
 export const DataFormats = {
     EMPTY:           0,  // undefined/empty
@@ -79,12 +77,25 @@ var dataManager = {
     createData: async function(config) {
         const id = newId(this.datas);
         var newData = new Data(id);
+        newData.dataName = config.name;
         console.log(config);
         
-        // create dataset that isnt complex
-        if (config) {
-            newData.dataName = config.name;
-            await newData.createSimple(config);
+        // create the dataset from the config
+        try {
+            switch (config.type) {
+                case "function":
+                    newData.createFromFunction(config);
+                    break;
+                case "raw":
+                    await newData.createFromRaw(config);
+                    break;
+                case "cgns":
+                    await newData.createFromCGNS(config);
+                    break;
+            }
+        } catch (e) {
+            console.error("Unable to create dataset:", e);
+            return undefined;
         }
 
         this.datas[id] = newData;
@@ -311,7 +322,7 @@ function Data(id) {
 
     // supplemental attributes
     // the dimensions in data space
-    this.size = [];
+    this.size = [0, 0, 0];
     // min, max of all data values
     this.limits = [undefined, undefined];
 
@@ -319,25 +330,10 @@ function Data(id) {
     // includes scaling of the grid
     this.dataTransformMat = mat4.create();
 
-    this.createSimple = async function(config, scale) {
+    this.createFromFunction = function(config) {
         this.config = config;
-        if (config.f) {
-            this.dataFormat = DataFormats.STRUCTURED;
-            this.generateData(config);
-        } else if (config.type == "raw") {
-            this.dataFormat = DataFormats.STRUCTURED;
-            const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
-            this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
-            this.limits = config.limits;
-
-            console.log("made structured data obj")
-
-            
-        } else if (config.type == "structuredGrid") {
-            this.dataFormat = DataFormats.STRUCTURED_GRID;
-        } else if (config.type == "unstructured") {
-            this.dataFormat = DataFormats.UNSTRUCTURED;
-        }
+        this.dataFormat = DataFormats.STRUCTURED;
+        this.generateData(config);
 
         this.size = [config.size.z, config.size.y, config.size.x];
         this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
@@ -350,6 +346,79 @@ function Data(id) {
         
         this.initialised = true;
     };
+
+    this.createFromRaw = async function(config) {
+        this.config = config;
+        this.dataFormat = DataFormats.STRUCTURED;
+        const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
+        this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
+        this.limits = config.limits;
+
+        this.size = [config.size.z, config.size.y, config.size.x];
+        this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
+        this.dataTransformMat = mat4.fromValues(
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+        );
+        
+        this.initialised = true;
+    };
+
+    this.createFromCGNS = async function(config) {
+        this.config = config;
+        // test hdf5
+        // the WASM loads asychronously, and you can get the module like this:
+        const { FS } = await h5wasm.ready;
+
+        const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
+
+        FS.writeFile("yf17_hdf5.cgns", new Uint8Array(responseBuffer));
+        // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
+        let f = new h5wasm.File("yf17_hdf5.cgns", "r");
+
+        var CGNSBaseNode = cgns.getChildWithLabel(f, "CGNSBase_t"); // get first base node
+        var CGNSZoneNode = cgns.getChildWithLabel(CGNSBaseNode, "Zone_t"); // get first zone node in base node
+        var zoneTypeNode = cgns.getChildWithLabel(CGNSZoneNode, "ZoneType_t"); // get zone type node
+        
+        // only unstructured zones are currently supported
+        var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
+        if (zoneTypeStr != "Unstructured") {
+            throw "Unsupported ZoneType of '" + zoneTypeStr + "'";
+        }
+
+        var elementsNode = cgns.getChildWithLabel(CGNSZoneNode, "Elements_t"); // get zone type node
+        var coordsNode = cgns.getChildWithLabel(CGNSZoneNode, "GridCoordinates_t");
+        var coordsXNode = cgns.getChildWithName(coordsNode, "CoordinateX");
+        var coordsYNode = cgns.getChildWithName(coordsNode, "CoordinateY");
+        var coordsZNode = cgns.getChildWithName(coordsNode, "CoordinateZ");
+
+        const pointsCount = coordsXNode.get(" data").shape[0];
+
+        var coordsX = coordsXNode.get(" data").value;
+        var coordsY = coordsYNode.get(" data").value;
+        var coordsZ = coordsZNode.get(" data").value;
+
+        // console.log(coordsX);
+
+        var min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+        var max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
+
+        this.data.positions = new Float32Array(pointsCount * 3);
+        for (let i = 0; i < pointsCount; i++) {
+            this.data.positions[3*i + 0] = coordsX[i];
+            this.data.positions[3*i + 1] = coordsY[i];
+            this.data.positions[3*i + 2] = coordsZ[i];
+
+            min = [Math.min(min[0], coordsX[i]), Math.min(min[1], coordsY[i]), Math.min(min[2], coordsZ[i])];
+            max = [Math.max(max[0], coordsX[i]), Math.max(max[1], coordsY[i]), Math.max(max[2], coordsZ[i])];
+        }
+
+        console.log("Spatial extent:", min, max);
+
+        // console.log(this.data.positions);
+    }
 
     this.generateData = async function(config) {
         const x = config.size.x;
@@ -373,6 +442,7 @@ function Data(id) {
             }
         }
     };
+    // data limits
     this.getLimits = function() {
         this.limits[undefined, undefined];
         for(let i = 0; i < this.data.length; i++) {
@@ -395,13 +465,13 @@ function Data(id) {
         // extent is size -1
         var e = [size[0] - 1, size[1] - 1, size[2] - 1];
         var points = new Float32Array([
-            0,       0,       0,       // 0
-            e[0], 0,       0,       // 1
-            0,       e[1], 0,       // 2
-            e[0], e[1], 0,       // 3
-            0,       0,       e[2], // 4
-            e[0], 0,       e[2], // 5
-            0,       e[1], e[2], // 6
+            0,    0,    0,    // 0
+            e[0], 0,    0,    // 1
+            0,    e[1], 0,    // 2
+            e[0], e[1], 0,    // 3
+            0,    0,    e[2], // 4
+            e[0], 0,    e[2], // 5
+            0,    e[1], e[2], // 6
             e[0], e[1], e[2]  // 7
         ])
         var transformedPoint = [0, 0, 0, 0];
@@ -444,7 +514,7 @@ function Data(id) {
     }
     // for structured formats, this returns the dimensions of the data grid in # data points
     this.getDataSize = function() {
-        return this.size;
+        return this.size ?? [0, 0, 0];
     }
     this.setDataSize = function(size) {
         this.size = size;
@@ -453,7 +523,7 @@ function Data(id) {
         return this.data.values;
     }
     this.getName = function() {
-        return this.config.name || "Unnamed data";
+        return this?.config?.name || "Unnamed data";
     }
 
     // returns a mat4 encoding object space -> data space

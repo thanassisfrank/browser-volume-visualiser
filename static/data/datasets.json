@@ -1,5 +1,4 @@
 {
-	
 	"magnetic": {
 		"name": "Magnetic",
 		"path": "data/magnetic_reconnection_512x512x512_float32.raw",
@@ -212,5 +211,10 @@
 			0
 		],
 		"complexAvailable": true
+	},
+	"yf17_hdf5": {
+		"name": "YF17",
+		"path": "data/yf17_hdf5.cgns",
+		"type": "cgns"
 	}
 }
