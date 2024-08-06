@@ -240,7 +240,7 @@
                     var newData = await dataManager.getDataObj(d.options[d.selectedIndex].value);
 
                     var opts = getInputClassAsObj("dataset-opt");
-                    console.log(opts);
+                    // console.log(opts);
                     var scale = parseInt(opts.downsample.value);
 
                     if(scale > 1) {
@@ -265,7 +265,7 @@
                     var newView = await viewManager.createView({
                         camera: camera,
                         data: newData,
-                        renderMode: SceneObjectRenderModes.DATA_POINTS
+                        renderMode: SceneObjectRenderModes.DATA_WIREFRAME
                     }, renderEngine);
 
                     // hide the window

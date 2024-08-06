@@ -109,6 +109,7 @@ export const SceneObjectRenderModes = {
     DATA_MARCH_POINTS:     32,
     DATA_RAY_VOLUME:       64,
     BOUNDING_WIREFRAME:   128,
+    DATA_WIREFRAME:       256,
 }
 
 export function SceneObject(objectType = SceneObjectTypes.EMPTY, renderMode = SceneObjectRenderModes.NONE) {

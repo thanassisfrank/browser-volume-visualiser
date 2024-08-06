@@ -6,6 +6,8 @@ import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
 import { SceneObjectTypes, SceneObjectRenderModes, defaultMaterial} from "../sceneObjects.js";
 import { DataFormats, ResolutionModes } from "../../data/data.js";
 
+import * as cgns from "../../data/cgns_hdf5.js";
+
 
 export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     var webGPU = webGPUBase;
@@ -158,11 +160,20 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     // perform the setup needed depending on the data render mode
     this.setupDataSceneObject = async function(data) {
         if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
-            // move data points to a new mesh renderable
+            // create data points mesh renderable
             try {
                 this.setupDataPointsMeshObject(data);
             } catch (e) {
                 console.error("Unable to setup data object for DATA_POINTS render mode");
+                console.error(e);
+            }
+        }
+        if (data.renderMode & SceneObjectRenderModes.DATA_WIREFRAME) {
+            // create cells wireframe mesh object
+            try {
+                this.setupDataCellsWireframeMeshObject(data);
+            } catch (e) {
+                console.error("Unable to setup data object for MESH_WIREFRAME render mode");
                 console.error(e);
             }
         }
@@ -188,6 +199,44 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             new Float32Array(data.data.positions.length), 
             new Uint32Array(64), 
             RenderableRenderModes.MESH_POINTS
+        );
+        renderable.serialisedMaterials = webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
+
+        data.renderables.push(renderable);
+    }
+
+    this.setupDataCellsWireframeMeshObject = function(data) {
+        var corr = data.data.zeroBased ? 0 : 1;
+        var indices = [];
+        // iterate through all cells in the dataset, adding the edge indices for each
+        let cellType, cellOffset;
+        for (let i = 0; i < data.data.cellTypes.length; i++) {
+            cellType = data.data.cellTypes[i];
+            if (cellType != 10) throw "Unsupported cell type '" + cellType.toString() + "'";
+            cellOffset = data.data.cellOffsets[i];
+
+            // add edges
+            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
+        }
+
+        console.log(indices);
+
+        var renderable = webGPU.meshRenderableFromArrays(
+            data.data.positions, 
+            new Float32Array(data.data.positions.length), 
+            Uint32Array.from(indices), 
+            RenderableRenderModes.MESH_WIREFRAME
         );
         renderable.serialisedMaterials = webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
 

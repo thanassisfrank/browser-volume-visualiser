@@ -263,6 +263,8 @@ var dataManager = {
             dataObj.data.dynamicTreeNodes = dynamicBuffers.nodes;
             dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
         }
+
+        console.log(dataObj.data);
     },
     
     addUser: function(data) {
@@ -313,6 +315,8 @@ function Data(id) {
         cellConnectivity: null,
         cellOffsets: null,
         cellTypes: null,
+        // 1-based indexing compatability
+        zeroBased: true,
         // spatial acceleration structure
         treeNodes: null,
         treeCells: null,
@@ -323,6 +327,11 @@ function Data(id) {
     // supplemental attributes
     // the dimensions in data space
     this.size = [0, 0, 0];
+    // axis aligned (data space) maximum extent
+    this.extentBox = {
+        min: [0, 0, 0],
+        max: [0, 0, 0]
+    };
     // min, max of all data values
     this.limits = [undefined, undefined];
 
@@ -336,13 +345,9 @@ function Data(id) {
         this.generateData(config);
 
         this.size = [config.size.z, config.size.y, config.size.x];
-        this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
-        this.dataTransformMat = mat4.fromValues(
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1,
-        )
+        this.extentBox.min = [0, 0, 0];
+        this.extentBox.max = this.size;
+        this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x]);
         
         this.initialised = true;
     };
@@ -355,13 +360,9 @@ function Data(id) {
         this.limits = config.limits;
 
         this.size = [config.size.z, config.size.y, config.size.x];
+        this.extentBox.min = [0, 0, 0];
+        this.extentBox.max = this.size;
         this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
-        this.dataTransformMat = mat4.fromValues(
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1,
-        );
         
         this.initialised = true;
     };
@@ -378,9 +379,9 @@ function Data(id) {
         // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
         let f = new h5wasm.File("yf17_hdf5.cgns", "r");
 
-        var CGNSBaseNode = cgns.getChildWithLabel(f, "CGNSBase_t"); // get first base node
-        var CGNSZoneNode = cgns.getChildWithLabel(CGNSBaseNode, "Zone_t"); // get first zone node in base node
-        var zoneTypeNode = cgns.getChildWithLabel(CGNSZoneNode, "ZoneType_t"); // get zone type node
+        var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
+        var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
+        var zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
         
         // only unstructured zones are currently supported
         var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
@@ -388,36 +389,41 @@ function Data(id) {
             throw "Unsupported ZoneType of '" + zoneTypeStr + "'";
         }
 
-        var elementsNode = cgns.getChildWithLabel(CGNSZoneNode, "Elements_t"); // get zone type node
-        var coordsNode = cgns.getChildWithLabel(CGNSZoneNode, "GridCoordinates_t");
-        var coordsXNode = cgns.getChildWithName(coordsNode, "CoordinateX");
-        var coordsYNode = cgns.getChildWithName(coordsNode, "CoordinateY");
-        var coordsZNode = cgns.getChildWithName(coordsNode, "CoordinateZ");
+        this.dataFormat = DataFormats.UNSTRUCTURED;
+        // cgns arrays are FORTRAM one-based indexed
+        this.data.zeroBased = false;
 
-        const pointsCount = coordsXNode.get(" data").shape[0];
+        // get vertex positions
+        var coordsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "GridCoordinates_t")[0];
+        var coords = cgns.getGridCoordinatePositionsCart3D(coordsNode);
+        this.data.positions = coords.positions;
+        this.extentBox = coords.extentBox;
 
-        var coordsX = coordsXNode.get(" data").value;
-        var coordsY = coordsYNode.get(" data").value;
-        var coordsZ = coordsZNode.get(" data").value;
 
-        // console.log(coordsX);
+        
+        // get connectivity information for an element node of this zone
+        var elementsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "Elements_t")[0]; // get zone type node
+        var elementTypeInt = elementsNode.get(" data").value[0];
+        var elementRange = elementsNode.get("ElementRange/ data").value;
+        var connectivityNode = elementsNode.get("ElementConnectivity");
+        
+        var elementCount = elementRange[1] - elementRange[0] + 1;
+        
+        // create cell type array
+        this.data.cellTypes = new Uint32Array(elementCount).fill(elementTypeInt);
+        console.log("elemenent type:", cgns.ELEMENT_TYPES[elementTypeInt]);
 
-        var min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
-        var max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
+        // get cell connectivity
+        this.data.cellConnectivity = connectivityNode.get(" data").value;
 
-        this.data.positions = new Float32Array(pointsCount * 3);
-        for (let i = 0; i < pointsCount; i++) {
-            this.data.positions[3*i + 0] = coordsX[i];
-            this.data.positions[3*i + 1] = coordsY[i];
-            this.data.positions[3*i + 2] = coordsZ[i];
-
-            min = [Math.min(min[0], coordsX[i]), Math.min(min[1], coordsY[i]), Math.min(min[2], coordsZ[i])];
-            max = [Math.max(max[0], coordsX[i]), Math.max(max[1], coordsY[i]), Math.max(max[2], coordsZ[i])];
+        // build the cell offsets array
+        var pointsPerElement = cgns.ELEMENT_VERTICES_COUNT[cgns.ELEMENT_TYPES[elementTypeInt]];
+        this.data.cellOffsets = new Uint32Array(elementCount);
+        for (let i = 0; i < elementCount; i++) {
+            this.data.cellOffsets[i] = i * pointsPerElement;
         }
 
-        console.log("Spatial extent:", min, max);
-
-        // console.log(this.data.positions);
+        console.log(this.data);
     }
 
     this.generateData = async function(config) {
@@ -461,19 +467,37 @@ function Data(id) {
     }
     // returns the positions of the boundary points
     this.getBoundaryPoints = function() {
-        var size = this.getDataSize();
-        // extent is size -1
-        var e = [size[0] - 1, size[1] - 1, size[2] - 1];
-        var points = new Float32Array([
-            0,    0,    0,    // 0
-            e[0], 0,    0,    // 1
-            0,    e[1], 0,    // 2
-            e[0], e[1], 0,    // 3
-            0,    0,    e[2], // 4
-            e[0], 0,    e[2], // 5
-            0,    e[1], e[2], // 6
-            e[0], e[1], e[2]  // 7
-        ])
+        if (this.dataFormat == DataFormats.STRUCTURED) {
+            var size = this.getDataSize();
+            // extent is size -1
+            var e = [size[0] - 1, size[1] - 1, size[2] - 1];
+            var points = new Float32Array([
+                0,    0,    0,    // 0
+                e[0], 0,    0,    // 1
+                0,    e[1], 0,    // 2
+                e[0], e[1], 0,    // 3
+                0,    0,    e[2], // 4
+                e[0], 0,    e[2], // 5
+                0,    e[1], e[2], // 6
+                e[0], e[1], e[2]  // 7
+            ]);
+        } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
+            var a = this.extentBox.min;
+            var b = this.extentBox.max;
+            var points = new Float32Array([
+                a[0], a[1], a[2], // 0
+                b[0], a[1], a[2], // 1
+                a[0], b[1], a[2], // 2
+                b[0], b[1], a[2], // 3
+                a[0], a[1], b[2], // 4
+                b[0], a[1], b[2], // 5
+                a[0], b[1], b[2], // 6
+                b[0], b[1], b[2]  // 7
+            ]);
+        } else {
+            var points = new Float32Array(24);
+        }
+        
         var transformedPoint = [0, 0, 0, 0];
         for (let i = 0; i < points.length; i += 3) {
             vec4.transformMat4(
@@ -517,6 +541,7 @@ function Data(id) {
         return this.size ?? [0, 0, 0];
     }
     this.setDataSize = function(size) {
+        this.extentBox.max = size;
         this.size = size;
     }
     this.getValues = function() {

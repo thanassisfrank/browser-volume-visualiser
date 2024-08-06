@@ -192,7 +192,7 @@ function View(id, camera, data, renderMode, threshold) {
         camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
         switch (data.dataName) {
             case "Silicium":
-                camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
+                // camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
                 break;
             case "Turbulence":
                 camera.setStartPosition(data.getMidPoint(), 108, 0, -34.5);
