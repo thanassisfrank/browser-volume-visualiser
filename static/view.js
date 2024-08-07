@@ -13,6 +13,8 @@ import { RenderableTypes } from "./core/renderEngine/renderEngine.js";
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
+import { FrameTimeGraph } from "./frameTimeGraph.js";
+
 
 
 export var viewManager = {
@@ -55,12 +57,13 @@ export var viewManager = {
         viewContainer.id = id;
 
         // look through the DOM to find the functional elements
-        var slider =    viewContainer.getElementsByClassName("view-threshold")?.[0];
-        var frame =     viewContainer.getElementsByClassName("view-frame")?.[0];
-        var closeBtn =  viewContainer.getElementsByClassName("view-close")?.[0];
-        var dataName =  viewContainer.getElementsByClassName("view-dataset-name")?.[0];
-        var dataSize =  viewContainer.getElementsByClassName("view-dataset-size")?.[0];
-        var threshVal = viewContainer.getElementsByClassName("view-threshold-value")?.[0];
+        var slider =       viewContainer.getElementsByClassName("view-threshold")?.[0];
+        var frame =        viewContainer.getElementsByClassName("view-frame")?.[0];
+        var closeBtn =     viewContainer.getElementsByClassName("view-close")?.[0];
+        var dataName =     viewContainer.getElementsByClassName("view-dataset-name")?.[0];
+        var dataSize =     viewContainer.getElementsByClassName("view-dataset-size")?.[0];
+        var threshVal =    viewContainer.getElementsByClassName("view-threshold-value")?.[0];
+        var densityGraph = viewContainer.getElementsByClassName("view-density-graph")?.[0];
 
         // add references to these in the view
         view.elems.container = viewContainer;
@@ -70,6 +73,7 @@ export var viewManager = {
         view.elems.dataName = dataName;
         view.elems.dataSize = dataSize;
         view.elems.threshVal = threshVal;
+        view.elems.densityGraph = densityGraph;
 
         // populate dataset info
         dataName.innerText = view.data.getName();
@@ -83,6 +87,18 @@ export var viewManager = {
         slider.step = (view.data.limits[1] - view.data.limits[0]) / 1000;
 
         slider.value = (view.data.limits[0] + view.data.limits[1]) / 2;
+
+
+        const binCount = 100;
+        densityGraph.width = binCount;
+        densityGraph.height = 20;
+        // console.log(getComputedStyle(densityGraph));
+        console.log(densityGraph);
+        var {counts, max} = view.data.getValueCounts(binCount);
+        var densityPlotter = new FrameTimeGraph(densityGraph, max, true, true);
+        for (let val of counts) {
+            densityPlotter.update(val);
+        }
     }, 
     setupDOMEventHandlers: function(view, renderEngine) {
         if (view.elems.closeBtn) {
@@ -216,6 +232,7 @@ function View(id, camera, data, renderMode, threshold) {
         camera.moveToStart();
         // define what rendering type will be performed on dataset object
         this.data.renderMode = this.renderMode;
+        console.log(this.data.getValueCounts(100));
         //this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
         // setup the scene
         this.sceneGraph.insertChild(this.camera, undefined, true);
@@ -256,7 +273,7 @@ function View(id, camera, data, renderMode, threshold) {
 
         // need to find the camera position in world space
         if (this.data.resolutionMode == ResolutionModes.DYNAMIC) {
-            updateDynamicTreeBuffers(this.data, 0.1, this.sceneGraph.activeCamera.getEyePos());
+            updateDynamicTreeBuffers(this.data, 0.1, this.sceneGraph.activeCamera.getTarget());
         }
 
         // update the renderables for the objects in the scene

@@ -129,7 +129,10 @@ var dataManager = {
     // takes a data object with format STRUCTURED and converts to UNSTRUCTRED with tetrahedral cells
     // resolution specified the stride within which to create the unstructured cells
     convertStructuredToUnstructured: function(dataObj, resolutionMode, leafCells, dynamicNodeCount, nodeVals, cornerVals) {
-        if (dataObj.dataFormat != DataFormats.STRUCTURED) return;
+        if (dataObj.dataFormat != DataFormats.STRUCTURED) {
+            console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
+            return;
+        }
 
         // change type and resolution mode
         dataObj.dataFormat = DataFormats.UNSTRUCTURED;
@@ -580,5 +583,26 @@ function Data(id) {
         var dMatInv = mat4.create();
         mat4.invert(dMatInv, this.dataTransformMat);
         return dMatInv;
+    }
+
+    // returns the number of values within this.data.values that fall into a number of bins
+    // bins are in the range this.limits and there are binCount number
+    this.getValueCounts = function(binCount) {
+        var counts = new Uint32Array(binCount);
+        var max = 0;
+        var index;
+        console.log(this.limits);
+        for (let val of this.data.values) {
+            index = Math.floor((val - this.limits[0]) * (binCount-1)/(this.limits[1] - this.limits[0]));
+            max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount-1))]);
+            if (Number.isNaN(max)) {
+                console.log(val, index, counts[index])
+                break;
+            }
+        }
+        return {
+            counts: counts,
+            max: max
+        }
     }
 }

@@ -3,11 +3,12 @@
 
 import { setupCanvasDims } from "./core/utils.js";
 
-export function FrameTimeGraph(canvas) {
-    setupCanvasDims(canvas);
+export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlreadySetup = false) {
+    if (!canvasAlreadySetup) setupCanvasDims(canvas);
     this.canvas = canvas;
+    this.noLines = noLines;
     // the ms at the top of the plot
-    this.max = 100;
+    this.max = max;
     this.historyLength = 100;
     this.lastSamples = [];
     
@@ -36,13 +37,13 @@ export function FrameTimeGraph(canvas) {
         var msPerPixel = this.max/(this.canvas.height + 1);
         for (let i = 0; i < newImgData.length/4; i++) {
             var msThisPixel = (newImgData.length/4 - (i + 1))*msPerPixel;
-            if (17 <= msThisPixel && 17 > msThisPixel - msPerPixel) {
+            if (17 <= msThisPixel && 17 > msThisPixel - msPerPixel && !this.noLines) {
                 // draw 60fps (17ms) line
                 newImgData[4*i + 0] = 0;
                 newImgData[4*i + 1] = 255;
                 newImgData[4*i + 2] = 0;
                 newImgData[4*i + 3] = 255;
-            } else if (33 <= msThisPixel && 33 > msThisPixel - msPerPixel) {
+            } else if (33 <= msThisPixel && 33 > msThisPixel - msPerPixel && !this.noLines) {
                 // draw 30fps (33ms) line
                 newImgData[4*i + 0] = 200;
                 newImgData[4*i + 1] = 150;

@@ -568,10 +568,10 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
 
 
 // updates the dynamic tree buffers based on camera location
-// cameraCoords is dataset-relative
-export var updateDynamicTreeBuffers = (dataObj, threshold, cameraCoords) => {
+// focusPoint is dataset-relative
+export var updateDynamicTreeBuffers = (dataObj, threshold, focusPoint) => {
     // get the node scores, n lowest highest
-    var scores = getNodeScores(dataObj, threshold, cameraCoords, 10);
+    var scores = getNodeScores(dataObj, threshold, focusPoint, 10);
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents

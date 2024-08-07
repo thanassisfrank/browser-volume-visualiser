@@ -258,7 +258,9 @@ export function Camera(id) {
         vec = VecMath.vecAdd(this.target, vec);
         //console.log(vec)
         return vec;
-        
+    }
+    this.getTarget = function() {
+        return this.target;
     }
     this.getViewMat = function() {
         this.viewMat = mat4.create();

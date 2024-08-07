@@ -206,7 +206,6 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     }
 
     this.setupDataCellsWireframeMeshObject = function(data) {
-        var corr = data.data.zeroBased ? 0 : 1;
         var indices = [];
         // iterate through all cells in the dataset, adding the edge indices for each
         let cellType, cellOffset;
@@ -216,18 +215,18 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             cellOffset = data.data.cellOffsets[i];
 
             // add edges
-            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 0] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 1] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 2] - corr);
-            indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
+            indices.push(data.data.cellConnectivity[cellOffset + 0]);
+            indices.push(data.data.cellConnectivity[cellOffset + 1]);
+            indices.push(data.data.cellConnectivity[cellOffset + 0]);
+            indices.push(data.data.cellConnectivity[cellOffset + 2]);
+            indices.push(data.data.cellConnectivity[cellOffset + 0]);
+            indices.push(data.data.cellConnectivity[cellOffset + 3]);
+            indices.push(data.data.cellConnectivity[cellOffset + 1]);
+            indices.push(data.data.cellConnectivity[cellOffset + 2]);
+            indices.push(data.data.cellConnectivity[cellOffset + 1]);
+            indices.push(data.data.cellConnectivity[cellOffset + 3]);
+            indices.push(data.data.cellConnectivity[cellOffset + 2]);
+            indices.push(data.data.cellConnectivity[cellOffset + 3]);
         }
 
         var renderable = webGPU.meshRenderableFromArrays(
