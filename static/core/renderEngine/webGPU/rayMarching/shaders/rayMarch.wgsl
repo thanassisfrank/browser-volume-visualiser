@@ -105,7 +105,7 @@ fn fragment_main(
     // get the flags governing this pass
     var passFlags : RayMarchPassFlags = getFlags(passInfo.flags);
     // get the dimensions of the dataset in data coordinates as a vec3<f32>
-    var dataSize : vec3<f32> = passInfo.dataSize;
+    var dataSize : vec3<f32> = passInfo.dataBox.max - passInfo.dataBox.min;
     // initialise the fragment colour to the background
     var fragCol = vec4<f32>(1, 1, 1, 0);
 
@@ -192,7 +192,7 @@ fn fragment_main(
             // generate new offset
             var newOffset = getRandF32(seed ^ 782035u);
             // march with the new offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, newOffset);
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, newOffset);
             offset = newOffset;
             if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
                 // if the surface is closer
@@ -201,7 +201,7 @@ fn fragment_main(
             }
         } else {
             // march with existing offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, prevOffsetSample.offset);
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, prevOffsetSample.offset);
             // store depth into texture
             offsetSample = OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth);
 
@@ -211,10 +211,10 @@ fn fragment_main(
     } else if (passFlags.randStart) {
         // generate a random value
         randomVal = getRandF32(seed);
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, randomVal);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, randomVal);
         offset = randomVal;
     } else {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, enteredDataset, 0);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, 0);
         offset = 0;
     }
 

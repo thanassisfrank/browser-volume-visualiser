@@ -391,7 +391,7 @@ function Data(id) {
 
         this.dataFormat = DataFormats.UNSTRUCTURED;
         // cgns arrays are FORTRAM one-based indexed
-        this.data.zeroBased = false;
+        this.data.zeroBased = true;
 
         // get vertex positions
         var coordsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "GridCoordinates_t")[0];
@@ -415,6 +415,10 @@ function Data(id) {
 
         // get cell connectivity
         this.data.cellConnectivity = connectivityNode.get(" data").value;
+        // convert to zero based indexing
+        for (let i = 0; i < this.data.cellConnectivity.length; i++) {
+            this.data.cellConnectivity[i]--;
+        }
 
         // build the cell offsets array
         var pointsPerElement = cgns.ELEMENT_VERTICES_COUNT[cgns.ELEMENT_TYPES[elementTypeInt]];
@@ -423,7 +427,26 @@ function Data(id) {
             this.data.cellOffsets[i] = i * pointsPerElement;
         }
 
-        console.log(this.data);
+        // get vertex-centred data
+        var flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
+        var dataNodes = cgns.getChildrenWithLabel(flowSolutionNode, "DataArray_t");
+        // console.log(dataNodes);
+        
+        // take the density values
+        this.data.values = flowSolutionNode.get("Pressure/ data").value;
+        this.limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+        for (let i = 0; i < this.data.values.length; i++) {
+            this.limits = [Math.min(this.limits[0], this.data.values[i]), Math.max(this.limits[1], this.data.values[i])];
+        }
+        console.log(this.limits);
+
+        // generate the tree for rendering
+        const treeBuffers = getCellTreeBuffers(this, 64);
+        this.data.treeNodes = treeBuffers.nodes;
+        this.data.treeCells = treeBuffers.cells;
+
+        // need at least an empty buffer here, the render engine expects
+        this.data.cornerValues = new Float32Array(64);
     }
 
     this.generateData = async function(config) {

@@ -118,12 +118,19 @@
         <div id="add-view-container" class="bottom-bar">
             <select id="data-select"></select><br>
             <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br>
+            <label><b>Unstructured</b></label><br>
             <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Make unstruct</label><br>
             <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
+            <label><b>Dynamic tree</b></label><br>
             <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
             <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Dyn nodes</label><br>
             <input type="checkbox" class="dataset-opt" name="nodeValues"><label>Node vals</label><br>
             <input type="checkbox" class="dataset-opt" name="cornerValues"><label>Corner vals</label><br>
+            <label><b>Rendering</b></label><br>
+            <input type="checkbox" class="dataset-opt" name="DATA_RAY_VOLUME" ><label>Ray March</label><br>
+            <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" ><label>Bounding box</label><br>
+            <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
+            <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Wireframe</label><br>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -262,10 +269,16 @@
                         }
                     }
 
+                    var renderMode = SceneObjectRenderModes.NONE;
+                    if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;
+                    if (opts.DATA_RAY_VOLUME.checked) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+                    if (opts.DATA_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
+                    if (opts.BOUNDING_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+
                     var newView = await viewManager.createView({
                         camera: camera,
                         data: newData,
-                        renderMode: SceneObjectRenderModes.DATA_WIREFRAME
+                        renderMode: renderMode
                     }, renderEngine);
 
                     // hide the window

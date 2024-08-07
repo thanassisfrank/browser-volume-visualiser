@@ -4,14 +4,14 @@
 // structs ========================================================================================
 
 // information needed for the ray marching pass
-// 128 bytes in total
+// 160 bytes in total
 struct RayMarchPassInfo {
     @size(4)  flags : u32,
     @size(4)  framesSinceMove : u32,
     @size(4)  threshold : f32,
     @size(4)  dataLowLimit : f32,
     @size(16) dataHighLimit : f32,
-    @size(16) dataSize : vec3<f32>,
+    @size(48) dataBox : AABB,
     @size(4)  stepSize : f32,
     @size(12) maxLength : f32,
     @size(64) dMatInv : mat4x4<f32>, // from world space -> data space
@@ -175,11 +175,10 @@ fn marchRay(
     passFlags : RayMarchPassFlags, 
     passInfo : RayMarchPassInfo, 
     rayStub : Ray, 
-    dataSize : vec3<f32>,
+    dataBox : AABB,
     startInDataset : bool, 
     offset : f32
 ) -> RayMarchResult {
-    var dataBox : AABB = AABB(vec3<f32>(0), dataSize, 0u);
     var ray = rayStub;
     var enteredDataset = startInDataset;
 

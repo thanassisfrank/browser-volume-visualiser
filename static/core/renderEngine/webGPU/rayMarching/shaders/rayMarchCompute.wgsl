@@ -8,7 +8,7 @@
 struct CombinedPassInfo {
     @size(208) globalInfo : GlobalUniform,
     @size(160) objectInfo : ObjectInfo,
-    @size(128) passInfo : RayMarchPassInfo,
+    @size(160) passInfo : RayMarchPassInfo,
 };
 
 // tree nodes can be in one of 3 states:
@@ -503,7 +503,7 @@ fn main(
 
     threadIndex = localIndex;
     if (threadIndex == 1u) {
-        datasetBox = AABB(vec3<f32>(0), passInfo.dataSize, 0);
+        datasetBox = passInfo.dataBox;
     }
     workgroupBarrier();
 
@@ -584,7 +584,7 @@ fn main(
             // generate new offset
             var newOffset = getRandF32(id.x ^ id.y ^ 782035u);
             // march with the new offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, newOffset);
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, newOffset);
             offset = newOffset;
             if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
                 // if the surface is closer
@@ -593,16 +593,16 @@ fn main(
             }
         } else {
             // march with existing offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, prevOffsetSample.offset);
+            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, prevOffsetSample.offset);
             // store depth into texture
             storeOptimisationSample(id.xy, OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth));
             offset = prevOffsetSample.offset;
         }
     } else if (passFlags.randStart) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, randomVal);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, randomVal);
         offset = randomVal;
     } else {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataSize, startInside, 0);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, 0);
         offset = 0;
     }
 

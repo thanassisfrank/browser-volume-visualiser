@@ -319,7 +319,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 minFilter: "linear"
             });
 
-            renderData.buffers.passInfo = webGPU.makeBuffer(256, "u cs cd", "ray pass info");
+            renderData.buffers.passInfo = webGPU.makeBuffer(512, "u cs cd", "ray pass info");
 
             return renderable;
     }
@@ -346,6 +346,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.dynamicCornerValues, usage);
             // TEMP
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+        } else {
+            throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode.toString() + "'";
         }
         
 
@@ -406,7 +408,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
             faceRenderable.passData.threshold = dataObj.threshold;
             faceRenderable.passData.limits = dataObj.limits;
-            faceRenderable.passData.dataSize = dataObj.getDataSize();
+            // faceRenderable.passData.dataSize = dataObj.getDataSize();
+            faceRenderable.passData.dataBoxMin = dataObj.extentBox.min;
+            faceRenderable.passData.dataBoxMax = dataObj.extentBox.max;
             faceRenderable.passData.dMatInv = dataObj.getdMatInv();
 
             // console.log(faceRenderable.passData.dMatInv)
@@ -440,7 +444,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, "s cs cd", "object info buffer s");
                 faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
 
-                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(512, "s cs cd", "combined ray march pass info");
+                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, "s cs cd", "combined ray march pass info");
 
                 
                 faceRenderable.renderData.bindGroups.depth0 = webGPU.generateBG(
@@ -642,7 +646,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
                     0, 0, 0,
-                    ...renderable.passData.dataSize, 0,
+                    ...renderable.passData.dataBoxMin, 0,
+                    ...renderable.passData.dataBoxMax, 0,
+                    0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, // padding
@@ -750,7 +756,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.limits[0],
                     renderable.passData.limits[1],
                     0, 0, 0,
-                    ...renderable.passData.dataSize, 0,
+                    ...renderable.passData.dataBoxMin, 0,
+                    ...renderable.passData.dataBoxMax, 0,
+                    0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0, // padding

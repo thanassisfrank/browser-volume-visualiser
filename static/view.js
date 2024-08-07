@@ -35,7 +35,9 @@ export var viewManager = {
         // check if the mesh, data and camera objects are supplied
         var camera = config.camera;
         var data = config.data;
-        dataManager.addUser(data);    
+        dataManager.addUser(data); 
+        
+        console.log(data);
 
         // generate id
         const id = newId(this.views);
@@ -78,7 +80,7 @@ export var viewManager = {
 
         slider.min = view.data.limits[0]; // Math.max(view.data.limits[0], 0);
         slider.max = view.data.limits[1];
-        slider.step = (view.data.limits[1] - view.data.limits[0]) / 200;
+        slider.step = (view.data.limits[1] - view.data.limits[0]) / 1000;
 
         slider.value = (view.data.limits[0] + view.data.limits[1]) / 2;
     }, 
@@ -195,16 +197,20 @@ function View(id, camera, data, renderMode, threshold) {
                 // camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
                 break;
             case "Turbulence":
-                camera.setStartPosition(data.getMidPoint(), 108, 0, -34.5);
-                camera.setTarget([0, 20.68874256329051, 0]);
+                // camera.setStartPosition(data.getMidPoint(), 108, 0, -34.5);
+                // camera.setTarget([0, 20.68874256329051, 0]);
                 break;
             case "Engine":
-                camera.setStartPosition(data.getMidPoint(), 207, 48.5, -15);
+                // camera.setStartPosition(data.getMidPoint(), 207, 48.5, -15);
                 break;
             case "Magnetic":
-                camera.setStartPosition(data.getMidPoint(), 460, 0, 0);
+                // camera.setStartPosition(data.getMidPoint(), 460, 0, 0);
                 // camera.setStartPosition(data.getMidPoint(), 103, 180, 0);
                 this.updateThreshold(1);
+                break;
+            case "YF17":
+                camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
+                this.updateThreshold(102022.3);
                 break;
         }
         camera.moveToStart();
@@ -226,6 +232,7 @@ function View(id, camera, data, renderMode, threshold) {
         
     }     
     this.updateThreshold = async function(val) {
+        this.elems.slider.value = val;
         this.threshold = val;
         this.thresholdChanged = true;
         if (this.elems.threshVal) this.elems.threshVal.innerText = val.toPrecision(3);

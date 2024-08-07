@@ -230,8 +230,6 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             indices.push(data.data.cellConnectivity[cellOffset + 3] - corr);
         }
 
-        console.log(indices);
-
         var renderable = webGPU.meshRenderableFromArrays(
             data.data.positions, 
             new Float32Array(data.data.positions.length), 
