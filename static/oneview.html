@@ -10,6 +10,9 @@
                 padding: 0px;
                 margin: 0px;
             }
+            .hidden {
+                display: none
+            }
             #c{
                 position: absolute;
                 margin: 0px;
@@ -126,18 +129,18 @@
             <select id="data-select"></select><br>
             <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br>
             <label><b>Unstructured</b></label><br>
-            <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Make unstruct</label><br>
+            <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
             <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
             <label><b>Dynamic tree</b></label><br>
             <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
-            <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Dyn nodes</label><br>
-            <input type="checkbox" class="dataset-opt" name="nodeValues"><label>Node vals</label><br>
-            <input type="checkbox" class="dataset-opt" name="cornerValues"><label>Corner vals</label><br>
+            <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
+            <span class="hidden"><input type="checkbox" class="dataset-opt" name="nodeValues"><label>Node vals</label><br></span>
+            <span class="hidden"><input type="checkbox" class="dataset-opt" name="cornerValues"><label>Corner vals</label><br></span>
             <label><b>Rendering</b></label><br>
-            <input type="checkbox" class="dataset-opt" name="DATA_RAY_VOLUME" ><label>Ray March</label><br>
-            <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" ><label>Bounding box</label><br>
+            <input type="checkbox" class="dataset-opt" name="DATA_RAY_VOLUME" checked><label>Ray March</label><br>
+            <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" checked><label>Bounding box</label><br>
             <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
-            <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Wireframe</label><br>
+            <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Mesh wireframe</label><br>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -154,7 +157,9 @@
                     <p class="view-dataset-name view-info"></p>
                     <p class="view-dataset-size view-info"></p>
                     <div>
-                        <canvas class="view-density-graph" style="width:200px;height:20px"></canvas>
+                        <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas>
+                        <br>
+                        <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
                         <br>
                         <input type="range" class="view-threshold">
                     </div>
@@ -294,37 +299,63 @@
                 var cameraFollowPath = false;
 
                 // shortcuts
-                document.body.addEventListener("keydown", function(e) {
-                    var currView = Object.values(viewManager.views)[0];
-                    switch (e.key) {
-                        case " ":
-                            // print the camera position and threshold val
+                const shortcuts = {
+                    "h": {
+                        description: "Help",
+                        f: function(e) {
+                            for (let key in shortcuts) {
+                                if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
+                            }
+                        }
+                    },
+                    " ": {
+                        description: "Print the camera position and threshold val",
+                        f: function(e) {
                             camera.printVals();
-                            console.log("threshold", currView.threshold);
-                            
-                            break;
-                        case "f":
+                            console.log("threshold", Object.values(viewManager.views)[0].threshold);
+                        }
+                    },
+                    "f": {
+                        description: "Print average frametime",
+                        f: function(e) {
                             const avg = frameTimeGraph.getAverage();
                             console.log("avg ft ", frameTimeGraph.historyLength, "samples:", avg, "ms");
                             alert(avg + "ms");
-                            break;
-                        case "l":
+                        }
+                    },
+                    "l": {
+                        description: "Print last frametime sample",
+                        f: function(e) {
                             console.log(frameTimeGraph.lastSamples[0]);
-                            break;
-                        case "p":
+                        }
+                    },
+                    "s": {
+                        description: "Save image on main canvas",
+                        f: function(e) {
                             const image = canvas.toDataURL('image/png');
                             var dlElem = document.createElement('a');
                             dlElem.download = 'canvas_image.png';
                             dlElem.href = image;
                             dlElem.click();
                             dlElem.remove();
-                            break;
-                        case "r":
-                            // reset camera to initial position
+                        }
+                    },
+                    "p": {
+                        description: "Toggle dynamic tree updates",
+                        f: (e) => {
+                            const currView = Object.values(viewManager.views)[0];
+                            currView.updateDynamicTree = !currView.updateDynamicTree;
+                        }
+                    },
+                    "r": {
+                        description: "Move camera to initial position",
+                        f: function(e) {
                             camera.moveToStart();
-                            break;
-                        case "h":
-                            // toggle visiblity of overlay elements
+                        }
+                    },
+                    "v": {
+                        description: "Toggle visiblity of overlay elements",
+                        f: function(e) {
                             for (let elem of [...getClass("view-bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
                                 if (isVisible(elem)) {
                                     hide(elem);
@@ -332,35 +363,54 @@
                                     show(elem);
                                 }
                             }
-                            break;
-                        case "m":
+                        }
+                    },
+                    "m": {
+                        description: "Toggle camera auto-move",
+                        f: function(e) {
                             cameraFollowPath = !cameraFollowPath;
-                            break
-                        case "u":
-                            // update view
-                            currView.update(0, renderEngine);
-                            break;
-                        case "o":
+                        }
+                    },
+                    "u": {
+                        description: "Update view",
+                        f: function(e) {
+                            Object.values(viewManager.views)?.[0].update(0, renderEngine);
+                        }
+                    },
+                    "o": {
+                        description: "Reset offset optimisation",
+                        f: function(e) {
                             renderEngine.canvasResized = true;
                             renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
-                            break;
-                        case "Alt":
+                        }
+                    },
+                    "Alt": {
+                        f: function(e) {
                             e.preventDefault();
-                            break;
-                        case "ArrowUp":
+                        }
+                    },
+                    "ArrowUp": {
+                        description: "Increase ray-marching step size",
+                        f: function(e) {
                             var oldStep = renderEngine.rayMarcher.getStepSize();
                             var newStep = oldStep * 2;
                             console.log("inc step size:", newStep);
                             renderEngine.rayMarcher.setStepSize(newStep);
-                            break;
-                        case "ArrowDown":
+                        }
+                    },
+                    "ArrowDown": {
+                        description: "Decrease ray-marchng step size",
+                        f: function(e) {
                             var oldStep = renderEngine.rayMarcher.getStepSize();
                             var newStep = oldStep * 0.5;
                             console.log("dec step size:", newStep);
                             renderEngine.rayMarcher.setStepSize(newStep);
-                            break;
-
+                        }
                     }
+                };
+
+                document.body.addEventListener("keydown", function(e) {
+                    shortcuts[e.key]?.f(e);
                 });
 
                 var resize = () => {
@@ -385,7 +435,6 @@
                     // does stuff like propagating threshold value, fetching required data
                     viewManager.update(dt, renderEngine, cameraFollowPath);
 
-                    
                     
                     // render the scenes
                     // includes doing marching cubes/ray marching if required by object

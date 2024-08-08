@@ -63,7 +63,8 @@ export var viewManager = {
         var dataName =     viewContainer.getElementsByClassName("view-dataset-name")?.[0];
         var dataSize =     viewContainer.getElementsByClassName("view-dataset-size")?.[0];
         var threshVal =    viewContainer.getElementsByClassName("view-threshold-value")?.[0];
-        var densityGraph = viewContainer.getElementsByClassName("view-density-graph")?.[0];
+        var densityGraph = viewContainer.getElementsByClassName("view-value-density")?.[0];
+        var nodeScores =   viewContainer.getElementsByClassName("view-node-scores")?.[0];
 
         // add references to these in the view
         view.elems.container = viewContainer;
@@ -74,13 +75,11 @@ export var viewManager = {
         view.elems.dataSize = dataSize;
         view.elems.threshVal = threshVal;
         view.elems.densityGraph = densityGraph;
+        view.elems.nodeScores = nodeScores;
 
         // populate dataset info
         dataName.innerText = view.data.getName();
-        var datasetSize = view.data.getDataSize();
-        if (datasetSize && dataSize) dataSize.innerText = datasetSize[0] + "x" + datasetSize[1] + "x" + datasetSize[2];
-
-        if (view.data.dataFormat == DataFormats.UNSTRUCTURED) dataSize.innerText += "u";
+        dataSize.innerText = view.data.getDataSizeString();
 
         slider.min = view.data.limits[0]; // Math.max(view.data.limits[0], 0);
         slider.max = view.data.limits[1];
@@ -92,12 +91,17 @@ export var viewManager = {
         const binCount = 100;
         densityGraph.width = binCount;
         densityGraph.height = 20;
-        // console.log(getComputedStyle(densityGraph));
-        console.log(densityGraph);
         var {counts, max} = view.data.getValueCounts(binCount);
-        var densityPlotter = new FrameTimeGraph(densityGraph, max, true, true);
+        var densityPlotter = new FrameTimeGraph(densityGraph, Math.log10(max), true, true);
         for (let val of counts) {
-            densityPlotter.update(val);
+            densityPlotter.update(Math.log10(val));
+        }
+
+        // setup node scores display if needed
+        if (view.data.resolutionMode == ResolutionModes.DYNAMIC) {
+
+        } else {
+            nodeScores.classList.add("hidden");
         }
     }, 
     setupDOMEventHandlers: function(view, renderEngine) {
@@ -201,9 +205,14 @@ function View(id, camera, data, renderMode, threshold) {
     this.marchedThreshold = undefined;
     this.renderMode = renderMode;
 
+    this.updateDynamicTree = true;
+
     // holds all the important DOM elements for this view
     this.elems = {}
     this.box = {};
+
+
+
     this.init = function(renderEngine) {
         // setup camera position
         camera.setProjMat();
@@ -232,7 +241,6 @@ function View(id, camera, data, renderMode, threshold) {
         camera.moveToStart();
         // define what rendering type will be performed on dataset object
         this.data.renderMode = this.renderMode;
-        console.log(this.data.getValueCounts(100));
         //this.data.renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
         // setup the scene
         this.sceneGraph.insertChild(this.camera, undefined, true);
@@ -254,11 +262,15 @@ function View(id, camera, data, renderMode, threshold) {
         this.thresholdChanged = true;
         if (this.elems.threshVal) this.elems.threshVal.innerText = val.toPrecision(3);
     }
+
+
     this.didThresholdChange = function() {
         var changed = this.thresholdChanged;
         this.thresholdChanged = false;
         return changed;
     }
+
+
     this.update = async function (dt, renderEngine, cameraFollowPath) {
         // console.log(cameraFollowPath)
         if (cameraFollowPath) {
@@ -272,8 +284,8 @@ function View(id, camera, data, renderMode, threshold) {
         this.data.threshold = this.threshold;
 
         // need to find the camera position in world space
-        if (this.data.resolutionMode == ResolutionModes.DYNAMIC) {
-            updateDynamicTreeBuffers(this.data, 0.1, this.sceneGraph.activeCamera.getTarget());
+        if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
+            updateDynamicTreeBuffers(this.data, 0, this.sceneGraph.activeCamera.getTarget(),  this.sceneGraph.activeCamera.getEyePos());
         }
 
         // update the renderables for the objects in the scene
@@ -281,9 +293,13 @@ function View(id, camera, data, renderMode, threshold) {
             renderEngine.updateSceneObject(dt, sceneObj);
         }
     }
+
+
     this.getFrameElem = function() {
         return this.elems.frame;
     }
+
+
     this.getBox = function() {
         // find the box corresponding to the associated frame element
         // the box is relative to the window
@@ -291,6 +307,8 @@ function View(id, camera, data, renderMode, threshold) {
         this.box = rect;
         return rect;
     }
+
+
     this.delete = function(renderEngine) {
         // remove dom
         this.elems.container.remove();

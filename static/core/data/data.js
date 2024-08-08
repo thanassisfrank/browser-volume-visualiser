@@ -243,31 +243,12 @@ var dataManager = {
             }
         }
 
-        
-
         // create the cell tree
-        const treeBuffers = getCellTreeBuffers(dataObj, leafCells);
-        dataObj.data.treeNodes = treeBuffers.nodes;
-        dataObj.data.treeCells = treeBuffers.cells;
-
-        // need at least an empty buffer here, the render engine expects
-        dataObj.data.cornerValues = new Float32Array(64);
-
-        if (nodeVals) {
-            dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
-            addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
-        }
-        if (cornerVals) {
-            dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
-        }
+        dataObj.createUnstructuredTree(leafCells);
 
         if (resolutionMode == ResolutionModes.DYNAMIC) {
-            var dynamicBuffers = createDynamicTreeBuffers(dataObj, dynamicNodeCount);
-            dataObj.data.dynamicTreeNodes = dynamicBuffers.nodes;
-            dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+            dataObj.createDynamicTree(dynamicNodeCount);
         }
-
-        console.log(dataObj.data);
     },
     
     addUser: function(data) {
@@ -443,13 +424,30 @@ function Data(id) {
         }
         console.log(this.limits);
 
+        // create the cell tree
+        this.createUnstructuredTree(64);
+
+        // this.createDynamicTree(4000);
+    }
+
+    this.createUnstructuredTree = function(cellsPerLeaf) {
         // generate the tree for rendering
-        const treeBuffers = getCellTreeBuffers(this, 64);
+        const treeBuffers = getCellTreeBuffers(this, cellsPerLeaf);
         this.data.treeNodes = treeBuffers.nodes;
         this.data.treeCells = treeBuffers.cells;
 
         // need at least an empty buffer here, the render engine expects
         this.data.cornerValues = new Float32Array(64);
+    }
+
+    this.createDynamicTree = function(dynamicNodeCount) {
+        this.resolutionMode = ResolutionModes.DYNAMIC;
+        this.data.nodeVals = createNodeValuesBuffer(this);
+        addNodeValsToFullTree(this.data.treeNodes, this.data.nodeVals);
+        this.data.cornerValues = createNodeCornerValuesBuffer(this);
+        var dynamicBuffers = createDynamicTreeBuffers(this, dynamicNodeCount);
+        this.data.dynamicTreeNodes = dynamicBuffers.nodes;
+        this.data.dynamicCornerValues = dynamicBuffers.cornerValues;
     }
 
     this.generateData = async function(config) {
@@ -565,6 +563,15 @@ function Data(id) {
     // for structured formats, this returns the dimensions of the data grid in # data points
     this.getDataSize = function() {
         return this.size ?? [0, 0, 0];
+    }
+    // returns a string which indicates the size of the dataset for the user
+    this.getDataSizeString = function() {
+        if (this.dataFormat == DataFormats.STRUCTURED) {
+            return this.getDataSize().join("x");
+        } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
+            return this.data.cellOffsets.length.toLocaleString() + "u";
+        }
+        return "";
     }
     this.setDataSize = function(size) {
         this.extentBox.max = size;

@@ -284,6 +284,9 @@ export function Camera(id) {
         this.dist = Math.min(dist, this.zFar/2);
         this.viewMatValid = false;
     }
+    this.getDist = function() {
+        return this.dist;
+    }
     this.addToDist = function(dist) {
         this.setDist(this.dist + dist);
         this.viewMatValid = false;

@@ -37,13 +37,13 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlready
         var msPerPixel = this.max/(this.canvas.height + 1);
         for (let i = 0; i < newImgData.length/4; i++) {
             var msThisPixel = (newImgData.length/4 - (i + 1))*msPerPixel;
-            if (17 <= msThisPixel && 17 > msThisPixel - msPerPixel && !this.noLines) {
+            if (!this.noLines && 17 <= msThisPixel && 17 > msThisPixel - msPerPixel ) {
                 // draw 60fps (17ms) line
                 newImgData[4*i + 0] = 0;
                 newImgData[4*i + 1] = 255;
                 newImgData[4*i + 2] = 0;
                 newImgData[4*i + 3] = 255;
-            } else if (33 <= msThisPixel && 33 > msThisPixel - msPerPixel && !this.noLines) {
+            } else if (!this.noLines && 33 <= msThisPixel && 33 > msThisPixel - msPerPixel) {
                 // draw 30fps (33ms) line
                 newImgData[4*i + 0] = 200;
                 newImgData[4*i + 1] = 150;

@@ -228,14 +228,33 @@ var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
 
 
 // calculates a score for the box
-// box size/distance from camera
-var calcBoxScore = (box, cameraCoords) => {
+// high score -> too big -> split
+// low score -> too small -> merge
+// box size/distance from focus point
+// modified by distance of camera -> focus point
+// > closer -> 
+var calcBoxScore = (box, focusCoords, camCoords) => {
     // get corner-to-corner length of the box
-    var length = VecMath.magnitude(VecMath.vecMinus(box.min, box.max));
+    var length = VecMath.magnitude(VecMath.vecMinus(box.max, box.min));
+    var lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
     var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
-    var dist = VecMath.magnitude(VecMath.vecMinus(cameraCoords, mid));
+    // distance of box from camera
+    var distToCam = VecMath.magnitude(VecMath.vecMinus(camCoords, mid));
+    // distance of box from focus
+    var distToFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, mid));
+    // distance of camera from focus
+    var camtoFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
 
-    return length/Math.pow(dist, 0.8);
+    var score = lMax/distToCam; // visual size estimate
+    // if (camDist/dist > 2) score /= camDist; // focus spot bonus
+    // score += Math.pow(camtoFoc/distToFoc, 1.5);
+    // score += Math.pow(2, -Math.pow(camtoFoc/distToFoc, 2))/camtoFoc;
+    score *= Math.max(0, (5-Math.abs(distToFoc)/camtoFoc)/camtoFoc);
+    return score;
+
+    // return lMax/Math.pow(dist, 0.8);
+    // return Math.max(0, length - 0.01*(dist * (50 - camDist)));
+    // return lMax/dist
 }
 
 
@@ -244,7 +263,7 @@ var calcBoxScore = (box, cameraCoords) => {
 // each node also contains the ptr to themselves in the full tree buffer
 // threshold if the min score (size) that will be considered for splitting
 // assumes camera coords is in the dataset coordinate space
-var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
+var getNodeScores = (dataObj, threshold, focusCoords, camCoords, count) => {
     // console.log(threshold);
     var dynamicNodes = dataObj.data.dynamicTreeNodes;
     var fullNodes = dataObj.data.treeNodes;
@@ -298,13 +317,13 @@ var getNodeScores = (dataObj, threshold, cameraCoords, count) => {
             // this is a leaf node, get its score
             // console.log("leaf")
             // console.log(getThisBox(currNode));
-            var score = calcBoxScore(getThisBox(currNode), cameraCoords);
+            var score = calcBoxScore(getThisBox(currNode), focusCoords, camCoords);
             currNode.score = score;
             // console.log(score);
             if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
             if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
             // write score into node for now
-            //writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
+            writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
             // right is done after left, going back up the tree now  
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -533,9 +552,9 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
             dynamicNodes, 
             freePtrs[2*i] * NODE_BYTE_LENGTH, 
             nodeVals[leftNode.thisPtr], 
-            0,
+            leftNode.cellCount,
             thisNode.thisPtr, 
-            0, 
+            leftNode.leftPtr, 
             0
         );
         writeCornerVals(
@@ -551,9 +570,9 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
             dynamicNodes, 
             freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
             nodeVals[rightNode.thisPtr], 
-            0,
+            rightNode.cellCount,
             thisNode.thisPtr, 
-            0, 
+            rightNode.leftPtr, 
             0
         );
         writeCornerVals(
@@ -568,10 +587,12 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
 
 
 // updates the dynamic tree buffers based on camera location
-// focusPoint is dataset-relative
-export var updateDynamicTreeBuffers = (dataObj, threshold, focusPoint) => {
+// split nodes that are too large
+// merge nodes that are too small
+// if a node is 
+export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords) => {
     // get the node scores, n lowest highest
-    var scores = getNodeScores(dataObj, threshold, focusPoint, 10);
+    var scores = getNodeScores(dataObj, threshold, focusCoords, camCoords, 10);
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents
@@ -1242,6 +1263,7 @@ export function CellTree(leafCells) {
     // can pick cells randomly
     this.buildIterative = function(dimensions, maxLeafSize, cellConnectivity, cellOffsets, cellTypes, random = false) {
     }
+    // UNUSED
     this.getTreeByteLength = function() {
         // work out how long the tree is in values (4 bytes each)
         var treeByteLength = 0;
@@ -1254,6 +1276,7 @@ export function CellTree(leafCells) {
         
         return treeByteLength;
     }
+
     this.getTreeNodeCount = function() {
         var count = 0;
         forEachDepth(this.tree,
@@ -1265,11 +1288,16 @@ export function CellTree(leafCells) {
     }
     this.getTreeCellsCount = function() {
         var count = 0;
+        var under10 = 0;
         forEachDepth(this.tree,
             () => {},
-            (node) => {count += node.cells.length},
+            (node) => {
+                count += node.cells.length
+                if (node.cells.length < 10) under10++;
+            },
             () => {}
         );
+        console.log(under10 + " nodes with <10 cells");
         return count;
     }
     // returns the tree as a buffer
