@@ -347,7 +347,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             // TEMP
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
         } else {
-            throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode.toString() + "'";
+            throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode?.toString() + "'";
         }
         
 

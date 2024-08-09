@@ -254,31 +254,41 @@
 
                 get("create-view-btn").addEventListener("click", async (e) => {
                     var d = get("data-select");
-
-                    var newData = await dataManager.getDataObj(d.options[d.selectedIndex].value);
-
                     var opts = getInputClassAsObj("dataset-opt");
-                    // console.log(opts);
-                    var scale = parseInt(opts.downsample.value);
 
-                    if(scale > 1) {
-                        dataManager.downsampleStructured(newData, scale);
-                    }
-
-                    if (opts.createUnstructured.checked) {
-                        if (opts.dynamicResolution.checked) {
-                            dataManager.convertStructuredToUnstructured(
-                                newData, 
-                                ResolutionModes.DYNAMIC, 
-                                parseInt(opts.leafCells.value),
-                                parseInt(opts.dynamicNodes.value),
-                                opts.nodeValues.checked,
-                                opts.cornerValues.checked
-                            );
-                        } else {
-                            dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL, parseInt(opts.leafCells.value));
+                    var newData = await dataManager.getDataObj(
+                        d.options[d.selectedIndex].value,
+                        {
+                            leafCells: parseInt(opts.leafCells.value),
+                            downSample: parseInt(opts.downsample.value),
+                            forceUnstruct: opts.createUnstructured.checked,
+                            createDynamic: opts.dynamicResolution.checked,
+                            dynamicNodeCount: parseInt(opts.dynamicNodes.value)
                         }
-                    }
+                    );
+
+
+                    // if(scale > 1) {
+                    //     dataManager.downsampleStructured(newData, scale);
+                    // }
+
+                    // if (opts.createUnstructured.checked) {
+                    //     if (opts.dynamicResolution.checked) {
+                    //         dataManager.convertStructuredToUnstructured(
+                    //             newData, 
+                    //             ResolutionModes.DYNAMIC, 
+                    //             parseInt(opts.leafCells.value),
+                    //             parseInt(opts.dynamicNodes.value),
+                    //             opts.nodeValues.checked,
+                    //             opts.cornerValues.checked
+                    //         );
+                    //     } else {
+                    //         dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL, parseInt(opts.leafCells.value));
+                    //     }
+                    // }
+                    // if (opts.dynamicResolution.checked) {
+                    //     dataManager.convertToDynamic(newData, )
+                    // }
 
                     var renderMode = SceneObjectRenderModes.NONE;
                     if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;

@@ -245,16 +245,29 @@ var calcBoxScore = (box, focusCoords, camCoords) => {
     // distance of camera from focus
     var camtoFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
 
-    var score = lMax/distToCam; // visual size estimate
+    // original
+    // return lMax/Math.pow(dist, 0.8);
+
+    // return Math.max(0, length - 0.01*(dist * (50 - camDist)));
+
+
+    // var score = lMax/distToCam; // visual size estimate
     // if (camDist/dist > 2) score /= camDist; // focus spot bonus
     // score += Math.pow(camtoFoc/distToFoc, 1.5);
     // score += Math.pow(2, -Math.pow(camtoFoc/distToFoc, 2))/camtoFoc;
-    score *= Math.max(0, (5-Math.abs(distToFoc)/camtoFoc)/camtoFoc);
-    return score;
 
-    // return lMax/Math.pow(dist, 0.8);
-    // return Math.max(0, length - 0.01*(dist * (50 - camDist)));
-    // return lMax/dist
+    // most successful so far
+    // return lMax/distToCam * Math.max(0, (5-Math.abs(distToFoc)/camtoFoc)/camtoFoc);
+
+    // score seems to be too focussed on centre
+    // return  lMax + Math.min(5, Math.max(-1, (2-Math.abs(distToFoc/2)/(0.1*camtoFoc))/(0.1*camtoFoc)));
+
+    // target length approach
+    // return lMax - Math.max(0, Math.abs(distToFoc/2))
+    return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camtoFoc*10 + 5);
+
+
+    
 }
 
 
@@ -323,7 +336,7 @@ var getNodeScores = (dataObj, threshold, focusCoords, camCoords, count) => {
             if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
             if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
             // write score into node for now
-            writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score * 100, null, null, null, null);
+            writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score, null, null, null, null);
             // right is done after left, going back up the tree now  
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -1060,6 +1073,7 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                     )
                     
                     // fetch the left node from the full buffer and write to dynamic as pruned leaf
+                    // console.log(currParentFull.leftPtr);
                     var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
                     writeNodeToBuffer(
                         dynamicNodes, 
@@ -1379,7 +1393,8 @@ export function CellTree(leafCells) {
 
         return {
             nodes: nodesBuffer,
-            cells: cellsBuffer
+            cells: cellsBuffer,
+            nodeCount: totalNodeCount,
         }
     }
 

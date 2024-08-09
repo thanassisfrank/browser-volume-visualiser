@@ -63,24 +63,24 @@ var dataManager = {
             this.directory[id] = null;
         }
     },
-    getDataObj: async function(configId) {
+    getDataObj: async function(configId, opts) {
         // returns already created data object if it exists
         if (this.directory[configId]) {
             return this.directory[configId];
         }
         // else, creates a new one
-        var newDataObj = await this.createData(this.configSet[configId]);
+        var newDataObj = await this.createData(this.configSet[configId], opts);
         this.directory[configId] = newDataObj;
         // await this.setupDataObj(newDataObj);
         return newDataObj; 
     },
-    createData: async function(config) {
+    createData: async function(config, opts) {
         const id = newId(this.datas);
         var newData = new Data(id);
         newData.dataName = config.name;
         console.log(config);
         
-        // create the dataset from the config
+        // first, create the dataset from the config
         try {
             switch (config.type) {
                 case "function":
@@ -98,8 +98,31 @@ var dataManager = {
             return undefined;
         }
 
-        this.datas[id] = newData;
+        // downsample if required and possible
+        if (opts.downSample > 1 && newData.dataFormat == DataFormats.STRUCTURED) {
+            this.downsampleStructured(newData, opts.downSample);
+        }
 
+        // convert scruct -> unstruct if needed
+        if (opts.forceUnstruct) {
+            this.convertToUnstructured(newData);
+        }
+
+        // create tree if we have unstrucutred data
+        if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
+            this.createUnstructuredTree(newData, opts.leafCells);
+        }
+
+        // create dynamic tree
+        if (opts.createDynamic) {
+            try {
+                this.createDynamicTree(newData, opts.dynamicNodeCount);
+            } catch (e) {
+                console.error("Could not create a dynamic dataset:", e)
+            }
+        }
+
+        this.datas[id] = newData;
         return newData;
     },
     downsampleStructured: function(dataObj, scale) {
@@ -128,7 +151,7 @@ var dataManager = {
     },
     // takes a data object with format STRUCTURED and converts to UNSTRUCTRED with tetrahedral cells
     // resolution specified the stride within which to create the unstructured cells
-    convertStructuredToUnstructured: function(dataObj, resolutionMode, leafCells, dynamicNodeCount, nodeVals, cornerVals) {
+    convertToUnstructured: function(dataObj) {
         if (dataObj.dataFormat != DataFormats.STRUCTURED) {
             console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
             return;
@@ -136,7 +159,6 @@ var dataManager = {
 
         // change type and resolution mode
         dataObj.dataFormat = DataFormats.UNSTRUCTURED;
-        dataObj.resolutionMode = resolutionMode;
 
         // build the cell data
         var dataSize = dataObj.getDataSize(); // the size in data points
@@ -242,13 +264,33 @@ var dataManager = {
                 }
             }
         }
+    },
 
-        // create the cell tree
-        dataObj.createUnstructuredTree(leafCells);
+    createUnstructuredTree: function(dataObj, cellsPerLeaf) {
+        // generate the tree for rendering
+        const treeBuffers = getCellTreeBuffers(dataObj, cellsPerLeaf);
+        dataObj.data.treeNodes = treeBuffers.nodes;
+        dataObj.data.treeCells = treeBuffers.cells;
+        dataObj.data.treeNodeCount = treeBuffers.nodeCount;
 
-        if (resolutionMode == ResolutionModes.DYNAMIC) {
-            dataObj.createDynamicTree(dynamicNodeCount);
+        // need at least an empty buffer here, the render engine expects
+        dataObj.data.cornerValues = new Float32Array(64);
+    },
+
+
+    createDynamicTree: function(dataObj, dynamicNodeCount) {
+        if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic tree, dataset not of dataFormat UNSTRUCTURED";
+        dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
+        addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
+        dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
+        if (dynamicNodeCount > dataObj.data.treeNodeCount) {
+            console.warn("Attempted to create dynamic tree that is too large, falling back to total nodes in dataset");
         }
+        var dynamicBuffers = createDynamicTreeBuffers(dataObj, Math.min(dynamicNodeCount, dataObj.data.treeNodeCount));
+        dataObj.data.dynamicTreeNodes = dynamicBuffers.nodes;
+        dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+
+        dataObj.resolutionMode = ResolutionModes.DYNAMIC;
     },
     
     addUser: function(data) {
@@ -304,6 +346,7 @@ function Data(id) {
         // spatial acceleration structure
         treeNodes: null,
         treeCells: null,
+        treeNodeCount: 0,
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
     };
@@ -423,32 +466,7 @@ function Data(id) {
             this.limits = [Math.min(this.limits[0], this.data.values[i]), Math.max(this.limits[1], this.data.values[i])];
         }
         console.log(this.limits);
-
-        // create the cell tree
-        this.createUnstructuredTree(64);
-
-        // this.createDynamicTree(4000);
-    }
-
-    this.createUnstructuredTree = function(cellsPerLeaf) {
-        // generate the tree for rendering
-        const treeBuffers = getCellTreeBuffers(this, cellsPerLeaf);
-        this.data.treeNodes = treeBuffers.nodes;
-        this.data.treeCells = treeBuffers.cells;
-
-        // need at least an empty buffer here, the render engine expects
-        this.data.cornerValues = new Float32Array(64);
-    }
-
-    this.createDynamicTree = function(dynamicNodeCount) {
-        this.resolutionMode = ResolutionModes.DYNAMIC;
-        this.data.nodeVals = createNodeValuesBuffer(this);
-        addNodeValsToFullTree(this.data.treeNodes, this.data.nodeVals);
-        this.data.cornerValues = createNodeCornerValuesBuffer(this);
-        var dynamicBuffers = createDynamicTreeBuffers(this, dynamicNodeCount);
-        this.data.dynamicTreeNodes = dynamicBuffers.nodes;
-        this.data.dynamicCornerValues = dynamicBuffers.cornerValues;
-    }
+    };
 
     this.generateData = async function(config) {
         const x = config.size.x;
