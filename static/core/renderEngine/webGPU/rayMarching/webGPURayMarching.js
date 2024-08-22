@@ -152,7 +152,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         viewDimension: "2d",
                         multiSampled: "false"
                     }
-                }
+                },
+                // {
+                //     visibility: GPUShaderStage.FRAGMENT,
+                //     texture: {
+                //         sampleType: "unfilterable-float",
+                //         viewDimension: "2d",
+                //         multiSampled: "false"
+                //     }
+                // }
             ], "ray2"),
         ];
         

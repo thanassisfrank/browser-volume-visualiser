@@ -19,6 +19,8 @@
 
 // best optimisation 
 @group(2) @binding(0) var offsetOptimisationTextureOld : texture_2d<f32>;
+// best corresponding pixel colours
+// @group(2) @binding(1) var offsetOptimisationBestCol : texture_2d<f32>;
 
 struct VertexOut {
     @builtin(position) outPosition : vec4<f32>,
@@ -207,7 +209,6 @@ fn fragment_main(
 
             offset = prevOffsetSample.offset;
         }
-        offset = prevOffsetSample.offset;
     } else if (passFlags.randStart) {
         // generate a random value
         randomVal = getRandF32(seed);
@@ -221,6 +222,9 @@ fn fragment_main(
     if (passFlags.showOffset) {
         return FragmentOut(vec4<f32>(offset, offset, offset, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
     }
+
+    // check if the new sample is better
+    // if (offsetSample < prevOffsetSample.offset)
 
     return FragmentOut(marchResult.fragCol, vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
 }   

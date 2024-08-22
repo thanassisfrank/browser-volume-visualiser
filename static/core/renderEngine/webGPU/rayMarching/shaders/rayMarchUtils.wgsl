@@ -241,7 +241,7 @@ fn marchRay(
                         var xn2 = -lastStepSize;
                         var fn2 = lastSampleVal - passInfo.threshold;
                         loop {
-                            if (iSec >= 4u) {break;}
+                            if (iSec >= 1u) {break;}
                             if (iSec > 0u) {
                                 xn2 = xn1;
                                 fn2 = fn1;
@@ -323,7 +323,7 @@ fn marchRay(
     }
 
     if (passFlags.showRayLength) {
-        fragCol = vec4<f32>(ray.length/1000, ray.length/1000, ray.length/1000, 1);  
+        fragCol = vec4<f32>(vec3<f32>(log(ray.length))/10, 1);  
     }
 
     return RayMarchResult(fragCol, ray.length);
