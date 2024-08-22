@@ -106,12 +106,12 @@ struct Sample {
 // used to keep a track of the last leaves sampled
 var<workgroup> lastLeavesBox : array<AABB, {{WGVol}}>;
 var<workgroup> datasetBox : AABB;
+var<workgroup> passInfo : RayMarchPassInfo;
+var<workgroup> passFlags : RayMarchPassFlags;
 
 var<private> threadIndex : u32;
 var<private> globalInfo : GlobalUniform;
 var<private> objectInfo : ObjectInfo;
-var<private> passInfo : RayMarchPassInfo;
-var<private> passFlags : RayMarchPassFlags;
 
 
 // returns the lowest node in the tree which contains the query point
@@ -181,6 +181,7 @@ fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f3
     }
 }
 
+
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
 fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
@@ -235,6 +236,7 @@ fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> 
 
 }
 
+
 fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
     var minVec = vec3<f32>(
         min(cell.points[0][0], min(cell.points[1][0], min(cell.points[2][0], cell.points[3][0]))),
@@ -249,6 +251,7 @@ fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
 
     return pointInAABB(queryPoint, AABB(minVec, maxVec, 0u));
 }
+
 
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> InterpolationCell {
     var cell : InterpolationCell;
@@ -297,6 +300,7 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
     return cell;
 }
 
+
 fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
     var p0 = queryPoint;
     var cell : InterpolationCell;
@@ -343,6 +347,7 @@ fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
 
     return closestVal;
 }
+
 
 // interpolate inside of a node as a hex cell
 // id of the leaf node is stored in the val of the box
@@ -411,6 +416,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     
 }
 
+
 fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
     var queryPoint = vec3<f32>(x, y, z);
 
@@ -436,10 +442,12 @@ fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
     textureStore(outputImage, coords, outCol);
 }
 
+
 fn pixelOnVolume(x : u32, y : u32) -> bool {
     var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
     return pixVal != 0;
 }
+
 
 fn isFrontFacing(x : u32, y : u32) -> bool {
     var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
@@ -449,6 +457,7 @@ fn isFrontFacing(x : u32, y : u32) -> bool {
         return false;
     }
 }
+
 
 // takes camera and x
 fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
@@ -472,14 +481,17 @@ fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
     return ray;
 }
 
+
 fn getPrevOptimisationSample(x : u32, y : u32) -> OptimisationSample {
     var texel = textureLoad(offsetOptimisationTextureOld, vec2<u32>(x, y), 0);
     return OptimisationSample(texel[0], texel[1]);
 }
 
+
 fn storeOptimisationSample(coords : vec2<u32>, sample : OptimisationSample) {
     textureStore(offsetOptimisationTextureNew, coords, vec4<f32>(sample.offset, sample.depth, 0, 0));
 }
+
 
 // generate a new random f32 value [0, 1]
 fn getRandF32(seed : u32) -> f32 {
@@ -557,58 +569,37 @@ fn main(
     }
     
 
-    
+
+
+    var seed : u32 = wgid.x ^ wgid.y ^ id.x ^ id.y ^ 782035u;
+
     var marchResult : RayMarchResult;
-    // generate a new sampling threshold
-    var randomVal = getRandF32(id.x ^ id.y);
+    var bestSample : OptimisationSample;
     var prevOffsetSample = getPrevOptimisationSample(id.x, id.y);
 
-    var offset : f32;
+    var offset : f32 = 0;
 
-    if(passFlags.optimiseOffset) {
-        // get the previous value
-        // if sampling threshold < t
-        // exponential
-        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
-
-        // linear
-        var t : f32 = 1 - f32(passInfo.framesSinceMove)/20.0;
-
-        // square
-        // var t : f32 = 1;
-        // if (passInfo.framesSinceMove > 20) {
-        //     t = 0;
-        // }
-        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
-        if (randomVal < t) {
-            // generate new offset
-            var newOffset = getRandF32(id.x ^ id.y ^ 782035u);
-            // march with the new offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, newOffset);
-            offset = newOffset;
-            if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-                // if the surface is closer
-                // store the new offset and depth
-                storeOptimisationSample(id.xy, OptimisationSample(newOffset, marchResult.surfaceDepth));
-            }
-        } else {
-            // march with existing offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, prevOffsetSample.offset);
-            // store depth into texture
-            storeOptimisationSample(id.xy, OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth));
-            offset = prevOffsetSample.offset;
-        }
+    // get the offset to be used for ray-marching
+    if (passFlags.optimiseOffset) {
+        offset = getOptimisationOffset(f32(passInfo.framesSinceMove), prevOffsetSample.offset, seed);
     } else if (passFlags.randStart) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, randomVal);
-        offset = randomVal;
-    } else {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, 0);
-        offset = 0;
+        offset = getRandF32(seed);
     }
 
-    // march the ray through the volume
+    // do ray-marching step
+    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+
+    // put the best (surface depth, offset) pair into bestSample
+    if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+        bestSample = OptimisationSample(offset, marchResult.surfaceDepth);
+    } else {
+        bestSample = prevOffsetSample;
+    }
+
+    storeOptimisationSample(id.xy, bestSample);
+
     if (passFlags.showOffset) {
-        setPixel(id.xy, vec4<f32>(offset, 0, 0, 1));
+        setPixel(id.xy, vec4<f32>(vec3<f32>(offset), 1));
     } else {
         setPixel(id.xy, marchResult.fragCol);
     }

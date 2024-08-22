@@ -86,6 +86,41 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
     );
 };
 
+// returns the t value for progrssive offset optimisation
+fn getTVal(x : f32) -> f32 {
+    // exponential
+        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
+
+    // linear
+    //20 was used before
+    var t : f32 = 1 - x/30.0;
+
+    // square
+    // var t : f32 = 1;
+    // if (passInfo.framesSinceMove > 20) {
+    //     t = 0;
+    // }
+
+    return t;
+}
+
+
+// gets the offset to be used
+fn getOptimisationOffset(x : f32, prevOffset : f32, seed : u32) -> f32 {
+    var randomVal : f32;
+    var t : f32 = getTVal(f32(passInfo.framesSinceMove));
+
+    if (t > 0) {
+        // generate a new sampling threshold
+        if (getRandF32(seed) < t) {
+            // generate new offset
+            return getRandF32(seed ^ 782035u);
+        }
+    }
+    // otherwise, return the previous
+    return prevOffset;
+}
+
 // test if a given point is within an AABB
 fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
     if (p.x < box.min.x || p.y < box.min.y || p.z < box.min.z) {

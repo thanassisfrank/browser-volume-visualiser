@@ -125,106 +125,83 @@ fn fragment_main(
     var raySegment = fragInfo.worldPosition.xyz - cameraPos;
     var ray : Ray;
     ray.direction = normalize(raySegment);
-    var enteredDataset : bool;
+    var startInside : bool;
     if (front_facing) {
         // marching from the outside
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
-        enteredDataset = true;
+        startInside = true;
         // return vec4<f32>(1, 0, 0, 0.5);
     } else {
         // marching from the inside
         ray.tip = cameraPos;
         ray.length = 0;
         // guess that we started outside to prevent issues with the near clipping plane
-        enteredDataset = false;
+        startInside = false;
         // return vec4<f32>(0, 0, 1, 0.5);
     }
 
-    var offsetSample : OptimisationSample = getPrevOptimisationSample(deviceCoords.x, deviceCoords.y);
+    var prevOffsetSample : OptimisationSample = getPrevOptimisationSample(deviceCoords.x, deviceCoords.y);
 
     if (passFlags.showCells) {
         var dataPos = toDataSpace(ray.tip);
         var cellIndex : u32 = u32(floor(dataPos.x) + floor(dataPos.y) * dataSize.x + floor(dataPos.z) * dataSize.x * dataSize.y);
         return FragmentOut(
             vec4<f32>(u32ToCol(randomU32(cellIndex)), 1), 
-            vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0)
+            vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
+        );
+    }
+
+    if (passFlags.showRayDirs) {
+        // return vec4<f32>(ray.direction, 1);
+        return FragmentOut(
+            vec4<f32>(ray.direction, 1), 
+            vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
+        );
+    }
+    
+    if (passFlags.showDeviceCoords) {
+        return FragmentOut(
+            vec4<f32>(deviceCoords, 0, 1), 
+            vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
         );
     }
 
 
-    if (passFlags.showRayDirs) {
-        // return vec4<f32>(ray.direction, 1);
-        return FragmentOut(vec4<f32>(ray.direction, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
-    } else if (passFlags.showDeviceCoords) {
-        return FragmentOut(vec4<f32>(deviceCoords, 0, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
-    }
 
     var seed : u32 = bitcast<u32>(fragInfo.worldPosition.x) ^ bitcast<u32>(fragInfo.worldPosition.y) ^ bitcast<u32>(fragInfo.worldPosition.z);
 
-    var randomVal : f32;
     var marchResult : RayMarchResult;
-    var prevOffsetSample = offsetSample;
+    var bestSample : OptimisationSample;
 
-    var offset : f32;
+    var offset : f32 = 0;
 
-    if(passFlags.optimiseOffset) {
-        // get the previous value
-        // if sampling threshold < t
-        
-        // exponential
-        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
-
-        // linear
-        //20 was used before
-        var t : f32 = 1 - f32(passInfo.framesSinceMove)/30.0;
-
-        // square
-        // var t : f32 = 1;
-        // if (passInfo.framesSinceMove > 20) {
-        //     t = 0;
-        // }
-
-        if (t > 0) {
-            // generate a new sampling threshold
-            randomVal = getRandF32(seed);
-        }
-        
-        if (randomVal < t) {
-            // generate new offset
-            var newOffset = getRandF32(seed ^ 782035u);
-            // march with the new offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, newOffset);
-            offset = newOffset;
-            if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-                // if the surface is closer
-                // store the new offset and depth
-                offsetSample = OptimisationSample(newOffset, marchResult.surfaceDepth);
-            }
-        } else {
-            // march with existing offset
-            marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, prevOffsetSample.offset);
-            // store depth into texture
-            offsetSample = OptimisationSample(prevOffsetSample.offset, marchResult.surfaceDepth);
-
-            offset = prevOffsetSample.offset;
-        }
+    // get the offset to be used for ray-marching
+    if (passFlags.optimiseOffset) {
+        offset = getOptimisationOffset(f32(passInfo.framesSinceMove), prevOffsetSample.offset, seed);
     } else if (passFlags.randStart) {
-        // generate a random value
-        randomVal = getRandF32(seed);
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, randomVal);
-        offset = randomVal;
+        offset = getRandF32(seed);
+    }
+
+    // do ray-marching step
+    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+
+    // put the best (surface depth, offset) pair into bestSample
+    if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+        bestSample = OptimisationSample(offset, marchResult.surfaceDepth);
     } else {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, enteredDataset, 0);
-        offset = 0;
+        bestSample = prevOffsetSample;
     }
 
     if (passFlags.showOffset) {
-        return FragmentOut(vec4<f32>(offset, offset, offset, 1), vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+        return FragmentOut(
+            vec4<f32>(vec3<f32>(offset), 1), 
+            vec4<f32>(bestSample.offset, bestSample.depth, 0, 0)
+        );
     }
 
-    // check if the new sample is better
-    // if (offsetSample < prevOffsetSample.offset)
-
-    return FragmentOut(marchResult.fragCol, vec4<f32>(offsetSample.offset, offsetSample.depth, 0, 0));
+    return FragmentOut(
+        marchResult.fragCol, 
+        vec4<f32>(bestSample.offset, bestSample.depth, 0, 0)
+    );
 }   
