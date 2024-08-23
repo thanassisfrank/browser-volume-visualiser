@@ -4,6 +4,12 @@
 import { stringFormat, clampBox, floorBox } from "../../utils.js";
 import { Renderable, RenderableTypes, RenderableRenderModes } from "../renderEngine.js";
 
+const GPUTexelByteLength = {
+    "depth32float": 4,
+    "r32float": 4,
+    "rg32float": 8
+}
+
 
 // class for 
 export function WebGPUBase (verbose) {
@@ -11,6 +17,10 @@ export function WebGPUBase (verbose) {
     this.device;
     this.buffers;
     this.verbose = verbose;
+
+    // a record of currently alive resources with bound gpu-memory
+    // keys are the unique labels of the resources and values are size in bytes
+    this.GPUResourceBytes = {} 
 
     this.maxStorageBufferBindingSize;
 
@@ -291,12 +301,16 @@ export function WebGPUBase (verbose) {
     this.meshRenderableFromArrays = function(points, norms, indices, renderMode) {
         var renderable = new Renderable(RenderableTypes.MESH, renderMode);
         // move vertex data to the gpu
-        renderable.renderData.buffers.vertex = this.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        renderable.renderData.buffers.normal = this.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC);
-        renderable.renderData.buffers.index = this.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC);
+        renderable.renderData.buffers.vertex = this.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh vert");
+        renderable.renderData.buffers.normal = this.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh norm");
+        renderable.renderData.buffers.index = this.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC, "mesh index");
 
         // make the uniform to store the constant data
-        renderable.renderData.buffers.objectInfo = this.makeBuffer(256, "u cs cd", "object info buffer u");
+        renderable.renderData.buffers.objectInfo = this.makeBuffer(
+            256, 
+            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 
+            "mesh info uniform"
+        ); //"u cs cd"
         
         // set the number of verts
         renderable.vertexCount = points.length/3;
@@ -305,51 +319,52 @@ export function WebGPUBase (verbose) {
         return renderable;
     }
 
+    this.getResourcesString = function() {
+        var str = "Resources\n";
+        var entries = [];
+        var maxLabelLength = 0;
+        for (let label in this.GPUResourceBytes) {
+            maxLabelLength = Math.max(maxLabelLength, label.length);
+            entries.push([label, this.GPUResourceBytes[label]]);
+        }
+        entries.sort((a, b) => b[1] - a[1]);
+        for (let entry of entries) {
+            var bytes = entry[1];
+            var thousands = Math.floor(Math.log10(bytes)/3);
+            var unit = (["B", "KB", "MB", "GB"])[thousands];
+            var sizeStr = (bytes/Math.pow(1000, thousands)).toPrecision(4) + " " + unit;
+            str += entry[0] + " ".repeat(maxLabelLength - entry[0].length) + "\t" + sizeStr + "\n";
+        }
+        return str;
+    }
+
+
+    // Buffer management ====================================================================================
+
     // generates a buffer with the information and returns it
     // size is in bytes
-    this.makeBuffer = function(size, usage, label = "", mappedAtCreation = false) {
-        var usageInt = 0;
-        const usageDict = {
-            "mr": GPUBufferUsage.MAP_READ,
-            "mw": GPUBufferUsage.MAP_WRITE,
-            "cs": GPUBufferUsage.COPY_SRC,
-            "cd": GPUBufferUsage.COPY_DST,
-            "i": GPUBufferUsage.INDEX,
-            "v": GPUBufferUsage.VERTEX,
-            "u": GPUBufferUsage.UNIFORM,
-            "s": GPUBufferUsage.STORAGE,
-            "id": GPUBufferUsage.INDIRECT,
-            "qr": GPUBufferUsage.QUERY_RESOLVE
-        }
-        for (let usageStr of usage.split(" ")) {
-            usageInt |= usageDict[usageStr];
-        }
-        var bufferSize = size;
-        if (usageInt & GPUBuffer.STORAGE) {
+    this.makeBuffer = function(byteLength, usage, label = "", mappedAtCreation = false) {
+        var bufferSize = byteLength;
+        if (usage & GPUBuffer.STORAGE) {
             bufferSize = Math.max(64, bufferSize);
         }
+        
+        var uniqueLabel = "BUF: "+ (label || "0");
+        while(this.GPUResourceBytes[uniqueLabel]) uniqueLabel += "0";
+        this.GPUResourceBytes[uniqueLabel] = bufferSize;
+
         return this.device.createBuffer({
-            label: label,
+            label: uniqueLabel,
             size: bufferSize,
-            usage: usageInt,
+            usage: usage,
             mappedAtCreation: mappedAtCreation
         });
     }
 
-    this.deleteBuffers = function(meshObj) {
-        meshObj.buffers?.vertex?.destroy();
-        meshObj.buffers?.normal?.destroy();
-        meshObj.buffers?.index?.destroy();
-    };
-
     // works for any usage, doesnt have to include mapwrite
-    this.createFilledBuffer = function(type, data, usage) {
+    this.createFilledBuffer = function(type, data, usage, label="") {
         const byteLength = Math.max(32, data.byteLength);
-        var buffer = this.device.createBuffer({
-            size: byteLength,
-            usage: usage,
-            mappedAtCreation: true
-        });
+        var buffer = this.makeBuffer(byteLength, usage, label, true);
         if (type == "f32") {
             new Float32Array(buffer.getMappedRange()).set(data);
         } else if (type == "u32") {
@@ -360,7 +375,7 @@ export function WebGPUBase (verbose) {
             // can't do this
             console.warn("can't create filled buffer of this type");
             buffer.unmap();
-            buffer.destroy();
+            this.deleteBuffer(buffer);
             return;
             
         }
@@ -373,6 +388,68 @@ export function WebGPUBase (verbose) {
     this.fillBuffer = function(targetBuffer, dataBuffer) {
         // create temp buffer to copy into
     }
+
+    // enqueues operations on the given buffer to write the typed arrays
+    this.writeDataToBuffer = function(buffer, dataArrays, offset = 0) {
+        var currOffset = offset;
+        for (let i = 0; i < dataArrays.length; i++) {
+            this.device.queue.writeBuffer(
+                buffer, 
+                currOffset, 
+                dataArrays[i]
+            );
+            currOffset += dataArrays[i].byteLength;
+        }
+    }
+    // copy a buffer to CPU side and return the contents as array buffer
+    this.readBuffer = async function(buffer, start, byteLength) {
+        if (!buffer) return;
+        var readBuffer = this.makeBuffer(byteLength, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, "read buffer"); //"cd mr"
+
+        var commandEncoder = await this.device.createCommandEncoder();
+        commandEncoder.copyBufferToBuffer(buffer, start, readBuffer, 0, byteLength);
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        await this.waitForDone();
+        // this.device.queue.onSubmittedWorkDone();
+    
+        await readBuffer.mapAsync(GPUMapMode.READ);
+        
+        // map to main memory
+        var mappedArrayBuffer = readBuffer.getMappedRange();
+        // copy to persistent location
+        var readArrayBuffer = mappedArrayBuffer.slice();
+        // clean up the temporary read buffer
+        readBuffer.unmap();
+        this.deleteBuffer(readBuffer);
+
+        return readArrayBuffer;
+    }
+
+    this.deleteBuffer = function(buffer) {
+        if (buffer) {
+            buffer.destroy();
+            delete this.GPUResourceBytes[buffer.label];
+        }
+    }
+
+    // Texture management ===================================================================================
+
+    this.makeTexture = function(config) {
+        // TODO: correctly calculate texel count of cubemap textures
+        var texelCount = (config.size.width ?? 1) * (config.size.height ?? 1) * (config.size.depthOrArrayLayers ?? 1);
+        var byteLength = texelCount * GPUTexelByteLength?.[config.format];
+
+        var uniqueLabel = "TEX: "+ (config.label || "0");
+        while (this.GPUResourceBytes[uniqueLabel]) uniqueLabel += "0";
+        this.GPUResourceBytes[uniqueLabel] = byteLength;
+
+        var finalConfig = config;
+        finalConfig.label = uniqueLabel;
+
+        return this.device.createTexture(config);
+    }
+
 
     // fills a texture from a buffer
     // for now, works with float32 buffer -> float32 texture
@@ -433,32 +510,6 @@ export function WebGPUBase (verbose) {
 
                 this.device.queue.submit([commandEncoder.finish()]);
                 await this.waitForDone();
-
-                // this.device.queue.writeTexture(
-                //     {
-                //         texture: targetTexture,
-                //         origin: {
-                //             x: 0,
-                //             y: 0,
-                //             z: currentImage
-                //         }
-                //     },
-                //     typedArrayBuffer.subarray(
-                //         currentImage * imagesInChunk * textureImageSize/4, 
-                //         (currentImage + thisImages) * imagesInChunk * textureImageSize/4
-                //     ),
-                //     {
-                //         offset: 0,
-                //         bytesPerRow: textureSize.width * bytesPerTexel,
-                //         rowsPerImage: textureSize.height
-                //     },
-                //     {
-                //         width: textureSize.width,
-                //         height: textureSize.height,
-                //         depthOrArrayLayers: 256, 
-                //     }
-                // )
-
             }
 
         } else {
@@ -481,46 +532,31 @@ export function WebGPUBase (verbose) {
         
     }
 
+    this.copyTextureToTexture = async function(srcTexture, dstTexture, extent) {
+        var commandEncoder = await this.device.createCommandEncoder();
+        commandEncoder.copyTextureToTexture(
+            {texture: srcTexture},
+            {texture: dstTexture},
+            extent
+        )
+        this.device.queue.submit([commandEncoder.finish()]) 
+    }
+
+    this.deleteTexture = function(texture) {
+        if (texture) {
+            texture?.destroy();
+            delete this.GPUResourceBytes[texture.label];
+        }
+    }
+
+    // Timing ===============================================================================================
+
     this.waitForDone = async function() {
         await this.device.queue.onSubmittedWorkDone();
         return;
     }
-    // enqueues operations on the given buffer to write the typed arrays
-    this.writeDataToBuffer = function(buffer, dataArrays, offset = 0) {
-        var currOffset = offset;
-        for (let i = 0; i < dataArrays.length; i++) {
-            this.device.queue.writeBuffer(
-                buffer, 
-                currOffset, 
-                dataArrays[i]
-            );
-            currOffset += dataArrays[i].byteLength;
-        }
-    }
-    // copy a buffer to CPU side and return the contents as array buffer
-    this.readBuffer = async function(buffer, start, byteLength) {
-        if (!buffer) return;
-        var readBuffer = this.makeBuffer(byteLength, "cd mr", "read buffer");
-
-        var commandEncoder = await this.device.createCommandEncoder();
-        commandEncoder.copyBufferToBuffer(buffer, start, readBuffer, 0, byteLength);
-        this.device.queue.submit([commandEncoder.finish()]);
-
-        await this.waitForDone();
-        // this.device.queue.onSubmittedWorkDone();
     
-        await readBuffer.mapAsync(GPUMapMode.READ);
-        
-        // map to main memory
-        var mappedArrayBuffer = readBuffer.getMappedRange();
-        // copy to persistent location
-        var readArrayBuffer = mappedArrayBuffer.slice();
-        // clean up the temporary read buffer
-        readBuffer.unmap();
-        readBuffer.destroy();
-
-        return readArrayBuffer;
-    }
+    // Pass management ======================================================================================
 
     // creates a pass descriptor object
     this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code, label = "") {
@@ -662,13 +698,5 @@ export function WebGPUBase (verbose) {
         return commandEncoder; 
     }
 
-    this.copyTextureToTexture = async function(srcTexture, dstTexture, extent) {
-        var commandEncoder = await this.device.createCommandEncoder();
-        commandEncoder.copyTextureToTexture(
-            {texture: srcTexture},
-            {texture: dstTexture},
-            extent
-        )
-        this.device.queue.submit([commandEncoder.finish()]) 
-    }
+    
 }

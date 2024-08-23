@@ -623,7 +623,7 @@ fn main(
     storeOptimisationSample(id.xy, bestSample);
 
     if (passFlags.showOffset) {
-        setPixel(id.xy, vec4<f32>(vec3<f32>(offset), 1));
+        setPixel(id.xy, vec4<f32>(vec3<f32>(bestSample.offset), 1));
     } else {
         setPixel(id.xy, outCol);
     }

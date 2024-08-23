@@ -267,29 +267,6 @@
                         }
                     );
 
-
-                    // if(scale > 1) {
-                    //     dataManager.downsampleStructured(newData, scale);
-                    // }
-
-                    // if (opts.createUnstructured.checked) {
-                    //     if (opts.dynamicResolution.checked) {
-                    //         dataManager.convertStructuredToUnstructured(
-                    //             newData, 
-                    //             ResolutionModes.DYNAMIC, 
-                    //             parseInt(opts.leafCells.value),
-                    //             parseInt(opts.dynamicNodes.value),
-                    //             opts.nodeValues.checked,
-                    //             opts.cornerValues.checked
-                    //         );
-                    //     } else {
-                    //         dataManager.convertStructuredToUnstructured(newData, ResolutionModes.FULL, parseInt(opts.leafCells.value));
-                    //     }
-                    // }
-                    // if (opts.dynamicResolution.checked) {
-                    //     dataManager.convertToDynamic(newData, )
-                    // }
-
                     var renderMode = SceneObjectRenderModes.NONE;
                     if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;
                     if (opts.DATA_RAY_VOLUME.checked) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
@@ -394,6 +371,12 @@
                             renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
                         }
                     },
+                    "g": {
+                        description: "Display GPU memory usage",
+                        f: function(e) {
+                            console.log(renderEngine.getWebGPU().getResourcesString());
+                        }
+                    },
                     "Alt": {
                         f: function(e) {
                             e.preventDefault();
@@ -422,6 +405,8 @@
                 document.body.addEventListener("keydown", function(e) {
                     shortcuts[e.key]?.f(e);
                 });
+
+                console.info("Press 'h' for a list of shortcuts");
 
                 var resize = () => {
                     var canvasDims = setupCanvasDims(canvas);

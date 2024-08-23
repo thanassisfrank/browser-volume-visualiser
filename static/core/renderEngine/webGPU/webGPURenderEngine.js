@@ -37,6 +37,10 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     var shaderCode = webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
 
+    this.getWebGPU = function() {
+        return webGPU;
+    }
+
     this.setup = async function() {
         // begin setting up modules
         var rayMarcherSetupPromise = this.rayMarcher.setupEngine();
@@ -51,7 +55,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             alphaMode: "opaque"
         });
 
-        this.uniformBuffer = webGPU.makeBuffer(256, "u cd cs");
+        this.uniformBuffer = webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
         shaderCode = await shaderCode;
 
@@ -115,12 +119,12 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // provide details of load and store part of pass
         // here there is one color output that will be cleared on load
 
-        var depthStencilTexture = webGPU.device.createTexture({
+        var depthStencilTexture = webGPU.makeTexture({
             label: "depth texture",
             size: {
-            width: this.canvas.width,
-            height: this.canvas.height,
-            depthOrArrayLayers: 1
+                width: this.canvas.width,
+                height: this.canvas.height,
+                depthOrArrayLayers: 1
             },
             dimension: "2d",
             format: "depth32float",
@@ -223,7 +227,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     this.clearScreen = async function () {
         var clearedAttachments = await this.getClearedRenderAttachments();
-        clearedAttachments.depth.destroy();
+        webGPU.deleteTexture(clearedAttachments.depth);
     }
     // renders a view object, datasets
     // for now, all share a canvas
@@ -281,7 +285,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
         await webGPU.waitForDone();
         this.endFrame();
-        outputRenderAttachments.depth.destroy(); 
+        webGPU.deleteTexture(outputRenderAttachments.depth); 
     }
 
     this.resizeRenderingContext = function() {

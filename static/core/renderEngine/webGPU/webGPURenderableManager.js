@@ -84,11 +84,11 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         // the important data is stored within renderData
         var textures = renderable.renderData.textures;
         for (let textureName in textures) {
-            textures[textureName].destroy();
+            webGPU.deleteTexture(textures[textureName]);
         }
         var buffers = renderable.renderData.buffers;
         for (let bufferName in buffers) {
-            buffers[bufferName].destroy();
+            webGPU.deleteBuffer(buffers[bufferName]);
         }
     }
 

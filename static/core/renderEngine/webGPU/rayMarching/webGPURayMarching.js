@@ -238,7 +238,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         ]
 
         // create all the global buffers and bind groups common to all
-        constsBuffer = webGPU.makeBuffer(256, "u cs cd", "ray consts", true);
+        constsBuffer = webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray consts", true); //"u cs cd"
         new Float32Array(constsBuffer.getMappedRange()).set([5]);
         constsBuffer.unmap();
 
@@ -309,7 +309,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 depthOrArrayLayers: datasetSize[2]
             }
 
-            renderData.textures.data = device.createTexture({
+            renderData.textures.data = webGPU.makeTexture({
                 label: "whole data texture",
                 size: textureSize,
                 dimension: "3d",
@@ -327,7 +327,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 minFilter: "linear"
             });
 
-            renderData.buffers.passInfo = webGPU.makeBuffer(512, "u cs cd", "ray pass info");
+            renderData.buffers.passInfo = webGPU.makeBuffer(512, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray pass info");
 
             return renderable;
     }
@@ -338,30 +338,26 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
         // console.log(dataObj.data.values.byteLength, dataObj.data.values);
-        renderData.buffers.values = webGPU.createFilledBuffer("f32", new Float32Array(dataObj.data.values), usage);
-        renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage);
-        renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage);
-        renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage);
+        renderData.buffers.values = webGPU.createFilledBuffer("f32", new Float32Array(dataObj.data.values), usage, "data vert values");
+        renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
+        renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
+        renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
         // only handle tetrahedra for now
         // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
         // write the tree buffer
         if (dataObj.resolutionMode == ResolutionModes.FULL) {
-            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage);
-            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.cornerValues, usage);
-            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
+            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.cornerValues, usage, "data corner values");
+            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
         } else if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
-            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage);
-            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.dynamicCornerValues, usage);
+            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
+            renderData.buffers.cornerValues = webGPU.createFilledBuffer("f32", dataObj.data.dynamicCornerValues, usage, "data dynamic corner values");
             // TEMP
-            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage);
+            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data dynamic tree cells");
         } else {
             throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode?.toString() + "'";
         }
         
-
-
-        //renderData.buffers.passInfo = webGPU.makeBuffer(256, "s cs cd", "ray pass info");
-
         return renderable;
     }
 
@@ -448,11 +444,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderable.sharedData.buffers.cornerValues = dataRenderable.renderData.buffers.cornerValues;
 
                 // setup buffers for compute ray march pass
-                faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, "s cs cd", "face mesh consts");
-                faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, "s cs cd", "object info buffer s");
+                faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
+                faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
                 faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
 
-                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, "s cs cd", "combined ray march pass info");
+                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
 
                 
                 faceRenderable.renderData.bindGroups.depth0 = webGPU.generateBG(
@@ -537,10 +533,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         }
         // check if the size of the canvas is the same as what is was previously
         if (resized) {
-            this.depthTexture?.destroy();
+            webGPU.deleteTexture(this.depthTexture);
             // create the texture that the mesh depth will be drawn onto
-            this.depthTexture = device.createTexture({
-                label: "depth texture",
+            this.depthTexture = webGPU.makeTexture({
+                label: "march depth texture",
                 size: {
                     width: ctx.canvas.width,
                     height: ctx.canvas.height,
@@ -551,9 +547,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
             })
 
-            this.offsetOptimisationTextureOld?.destroy();
+            webGPU.deleteTexture(this.offsetOptimisationTextureOld);
             // create texture for offset optimisation
-            this.offsetOptimisationTextureOld = device.createTexture({
+            this.offsetOptimisationTextureOld = webGPU.makeTexture({
                 label: "optimisation texture current best",
                 size: {
                     width: ctx.canvas.width,
@@ -565,9 +561,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
             })
 
-            this.offsetOptimisationTextureNew?.destroy();
+            webGPU.deleteTexture(this.offsetOptimisationTextureNew);
             // create texture for offset optimisation
-            this.offsetOptimisationTextureNew = device.createTexture({
+            this.offsetOptimisationTextureNew = webGPU.makeTexture({
                 label: "optimisation texture new best",
                 size: {
                     width: ctx.canvas.width,

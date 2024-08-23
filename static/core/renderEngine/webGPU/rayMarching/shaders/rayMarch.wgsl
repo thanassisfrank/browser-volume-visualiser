@@ -216,7 +216,7 @@ fn fragment_main(
 
     if (passFlags.showOffset) {
         return FragmentOut(
-            vec4<f32>(vec3<f32>(offset), 1), 
+            vec4<f32>(vec3<f32>(bestSample.offset), 1), 
             vec4<f32>(bestSample.offset, bestSample.depth, 0, 0)
         );
     }
