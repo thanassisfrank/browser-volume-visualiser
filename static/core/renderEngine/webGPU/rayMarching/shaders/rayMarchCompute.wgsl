@@ -571,11 +571,14 @@ fn main(
 
 
 
-    var seed : u32 = wgid.x ^ wgid.y ^ id.x ^ id.y ^ 782035u;
+    var seed : u32 = (wgid.x << 12) ^ (wgid.y << 8) ^ (id.x << 4) ^ (id.y) ^ 782035u;
 
     var marchResult : RayMarchResult;
-    var bestSample : OptimisationSample;
     var prevOffsetSample = getPrevOptimisationSample(id.x, id.y);
+    if (passInfo.framesSinceMove == 0) {
+        prevOffsetSample.depth = 0;
+    }
+    var bestSample = prevOffsetSample;
 
     var offset : f32 = 0;
 
@@ -588,19 +591,40 @@ fn main(
 
     // do ray-marching step
     marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
-
-    // put the best (surface depth, offset) pair into bestSample
-    if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-        bestSample = OptimisationSample(offset, marchResult.surfaceDepth);
-    } else {
-        bestSample = prevOffsetSample;
+    
+    if (marchResult.foundSurface) {
+        // this ray-march found a surface
+        if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+            // new best depth/best uninitialised (surface not previously found)
+            bestSample = OptimisationSample(offset, marchResult.ray.length);
+        } else {
+            // found surface this time but previously found was better
+            marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
+        }
+    } else if (prevOffsetSample.depth != 0){
+        // no surface found this time and surface has previously been found at this depth
+        // use previous best offset, depth for shading
+        marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
+        marchResult.foundSurface = true;
     }
+
+    // shade the pixel
+    var outCol = shadeRayMarchResult(marchResult, passFlags);
+    
+    // var fragCol = shadeRayMarchResult(marchResult, passFlags);
+
+    // // put the best (surface depth, offset) pair into bestSample and write corresponding col to output
+    // if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+    //     bestSample = OptimisationSample(offset, marchResult.ray.length);
+    // } else {
+    //     bestSample = prevOffsetSample;
+    // }
 
     storeOptimisationSample(id.xy, bestSample);
 
     if (passFlags.showOffset) {
         setPixel(id.xy, vec4<f32>(vec3<f32>(offset), 1));
     } else {
-        setPixel(id.xy, marchResult.fragCol);
+        setPixel(id.xy, outCol);
     }
 }

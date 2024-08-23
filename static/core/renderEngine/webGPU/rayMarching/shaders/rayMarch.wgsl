@@ -77,6 +77,12 @@ fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
     return OptimisationSample(texel[0], texel[1]);
 }
 
+// fn getPrevOptimisationCol(x : f32, y : f32) -> vec3<f32> {
+//     var textureDims : vec2<u32> = textureDimensions(offsetOptimisationBestCol);
+//     var texCoords = vec2<u32>(vec2<f32>(textureDims) * 0.5 * vec2<f32>(x + 1, -y + 1));
+//     return textureLoad(offsetOptimisationBestCol, texCoords, 0).xyz;
+// }
+
 // generate a new random f32 value [0, 1]
 fn getRandF32(seed : u32) -> f32 {
     var randU32 = randomU32(globalInfo.time ^ seed);
@@ -141,7 +147,12 @@ fn fragment_main(
         // return vec4<f32>(0, 0, 1, 0.5);
     }
 
+    // get the best depth, offset sample so far
     var prevOffsetSample : OptimisationSample = getPrevOptimisationSample(deviceCoords.x, deviceCoords.y);
+    if (passInfo.framesSinceMove == 0) {
+        prevOffsetSample.depth = 0;
+    }
+    // var prevBestCol : vec3<f32> = getPrevOptimisationCol(deviceCoords.x, deviceCoords.y);
 
     if (passFlags.showCells) {
         var dataPos = toDataSpace(ray.tip);
@@ -172,7 +183,8 @@ fn fragment_main(
     var seed : u32 = bitcast<u32>(fragInfo.worldPosition.x) ^ bitcast<u32>(fragInfo.worldPosition.y) ^ bitcast<u32>(fragInfo.worldPosition.z);
 
     var marchResult : RayMarchResult;
-    var bestSample : OptimisationSample;
+    var outCol : vec4<f32>;
+    var bestSample = prevOffsetSample;
 
     var offset : f32 = 0;
 
@@ -186,11 +198,20 @@ fn fragment_main(
     // do ray-marching step
     marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
 
-    // put the best (surface depth, offset) pair into bestSample
-    if (marchResult.surfaceDepth < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-        bestSample = OptimisationSample(offset, marchResult.surfaceDepth);
-    } else {
-        bestSample = prevOffsetSample;
+    if (marchResult.foundSurface) {
+        // this ray-march found a surface
+        if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
+            // new best depth/best uninitialised (surface not previously found)
+            bestSample = OptimisationSample(offset, marchResult.ray.length);
+        } else {
+            // found surface this time but previously found was better
+            marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
+        }
+    } else if (prevOffsetSample.depth != 0){
+        // no surface found this time and surface has previously been found at this depth
+        // use previous best offset, depth for shading
+        marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
+        marchResult.foundSurface = true;
     }
 
     if (passFlags.showOffset) {
@@ -200,8 +221,11 @@ fn fragment_main(
         );
     }
 
+    // shade the pixel
+    outCol = shadeRayMarchResult(marchResult, passFlags);
+
     return FragmentOut(
-        marchResult.fragCol, 
+        outCol, 
         vec4<f32>(bestSample.offset, bestSample.depth, 0, 0)
     );
 }   

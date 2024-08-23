@@ -42,8 +42,10 @@ struct RayMarchPassFlags {
 
 // the return value of the ray-march function
 struct RayMarchResult {
-    fragCol : vec4<f32>,
-    surfaceDepth : f32
+    foundSurface : bool,
+    ray : Ray,
+    volCol : vec3<f32>,
+    normalFac : f32,
 };
 
 // offset optimisation sample
@@ -93,13 +95,13 @@ fn getTVal(x : f32) -> f32 {
 
     // linear
     //20 was used before
-    var t : f32 = 1 - x/30.0;
+    // var t : f32 = 1 - x/300.0;
 
     // square
-    // var t : f32 = 1;
-    // if (passInfo.framesSinceMove > 20) {
-    //     t = 0;
-    // }
+    var t : f32 = 1;
+    if (passInfo.framesSinceMove > 400) {
+        t = 0;
+    }
 
     return t;
 }
@@ -205,7 +207,7 @@ fn quadraticBackStep(n0 : f32, n1 : f32, n2 :f32) -> f32{
 }
 
 // marches a ray through a dataset volume, starting from the stub supplied
-// returns the colour from that ray
+// returns the final ray length, accumulated volume colour and wether surface was intersected fwd or bwd
 fn marchRay(
     passFlags : RayMarchPassFlags, 
     passInfo : RayMarchPassInfo, 
@@ -219,8 +221,6 @@ fn marchRay(
 
     var fragCol = vec4<f32>(1, 1, 1, 0);    
 
-    var light = DirectionalLight(vec3<f32>(1), ray.direction);
-
     // accumulated ray casting colour from samples
     var volCol = vec3<f32>(0, 0, 0);
 
@@ -231,94 +231,40 @@ fn marchRay(
     var lastStepSize : f32 = 0;
     var sampleVal : f32;
     var thisAbove = false;
+    var tipDataPos : vec3<f32>;
 
     var foundSurface = false;
     var stepsInside = 0u;
     var i = 0u;
+
+    var normalFac = 1.0;
+
+
+
+    // main march loop
     loop {
         if (ray.length > passInfo.maxLength) {
             break;
         }
-        var tipDataPos = toDataSpace(ray.tip); // the tip in data space
+        tipDataPos = toDataSpace(ray.tip); // the tip in data space
         // check if tip has left data
         if (!pointInAABB(tipDataPos, dataBox)) {
-            // have gone all the way through the dataset
+            // not inside dataset
             if (enteredDataset) {
+                // have gone all the way through the dataset
                 break;
             }
         } else {
+            // within dataset
             enteredDataset = true;
             stepsInside++;
 
             // sample the dataset, this is an external function 
-            if (passFlags.sampleNearest) {
-                sampleVal = sampleNearestDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
-            } else {
-                sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
-            }
-            if (sampleVal > passInfo.threshold) {
-                thisAbove = true;
-            } else {
-                thisAbove = false;
-            }
+            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            thisAbove = sampleVal > passInfo.threshold;
             if (i > 0u) {
                 // check if the threshold has been crossed
-                if (thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u) {
-                    // has been crossed, surface has been found
-                    if (passFlags.backStep) {
-                        var iSec = 0u;
-
-                        var xn0 = 0.0;
-
-                        var xn1 = 0.0;
-                        var fn1 = sampleVal - passInfo.threshold;
-
-                        var xn2 = -lastStepSize;
-                        var fn2 = lastSampleVal - passInfo.threshold;
-                        loop {
-                            if (iSec >= 1u) {break;}
-                            if (iSec > 0u) {
-                                xn2 = xn1;
-                                fn2 = fn1;
-
-                                xn1 = xn0;
-                                var secRay = extendRay(ray, xn0);
-                                var secDataPos = toDataSpace(secRay.tip);
-                                fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z) - passInfo.threshold;
-                            }
-                            xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
-                            iSec++;
-                        }
-                        // adjust last step for correct volume integration
-                        lastStepSize += min(0, max(-lastStepSize, xn0));
-                        ray = extendRay(ray, xn0);
-                        tipDataPos = toDataSpace(ray.tip);
-
-                    }
-
-                    // set the material
-                    var material : Material;
-                    var normalFac = 1.0;
-                    if (thisAbove && !lastAbove) {
-                        // crossed going up the values
-                        material = objectInfo.frontMaterial;
-                    } else if (!thisAbove && lastAbove) {
-                        // crossed going down the values
-                        material = objectInfo.backMaterial;
-                        normalFac = -1.0;
-                    }
-
-                    if (passFlags.showNormals) {
-                        fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
-                        // fragCol = vec4<f32>(1, 0, 0, 1.0);
-                    } else if (passFlags.phong) {
-                        var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
-                        fragCol = vec4<f32>(phong(material, normalFac * normal, -ray.direction, light), 1.0);
-                    } else {
-                        fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);
-                    }
-                    foundSurface = true;
-                }
+                foundSurface = thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u;
 
                 if (passFlags.showVolume) {
                     // acumulate colour
@@ -352,16 +298,115 @@ fn marchRay(
         }
     }
 
+    // handle surface intersection
+    if (foundSurface) {
+        // look for intersection between last two sample points
+        if (passFlags.backStep) {
+            var iSec = 0u;
+
+            var xn0 = 0.0;
+
+            var xn1 = 0.0;
+            var fn1 = sampleVal - passInfo.threshold;
+
+            var xn2 = -lastStepSize;
+            var fn2 = lastSampleVal - passInfo.threshold;
+            loop {
+                if (iSec >= 1u) {break;}
+                if (iSec > 0u) {
+                    xn2 = xn1;
+                    fn2 = fn1;
+
+                    xn1 = xn0;
+                    var secRay = extendRay(ray, xn0);
+                    var secDataPos = toDataSpace(secRay.tip);
+                    fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z) - passInfo.threshold;
+                }
+                xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
+                iSec++;
+            }
+            // adjust last step for correct volume integration
+            lastStepSize += min(0, max(-lastStepSize, xn0));
+            ray = extendRay(ray, xn0);
+            tipDataPos = toDataSpace(ray.tip);
+
+        }
+
+        // // set the material
+        // var material : Material;
+        // var normalFac = 1.0;
+        if (thisAbove && !lastAbove) {
+            // crossed going up the values
+            // material = objectInfo.frontMaterial;
+            normalFac = 1.0;
+        } else {
+            // crossed going down the values
+            // material = objectInfo.backMaterial;
+            normalFac = -1.0;
+        }
+
+        // if (passFlags.showNormals) {
+        //     fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
+        // } else if (passFlags.phong) {
+        //     var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+        //     fragCol = vec4<f32>(phong(material, normalFac * normal, -ray.direction, light), 1.0);
+        // } else {
+        //     fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);
+        // }
+    }                    
+
+    // if (passFlags.showVolume) {
+    //     // attenuate col by the volume colour
+    //     fragCol = attenuateCol(fragCol, volCol);
+    // }
+
+    // if (passFlags.showRayLength) {
+    //     fragCol = vec4<f32>(vec3<f32>(log(ray.length))/10, 1);  
+    // }
+
+    // return RayMarchResult(fragCol, ray.length);
+    return RayMarchResult(foundSurface, ray, volCol, normalFac);
+}
+
+
+fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPassFlags) -> vec4<f32>{
+    var tipDataPos = toDataSpace(rayMarchResult.ray.tip);
+
+    var fragCol = vec4<f32>(1, 1, 1, 0);
+
+    var light = DirectionalLight(vec3<f32>(1), rayMarchResult.ray.direction);
+
+    if (rayMarchResult.foundSurface) {
+        // set the material
+        var material : Material;
+        if (rayMarchResult.normalFac == 1.0) {
+            // crossed going up the values
+            material = objectInfo.frontMaterial;
+        } else {
+            // crossed going down the values
+            material = objectInfo.backMaterial;
+        }
+
+        if (passFlags.showNormals) {
+            fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
+        } else if (passFlags.phong) {
+            var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            fragCol = vec4<f32>(phong(material, rayMarchResult.normalFac * normal, -rayMarchResult.ray.direction, light), 1.0);
+        } else {
+            fragCol = vec4<f32>(material.diffuseCol*rayMarchResult.ray.length/1000, 1.0);
+        }                
+    }
+
     if (passFlags.showVolume) {
         // attenuate col by the volume colour
-        fragCol = attenuateCol(fragCol, volCol);
+        fragCol = attenuateCol(fragCol, rayMarchResult.volCol);
     }
 
     if (passFlags.showRayLength) {
-        fragCol = vec4<f32>(vec3<f32>(log(ray.length))/10, 1);  
+        fragCol = vec4<f32>(vec3<f32>(log(rayMarchResult.ray.length))/10, 1);  
     }
 
-    return RayMarchResult(fragCol, ray.length);
+    return fragCol;
 }
 
 
