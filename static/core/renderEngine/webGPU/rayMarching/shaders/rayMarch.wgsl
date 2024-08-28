@@ -203,11 +203,11 @@ fn fragment_main(
         if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
             // new best depth/best uninitialised (surface not previously found)
             bestSample = OptimisationSample(offset, marchResult.ray.length);
-        } else {
+        } else if (passFlags.useBestDepth) {
             // found surface this time but previously found was better
             marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
         }
-    } else if (prevOffsetSample.depth != 0){
+    } else if (prevOffsetSample.depth != 0 && passFlags.useBestDepth){
         // no surface found this time and surface has previously been found at this depth
         // use previous best offset, depth for shading
         marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);

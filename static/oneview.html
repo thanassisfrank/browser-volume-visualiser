@@ -106,8 +106,9 @@
             <input type="checkbox" class="ray-march-opt" name="showVolume"><label>Show volume</label><br>
             <input type="checkbox" class="ray-march-opt" name="phong"><label>Phong</label><br>
             <input type="checkbox" class="ray-march-opt" name="backStep"><label>Back step</label><br>
-            <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
             <input type="checkbox" class="ray-march-opt" name="randStart"><label>Random offset</label><br>
+            <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
+            <input type="checkbox" class="ray-march-opt" name="useBestDepth"><label>Use best depth</label><br>
             <label>Performance</label><br>
             <input type="checkbox" class="ray-march-opt" name="cheapMove"><label>Cheap move</label><br>
             <input type="checkbox" class="ray-march-opt" name="sampleNearest"><label>Sample nearest</label><br>
@@ -208,7 +209,7 @@
             async function main() {
                 var canvas = get("c");
                 
-                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"));
+                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 600);
 
 
                 var renderEnginePromise = createRenderEngine(canvas)

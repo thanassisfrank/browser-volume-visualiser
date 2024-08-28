@@ -58,6 +58,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showNodeDepth: false,
         quadraticBackStep: false,
         renderNodeVals: false,
+        useBestDepth: true,
 
         // not sent to gpu
         cheapMove: false,
@@ -106,6 +107,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showNodeDepth     << 16 & 0b1 << 16;
         flags |= this.passFlags.secantRoot        << 17 & 0b1 << 17;
         flags |= this.passFlags.renderNodeVals    << 18 & 0b1 << 18;
+        flags |= this.passFlags.useBestDepth      << 19 & 0b1 << 19;
         return flags;
     }
 

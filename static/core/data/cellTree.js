@@ -116,97 +116,6 @@ var readNodeFromBuffer = (buffer, byteOffset) => {
     }
 }
 
-var depthFirstTreeBufferTraverse = (
-    nodeBuffer,
-    leafFunc,
-    branchDownFunc,
-    branchUpFunc,
-) => {
-    var nodeCount = Math.floor(nodeBuffer.byteLength/NODE_BYTE_LENGTH);
-    var nodes = [readNodeFromBuffer(nodeBuffer, 0)];
-    var currDepth = 0; // depth of node currently being processed
-    var parentCount = 0;
-    var processed = 0;
-    while (nodes.length > 0 && processed < nodeCount * 3) {
-        processed++;
-        var str = "";
-        for (let node of nodes) {
-            str += node.thisPtr + " ";
-        }
-        // console.log(str);
-        // console.log("depth: ", currDepth);
-        // console.log("parentCount: ", parentCount);
-        var currNode = nodes.pop();
-        // console.log(currNode);
-        if (currNode.rightPtr == 0) {
-            // this is a leaf
-            // console.log("leaf")
-            leafFunc(currDepth, currNode);
-            // right is done after left, going back up the tree now  
-            if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
-        } else {
-            // this is a branch
-            if (currDepth == parentCount) {
-                // going down
-                // console.log("down")
-                // push itself to handle going back up the tree
-                nodes.push(currNode);
-
-                // add its children to the next nodes
-                var leftNode = readNodeFromBuffer(nodeBuffer, currNode.leftPtr * NODE_BYTE_LENGTH);
-                var rightNode = readNodeFromBuffer(nodeBuffer, currNode.rightPtr * NODE_BYTE_LENGTH);
-
-                var childInfo = branchDownFunc(currDepth, currNode, leftNode, rightNode);
-                
-                nodes.push({
-                    ...rightNode, 
-                    ...childInfo.right
-                });
-                nodes.push({
-                    ...leftNode, 
-                    ...childInfo.left
-                });
-
-                currDepth++;
-                parentCount++;
-            } else {
-                // going back up
-                // console.log("up")
-                branchUpFunc(currDepth, currNode);
-                parentCount--;
-                if (currNode.childType == ChildTypes.RIGHT) currDepth--;  
-            }
-        }
-    }
-}
-
-
-// generates the cell tree for fast lookups in unstructured data
-// returns two buffers:
-//   the nodes of the tree (leaves store indices into second buffer)
-//   the lists of cells present in each leaf node 
-export var getCellTreeBuffers = (dataObj, leafCells) => {
-    var maxDepth = 25;
-    var tree = new CellTree(leafCells);
-    // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
-    var t0 = performance.now();
-    tree.build(
-        3, 
-        maxDepth, 
-        dataObj.data.positions, 
-        dataObj.data.cellConnectivity,
-        dataObj.data.cellOffsets,
-        dataObj.data.cellTypes
-    );
-    var t1 = performance.now();
-    console.log("tree build took:", (t1 - t0)/1000, "s");
-    var treeBuffers = tree.serialise();
-    tree.tree = null; // clear the unused tree
-    var t2 = performance.now();
-    console.log("tree serialise took:", (t2 - t1)/1000, "s");
-    return treeBuffers;
-}
-
 
 // returns the box covering this node from the direct parent node's box
 // takes parent box, if its left and split dimension
@@ -333,7 +242,9 @@ var getNodeScores = (dataObj, threshold, focusCoords, camCoords, count) => {
             var score = calcBoxScore(getThisBox(currNode), focusCoords, camCoords);
             currNode.score = score;
             // console.log(score);
-            if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
+            var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
+            // only allow to split if this is not a true leaf 
+            if (currFullNode.rightPtr != 0) insertScore(highScores, currNode, (a, b) => a.score > b.score);
             if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);   
             // write score into node for now
             writeNodeToBuffer(dynamicNodes, currNode.thisPtr * NODE_BYTE_LENGTH, score, null, null, null, null);
@@ -379,81 +290,6 @@ var getNodeScores = (dataObj, threshold, focusCoords, camCoords, count) => {
             }
         }
     }
-
-    return {
-        high: highScores,
-        low: lowScores
-    }
-}
-
-var getNodeScoresNew = (dataObj, threshold, cameraCoords, count) => {
-    // console.log(threshold);
-    var dynamicNodes = dataObj.data.dynamicTreeNodes;
-    var fullNodes = dataObj.data.treeNodes;
-    // higher score, big box -> split
-    var highScores = [];
-    // lower score, small box -> merge
-    var lowScores = [];
-
-    var insertScore = (arr, elem, comp) => {
-        var added = false;
-        for (let i = 0; i < arr.length; i++) {
-            if (comp(elem, arr[i])) {
-                arr.splice(i, 0, elem);
-                added = true;
-                break;
-            }
-        }
-        if (!added && arr.length < count) arr.push(elem);
-
-        if (arr.length > count) arr.pop();
-    }
-    // figure out the box of the current node
-    var getThisBox = (currDepth, currNode) => {
-        // console.log(currNode);
-        if (currNode.parentPtr == currNode.thisPtr) {
-            // root node
-            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
-        }
-        var parentBox = currBoxes[currBoxes.length - 1];
-        return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
-    }
-
-    // boxes of parent nodes
-    var currBoxes = [];
-
-    depthFirstTreeBufferTraverse(
-        dynamicNodes,
-        (currDepth, currNode) => {
-            var score = calcBoxScore(getThisBox(currDepth, currNode), cameraCoords);
-            currNode.score = score;
-            if (score > threshold) insertScore(highScores, currNode, (a, b) => a.score > b.score);
-            if (currNode.bothSiblingsLeaves) insertScore(lowScores, currNode, (a, b) => a.score < b.score);
-        },
-        (currDepth, currNode, leftNode, rightNode) => {
-            currBoxes.push(getThisBox(currDepth, currNode));
-
-            // get the ptr to the children in the full buffer
-            var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
-            var bothLeaves = leftNode.rightPtr == 0 && rightNode.rightPtr == 0;
-
-            return {
-                right: {
-                    thisFullPtr: currFullNode.rightPtr,
-                    childType: ChildTypes.RIGHT,
-                    parentSplit: currNode.splitVal,
-                    bothSiblingsLeaves: bothLeaves,
-                },
-                left: {
-                    thisFullPtr: currFullNode.leftPtr,
-                    childType: ChildTypes.LEFT,
-                    parentSplit: currNode.splitVal,
-                    bothSiblingsLeaves: bothLeaves,
-                }
-            }
-        },
-        (currDepth, currNode) => {}
-    );
 
     return {
         high: highScores,
@@ -605,7 +441,7 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
 // if a node is 
 export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords) => {
     // get the node scores, n lowest highest
-    var scores = getNodeScores(dataObj, threshold, focusCoords, camCoords, 10);
+    var scores = getNodeScores(dataObj, 0, focusCoords, camCoords, 10);
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents
@@ -618,6 +454,9 @@ export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoord
         scores
     );    
 }
+
+
+
 
 
 
@@ -1123,11 +962,49 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
         cornerValues: dynamicCornerValues,
     }
 }
-   
 
-export function CellTree(leafCells) {
+
+
+// generates the cell tree for fast lookups in unstructured data
+// returns two buffers:
+//   the nodes of the tree (leaves store indices into second buffer)
+//   the lists of cells present in each leaf node 
+export var getCellTreeBuffers = (dataObj, maxLeafCells) => {
+    var tree = new CellTree();
+    // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
+    var t0 = performance.now();
+    tree.setBuffers(
+        dataObj.data.positions, 
+        dataObj.data.cellConnectivity,
+        dataObj.data.cellOffsets,
+        dataObj.data.cellTypes
+    );
+    tree.buildVertexAverage(maxLeafCells, 30);
+    var t1 = performance.now();
+    console.log("tree build took:", (t1 - t0)/1000, "s");
+    var treeBuffers = tree.serialise();
+    tree.tree = null; // clear the unused tree
+    var t2 = performance.now();
+    console.log("tree serialise took:", (t2 - t1)/1000, "s");
+    return treeBuffers;
+}
+
+export function CellTree() {
     this.tree = null;
-    this.maxLeafCells = leafCells;
+
+    const dimensions = 3;
+
+    this.points = null;
+    this.cellConnectivity = null;
+    this.cellOffsets = null;
+    this.cellTypes = null;
+
+    this.setBuffers = function(points, cellConnectivity, cellOffsets, cellTypes) {
+        this.points = points;
+        this.cellConnectivity = cellConnectivity;
+        this.cellOffsets = cellOffsets;
+        this.cellTypes = cellTypes;
+    }
 
     this.createNode = function(depth = 0, splitDimension = 0, points = null, cells = [], parent = null) {
         return{
@@ -1143,15 +1020,15 @@ export function CellTree(leafCells) {
         }
     }
     // builds a tree by splitting the whole data with median each time
-    this.build = function(dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes) {
+    this.buildVertexMedian = function(maxLeafCells, maxDepth) {
         // console.log(points);
         var cellsTree = false;
-        if (cellConnectivity) cellsTree = true;
+        if (this.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
         var checkCellPosition = (id, checkDimension, splitVal) => {
             // first get the points in the cell
             var pointsLength = 0;
-            switch (cellTypes[id]) {
+            switch (this.cellTypes[id]) {
                 case 10: // tet
                     pointsLength = 4;
                     break;
@@ -1162,12 +1039,12 @@ export function CellTree(leafCells) {
                     pointsLength = 3;
                     break;
             }
-            var pointsOffset = cellOffsets[id];
+            var pointsOffset = this.cellOffsets[id];
             var results = [false, false];
             var thisPointValue;
             for (let i = 0; i < pointsLength; i++) {
                 // the position of this point in the dimension that is being checked
-                thisPointValue = points[cellConnectivity[pointsOffset + i]*dimensions + checkDimension];
+                thisPointValue = this.points[this.cellConnectivity[pointsOffset + i]*dimensions + checkDimension];
                 if (thisPointValue <= splitVal) results[0] = true;
                 if (thisPointValue > splitVal)  results[1] = true;
             }
@@ -1178,10 +1055,10 @@ export function CellTree(leafCells) {
         var cellsCountSum = 0;
         var leavesCount = 0;
         // make a root node with the whols dataset
-        var root = this.createNode(0, 0, points);
+        var root = this.createNode(0, 0, this.points);
 
         if (cellsTree) {
-            for (let i = 0; i < cellOffsets.length; i++) {
+            for (let i = 0; i < this.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
@@ -1192,7 +1069,7 @@ export function CellTree(leafCells) {
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
             // or stop if the # cells is already low enough
-            if (currentDepth > depth || parentNode.cells.length <= this.maxLeafCells) {
+            if (currentDepth > maxDepth || parentNode.cells.length <= maxLeafCells) {
                 // console.log(parentNode.points.length);
                 cellsCountSum += parentNode.cells.length;
                 leavesCount++;
@@ -1269,26 +1146,133 @@ export function CellTree(leafCells) {
         this.tree = root;
         return this.tree;
     }
+    // builds a tree by splitting the whole data with median each time
+    this.buildVertexAverage = function(maxLeafCells, maxDepth) {
+        // console.log(points);
+        var cellsTree = false;
+        if (this.cellConnectivity) cellsTree = true;
+        // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
+        var checkCellPosition = (id, checkDimension, splitVal) => {
+            // first get the points in the cell
+            var pointsLength = 0;
+            switch (this.cellTypes[id]) {
+                case 10: // tet
+                    pointsLength = 4;
+                    break;
+                case 12: // hexa
+                    pointsLength = 8;
+                    break;
+                case 5:  // tri
+                    pointsLength = 3;
+                    break;
+            }
+            var pointsOffset = this.cellOffsets[id];
+            var results = [false, false];
+            var thisPointValue;
+            for (let i = 0; i < pointsLength; i++) {
+                // the position of this point in the dimension that is being checked
+                thisPointValue = this.points[this.cellConnectivity[pointsOffset + i]*dimensions + checkDimension];
+                if (thisPointValue <= splitVal) results[0] = true;
+                if (thisPointValue > splitVal)  results[1] = true;
+            }
+            return results;
+        }
     
-    this.buildIntoBuffer = function(dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes) {
+        var nodeQueue = [];
+        var cellsCountSum = 0;
+        var leavesCount = 0;
+        // make a root node with the whole dataset
+        var root = this.createNode(0, 0, this.points);
 
-    }
-    // builds a tree by iteratively inserting cells until a node has > the limit
-    // can pick cells randomly
-    this.buildIterative = function(dimensions, maxLeafSize, cellConnectivity, cellOffsets, cellTypes, random = false) {
-    }
-    // UNUSED
-    this.getTreeByteLength = function() {
-        // work out how long the tree is in values (4 bytes each)
-        var treeByteLength = 0;
+        if (cellsTree) {
+            for (let i = 0; i < this.cellOffsets.length; i++) {
+                root.cells.push(i);
+            }
+        }
+        nodeQueue.push(root);
+    
+        while (nodeQueue.length > 0) {
+            var parentNode = nodeQueue.pop();
+            var currentDepth = parentNode.depth + 1;
+            // stop the expansion of this node if the tree is deep enough
+            // or stop if the # cells is already low enough
+            if (currentDepth > maxDepth || parentNode.cells.length <= maxLeafCells) {
+                // console.log(parentNode.points.length);
+                cellsCountSum += parentNode.cells.length;
+                leavesCount++;
+                continue;
+            }
+    
+            var currentDimension = parentNode.splitDimension;
+            var currentPoints = parentNode.points;
+    
+            // make a set of points that is just the values in the current dimension
+            var thisDimMin = Number.POSITIVE_INFINITY;
+            var thisDimMax = Number.NEGATIVE_INFINITY;
+            for (let i = currentDimension; i < currentPoints.length; i += dimensions) {
+                thisDimMin = Math.min(currentPoints[i], thisDimMin);
+                thisDimMax = Math.max(currentPoints[i], thisDimMax);
+            }
+            
+            // find the pivot 
+            parentNode.splitVal = (thisDimMin + thisDimMax)/2;
+    
+            // split the points into left and right
+            var leftPoints = [];
+            var rightPoints = [];
+            for (let i = 0; i < currentPoints.length; i+= dimensions) {
+                if (currentPoints[i + currentDimension] <= parentNode.splitVal) {
+                    // point goes in left
+                    for (let j = 0; j < dimensions; j++) {
+                        leftPoints.push(currentPoints[i + j]);
+                    }
+                } else {
+                    // point goes in right
+                    for (let j = 0; j < dimensions; j++) {
+                        rightPoints.push(currentPoints[i + j]);
+                    }
+                }
+            }
+            
+            if(leftPoints.length < 3 || rightPoints.length < 3) {
+                // console.log(currentPoints.length);
+                // didn't successfully split node, dont split to make degenerate node
+                continue;
+            }
+    
+            // split the cells into left and right
+            var leftCells = [];
+            var rightCells = [];
+    
+            if (cellsTree) {
+                for (let cellID of parentNode.cells) {
+                    // see if cell is <= pivot, > pivot or both
+                    var cellSides = checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    if (cellSides[0]) leftCells.push(cellID);
+                    if (cellSides[1]) rightCells.push(cellID);
+                }
+            }
+    
+            // create the new left and right nodes
+            var nextDimension = (currentDimension + 1) % dimensions;
+            var leftNode = this.createNode(currentDepth, nextDimension, leftPoints, leftCells, parentNode);
+            var rightNode = this.createNode(currentDepth, nextDimension, rightPoints, rightCells, parentNode);
+    
+            // make sure the parent is properly closed out
+            parentNode.cells = null;
+            parentNode.points = null;
+            parentNode.left = leftNode;
+            parentNode.right = rightNode;
+    
+            // add children to the queue
+            nodeQueue.push(leftNode, rightNode);
+        }
 
-        forEachDepth(this.tree,
-            () => {treeByteLength += NODE_BYTE_LENGTH},
-            (node) => {treeByteLength += node.cells.length * 4},
-            () => {}
-        );
-        
-        return treeByteLength;
+        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+    
+        // return the tree object
+        this.tree = root;
+        return this.tree;
     }
 
     this.getTreeNodeCount = function() {

@@ -38,6 +38,7 @@ struct RayMarchPassFlags {
     showNodeDepth: bool,
     secantRoot: bool,
     renderNodeVals: bool,
+    useBestDepth: bool,
 };
 
 // the return value of the ray-march function
@@ -85,6 +86,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 16)) != 0,
         (flagUint & (1u << 17)) != 0,
         (flagUint & (1u << 18)) != 0,
+        (flagUint & (1u << 19)) != 0,
     );
 };
 
@@ -125,13 +127,14 @@ fn getOptimisationOffset(x : f32, prevOffset : f32, seed : u32) -> f32 {
 
 // test if a given point is within an AABB
 fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
-    if (p.x < box.min.x || p.y < box.min.y || p.z < box.min.z) {
+    if (
+        p.x < box.min.x || p.y < box.min.y || p.z < box.min.z ||
+        p.x > box.max.x || p.y > box.max.y || p.z > box.max.z
+    ) {
         return false;
+    } else {
+        return true;
     }
-    if (p.x > box.max.x || p.y > box.max.y || p.z > box.max.z) {
-        return false;
-    }
-    return true;
 };
 
 // recovers the normal (gradient) of the data at the given point
@@ -277,6 +280,7 @@ fn marchRay(
                 }
 
                 if (foundSurface) {
+                    normalFac -= (2 * f32(!thisAbove && lastAbove)); // invert normal if surface is intersected from behind
                     break;
                 }
             }
@@ -331,38 +335,7 @@ fn marchRay(
             tipDataPos = toDataSpace(ray.tip);
 
         }
-
-        // // set the material
-        // var material : Material;
-        // var normalFac = 1.0;
-        if (thisAbove && !lastAbove) {
-            // crossed going up the values
-            // material = objectInfo.frontMaterial;
-            normalFac = 1.0;
-        } else {
-            // crossed going down the values
-            // material = objectInfo.backMaterial;
-            normalFac = -1.0;
-        }
-
-        // if (passFlags.showNormals) {
-        //     fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
-        // } else if (passFlags.phong) {
-        //     var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
-        //     fragCol = vec4<f32>(phong(material, normalFac * normal, -ray.direction, light), 1.0);
-        // } else {
-        //     fragCol = vec4<f32>(material.diffuseCol*ray.length/1000, 1.0);
-        // }
     }                    
-
-    // if (passFlags.showVolume) {
-    //     // attenuate col by the volume colour
-    //     fragCol = attenuateCol(fragCol, volCol);
-    // }
-
-    // if (passFlags.showRayLength) {
-    //     fragCol = vec4<f32>(vec3<f32>(log(ray.length))/10, 1);  
-    // }
 
     // return RayMarchResult(fragCol, ray.length);
     return RayMarchResult(foundSurface, ray, volCol, normalFac);

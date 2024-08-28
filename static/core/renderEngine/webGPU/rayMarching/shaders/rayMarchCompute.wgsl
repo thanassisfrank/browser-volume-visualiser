@@ -269,15 +269,10 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
 
         // figure out if cell is inside using barycentric coords
         var pointsOffset : u32 = cellOffsets.buffer[cellID];
-        var j = 0u;
-        // read all the point positions
-        loop {
-            // get the coords of the point as an array 3
-            var thisPointIndex = cellConnectivity.buffer[pointsOffset + j];
-            cell.points[j] = vertexPositions.buffer[thisPointIndex];
-            j++;
-            if (j > 3u) {break;}
-        }
+        cell.points[0] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+        cell.points[1] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+        cell.points[2] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+        cell.points[3] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 3]];
 
         // check cell bounding box
         if(!pointInTetBounds(queryPoint, cell)) {
@@ -300,53 +295,6 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
     return cell;
 }
 
-
-fn getNearestDataValue(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> f32 {
-    var p0 = queryPoint;
-    var cell : InterpolationCell;
-
-    // check the cells in the leaf node found
-    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
-    var cellID : u32;
-
-    // minimum squared distance
-    var minDistSq : f32;
-    // value of closest point
-    var closestVal : f32;
-
-    var i = 0u;
-    loop {
-        if (i >= leafNode.cellCount) {break;}
-        // go through and check all the contained cells
-        cellID = treeCells.buffer[cellsPtr + i];
-        // create a cell from the data
-
-        // figure out if cell is inside using barycentric coords
-        var pointsOffset : u32 = cellOffsets.buffer[cellID];
-        var j = 0u;
-        // read all the point positions
-        loop {
-            // get the coords of the point as an array 3
-            var thisPointIndex = cellConnectivity.buffer[pointsOffset + j];
-            cell.points[j] = vertexPositions.buffer[thisPointIndex];
-            var p1 = cell.points[j];
-            var dist = pow(p0[0] - p1[0], 2) + pow(p0[1] - p1[1], 2) + pow(p0[2] - p1[2], 2);
-            if (
-                (j == 0u && i == 0u) || 
-                minDistSq > dist
-            ) 
-            {
-                minDistSq = dist;
-                closestVal = vertexData.buffer[cellConnectivity.buffer[pointsOffset + j]];
-            }
-            j++;
-            if (j > 3u) {break;}
-        }
-        i++;
-    }
-
-    return closestVal;
-}
 
 
 // interpolate inside of a node as a hex cell
@@ -414,26 +362,6 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     }
 
     
-}
-
-
-fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
-    var queryPoint = vec3<f32>(x, y, z);
-
-    var leafNode : KDTreeNode;
-    var lastBox = lastLeavesBox[threadIndex];
-    // look at the previous leaf node queried
-    if (pointInAABB(queryPoint, lastBox)) {
-        // still in last leaf
-        var leafNode = treeNodes.buffer[lastBox.val];
-    } else {
-        // gone to new leaf
-        var result = getContainingLeafNode(queryPoint);
-        leafNode = result.node;
-        lastBox = result.box;
-    }
-
-    return getNearestDataValue(queryPoint, leafNode);
 }
 
 
@@ -597,11 +525,11 @@ fn main(
         if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
             // new best depth/best uninitialised (surface not previously found)
             bestSample = OptimisationSample(offset, marchResult.ray.length);
-        } else {
+        } else if (passFlags.useBestDepth) {
             // found surface this time but previously found was better
             marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
         }
-    } else if (prevOffsetSample.depth != 0){
+    } else if (prevOffsetSample.depth != 0 && passFlags.useBestDepth){
         // no surface found this time and surface has previously been found at this depth
         // use previous best offset, depth for shading
         marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
@@ -610,15 +538,7 @@ fn main(
 
     // shade the pixel
     var outCol = shadeRayMarchResult(marchResult, passFlags);
-    
-    // var fragCol = shadeRayMarchResult(marchResult, passFlags);
 
-    // // put the best (surface depth, offset) pair into bestSample and write corresponding col to output
-    // if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-    //     bestSample = OptimisationSample(offset, marchResult.ray.length);
-    // } else {
-    //     bestSample = prevOffsetSample;
-    // }
 
     storeOptimisationSample(id.xy, bestSample);
 

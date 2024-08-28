@@ -457,9 +457,10 @@ function Data(id) {
         // get vertex-centred data
         var flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
         var dataNodes = cgns.getChildrenWithLabel(flowSolutionNode, "DataArray_t");
-        // console.log(dataNodes);
+        console.log(dataNodes);
         
-        // take the density values
+        // take the pressure values
+        // Pressure
         this.data.values = flowSolutionNode.get("Pressure/ data").value;
         this.limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
         for (let i = 0; i < this.data.values.length; i++) {
