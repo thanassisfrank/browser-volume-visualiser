@@ -38,5 +38,9 @@
     "cgns": {
         "encoding": null,
         "contentType": "application/octet-stream"
+    },
+    "png": {
+        "encoding": null,
+        "contentType": "image/png"
     }
 }

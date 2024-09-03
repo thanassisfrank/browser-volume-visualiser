@@ -16,6 +16,7 @@
 @group(1) @binding(0) var<uniform> passInfo : RayMarchPassInfo;
 // data texture
 @group(1) @binding(1) var data : texture_3d<f32>;
+@group(1) @binding(2) var dataB : texture_3d<f32>;
 
 // best optimisation 
 @group(2) @binding(0) var offsetOptimisationTextureOld : texture_2d<f32>;
@@ -36,21 +37,31 @@ struct FragmentOut {
 }
 
 // load a specific value
-fn getDataValue(x : u32, y : u32, z : u32) -> f32 {
-    return textureLoad(data, vec3<u32>(x, y, z), 0)[0];
+fn getDataValue(x : u32, y : u32, z : u32, dataSrc : u32) -> f32 {
+    if (dataSrc == DATA_SRC_VALUE_A) {
+        return textureLoad(data, vec3<u32>(x, y, z), 0)[0];
+    } else {
+        return textureLoad(dataB, vec3<u32>(x, y, z), 0)[0];
+    }
 }
 
 // sampler not available for f32 -> do own lerp
-fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
+fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
+    switch (dataSrc) {
+        case DATA_SRC_AXIS_X {return x;}
+        case DATA_SRC_AXIS_Y {return y;}
+        case DATA_SRC_AXIS_Z {return z;}
+        default {}
+    }
     var flr = vec3<u32>(u32(floor(x)), u32(floor(y)), u32(floor(z)));
     var cel = vec3<u32>(u32(ceil(x)), u32(ceil(y)), u32(ceil(z)));
     // lerp in z direction
     var zFac = z - floor(z);
     var zLerped = array(
-        mix(getDataValue(flr.x, flr.y, flr.z), getDataValue(flr.x, flr.y, cel.z), zFac), // 00
-        mix(getDataValue(flr.x, cel.y, flr.z), getDataValue(flr.x, cel.y, cel.z), zFac), // 01
-        mix(getDataValue(cel.x, flr.y, flr.z), getDataValue(cel.x, flr.y, cel.z), zFac), // 10
-        mix(getDataValue(cel.x, cel.y, flr.z), getDataValue(cel.x, cel.y, cel.z), zFac), // 11
+        mix(getDataValue(flr.x, flr.y, flr.z, dataSrc), getDataValue(flr.x, flr.y, cel.z, dataSrc), zFac), // 00
+        mix(getDataValue(flr.x, cel.y, flr.z, dataSrc), getDataValue(flr.x, cel.y, cel.z, dataSrc), zFac), // 01
+        mix(getDataValue(cel.x, flr.y, flr.z, dataSrc), getDataValue(cel.x, flr.y, cel.z, dataSrc), zFac), // 10
+        mix(getDataValue(cel.x, cel.y, flr.z, dataSrc), getDataValue(cel.x, cel.y, cel.z, dataSrc), zFac), // 11
     );
     // lerp in y direction
     var yFac = y - floor(y);
@@ -63,10 +74,6 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
 
     return mix(yLerped[0], yLerped[1], xFac);
 
-}
-
-fn sampleNearestDataValue(x : f32, y : f32, z : f32) -> f32 {
-    return getDataValue(u32(round(x)), u32(round(y)), u32(round(z)));
 }
 
 // takes device coords (-1 to 1)
@@ -196,17 +203,13 @@ fn fragment_main(
     }
 
     // do ray-marching step
-    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+    if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+    }
 
-    if (marchResult.foundSurface) {
-        // this ray-march found a surface
-        if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-            // new best depth/best uninitialised (surface not previously found)
-            bestSample = OptimisationSample(offset, marchResult.ray.length);
-        } else if (passFlags.useBestDepth) {
-            // found surface this time but previously found was better
-            marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
-        }
+    if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {
+        // new best depth/best uninitialised (surface not previously found)
+        bestSample = OptimisationSample(offset, marchResult.ray.length);
     } else if (prevOffsetSample.depth != 0 && passFlags.useBestDepth){
         // no surface found this time and surface has previously been found at this depth
         // use previous best offset, depth for shading

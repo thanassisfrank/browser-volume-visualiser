@@ -4,17 +4,21 @@
 // structs ========================================================================================
 
 // information needed for the ray marching pass
-// 160 bytes in total
+// 176 bytes in total
 struct RayMarchPassInfo {
     @size(4)  flags : u32,
     @size(4)  framesSinceMove : u32,
     @size(4)  threshold : f32,
     @size(4)  dataLowLimit : f32,
-    @size(16) dataHighLimit : f32,
+    @size(4)  dataHighLimit : f32,
+    @size(4)  dataBLowLimit : f32,
+    @size(8)  dataBHighLimit : f32,
     @size(48) dataBox : AABB,
     @size(4)  stepSize : f32,
     @size(12) maxLength : f32,
     @size(64) dMatInv : mat4x4<f32>, // from world space -> data space
+    @size(4)  isoSurfaceSrc : u32,
+    @size(4)  surfaceColSrc : u32,
 };
 
 // a set of flags for settings within the pass
@@ -62,6 +66,15 @@ struct AABB {
     val : u32,
 };
 
+// constants ======================================================================================
+
+const DATA_SRC_NONE    = 0;
+const DATA_SRC_VALUE_A = 1;
+const DATA_SRC_VALUE_B = 2;
+const DATA_SRC_AXIS_X  = 3;
+const DATA_SRC_AXIS_Y  = 4;
+const DATA_SRC_AXIS_Z  = 5;
+
 // functions ======================================================================================
 
 // create a flags struct from the u32
@@ -89,6 +102,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 19)) != 0,
     );
 };
+
 
 // returns the t value for progrssive offset optimisation
 fn getTVal(x : f32) -> f32 {
@@ -138,24 +152,24 @@ fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
 };
 
 // recovers the normal (gradient) of the data at the given point
-fn getDataNormal (x : f32, y : f32, z : f32) -> vec3<f32> {
+fn getDataNormal (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
     var epsilon : f32 = 0.5;
     var gradient : vec3<f32>;
-    var p0 = sampleDataValue(x, y, z);
+    var p0 = sampleDataValue(x, y, z, dataSrc);
     if (x > epsilon) {
-        gradient.x = -(p0 - sampleDataValue(x - epsilon, y, z))/epsilon;
+        gradient.x = -(p0 - sampleDataValue(x - epsilon, y, z, dataSrc))/epsilon;
     } else {
-        gradient.x = (p0 - sampleDataValue(x + epsilon, y, z))/epsilon;
+        gradient.x = (p0 - sampleDataValue(x + epsilon, y, z, dataSrc))/epsilon;
     }
     if (y > epsilon) {
-        gradient.y = -(p0 - sampleDataValue(x, y - epsilon, z))/epsilon;
+        gradient.y = -(p0 - sampleDataValue(x, y - epsilon, z, dataSrc))/epsilon;
     } else {
-        gradient.y = (p0 - sampleDataValue(x, y + epsilon, z))/epsilon;
+        gradient.y = (p0 - sampleDataValue(x, y + epsilon, z, dataSrc))/epsilon;
     }
     if (z > epsilon) {
-        gradient.z = -(p0 - sampleDataValue(x, y, z - epsilon))/epsilon;
+        gradient.z = -(p0 - sampleDataValue(x, y, z - epsilon, dataSrc))/epsilon;
     } else {
-        gradient.z = (p0 - sampleDataValue(x, y, z + epsilon))/epsilon;
+        gradient.z = (p0 - sampleDataValue(x, y, z + epsilon, dataSrc))/epsilon;
     }
     return normalize(gradient);
 }
@@ -263,7 +277,7 @@ fn marchRay(
             stepsInside++;
 
             // sample the dataset, this is an external function 
-            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
             thisAbove = sampleVal > passInfo.threshold;
             if (i > 0u) {
                 // check if the threshold has been crossed
@@ -324,7 +338,7 @@ fn marchRay(
                     xn1 = xn0;
                     var secRay = extendRay(ray, xn0);
                     var secDataPos = toDataSpace(secRay.tip);
-                    fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z) - passInfo.threshold;
+                    fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z, passInfo.isoSurfaceSrc) - passInfo.threshold;
                 }
                 xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
                 iSec++;
@@ -342,6 +356,59 @@ fn marchRay(
 }
 
 
+fn normaliseSample(sample : f32, dataSrc : u32) -> f32 {
+    switch (dataSrc) {
+        case DATA_SRC_VALUE_A {
+            return (sample - passInfo.dataLowLimit)/(passInfo.dataHighLimit - passInfo.dataLowLimit);
+        }
+        case DATA_SRC_VALUE_B {
+            return (sample - passInfo.dataBLowLimit)/(passInfo.dataBHighLimit - passInfo.dataBLowLimit);
+        }
+        case DATA_SRC_AXIS_X {
+            return (sample - passInfo.dataBox.min.x)/(passInfo.dataBox.max.x - passInfo.dataBox.min.x);
+        }
+        case DATA_SRC_AXIS_Y {
+            return (sample - passInfo.dataBox.min.y)/(passInfo.dataBox.max.y - passInfo.dataBox.min.y);
+        }
+        case DATA_SRC_AXIS_Z {
+            return (sample - passInfo.dataBox.min.z)/(passInfo.dataBox.max.z - passInfo.dataBox.min.z);
+        }
+        case default {
+            return sample;
+        }
+    }
+}
+
+
+fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32) -> Material {
+    var material : Material;
+    switch (dataSrc) {
+        case DATA_SRC_NONE, default {
+            if (normalFac == 1.0) {
+                // crossed going up the values
+                material = objectInfo.frontMaterial;
+            } else {
+                // crossed going down the values
+                material = objectInfo.backMaterial;
+            }
+        }
+        case DATA_SRC_VALUE_A, DATA_SRC_VALUE_B, DATA_SRC_AXIS_X, DATA_SRC_AXIS_Y, DATA_SRC_AXIS_Z {
+            var sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, dataSrc);
+            var normalisedSampleVal = clamp(normaliseSample(sampleVal, dataSrc), 0.0, 1.0);
+            if (normalisedSampleVal < 0.5) {
+                material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(1, 1, 1), normalisedSampleVal * 2);  
+            } else {
+                material.diffuseCol = mix(vec3<f32>(1, 1, 1), vec3<f32>(1, 0, 0), normalisedSampleVal * 2 - 1);  
+            }
+            material.specularCol = material.diffuseCol * 1.05;
+            material.shininess = 10;        
+        }
+    }
+
+    return material;
+}
+
+
 fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPassFlags) -> vec4<f32>{
     var tipDataPos = toDataSpace(rayMarchResult.ray.tip);
 
@@ -351,22 +418,15 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
 
     if (rayMarchResult.foundSurface) {
         // set the material
-        var material : Material;
-        if (rayMarchResult.normalFac == 1.0) {
-            // crossed going up the values
-            material = objectInfo.frontMaterial;
-        } else {
-            // crossed going down the values
-            material = objectInfo.backMaterial;
-        }
+        var material : Material = getIsoSurfaceMaterial(passInfo.surfaceColSrc, tipDataPos, rayMarchResult.normalFac);
 
         if (passFlags.showNormals) {
-            fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z), 1.0);
+            fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc), 1.0);
         } else if (passFlags.phong) {
-            var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z);
+            var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
             fragCol = vec4<f32>(phong(material, rayMarchResult.normalFac * normal, -rayMarchResult.ray.direction, light), 1.0);
         } else {
-            fragCol = vec4<f32>(material.diffuseCol*rayMarchResult.ray.length/1000, 1.0);
+            fragCol = vec4<f32>(material.diffuseCol, 1.0);
         }                
     }
 

@@ -22,6 +22,9 @@ export function WebGPUBase (verbose) {
     // keys are the unique labels of the resources and values are size in bytes
     this.GPUResourceBytes = {} 
 
+    this.requiredDeviceLimits = {
+        maxStorageBuffersPerShaderStage: 9,
+    }
     this.maxStorageBufferBindingSize;
 
     this.vertexLayouts = {
@@ -72,11 +75,12 @@ export function WebGPUBase (verbose) {
     this.wgslLibs = {};
 
     this.setupWebGPU = async function() {
-        // gpu
         console.log(navigator.gpu.wgslLanguageFeatures);
+        // gpu
         this.adapter = await navigator.gpu.requestAdapter({
             powerPreference: "high-performance"
         });
+        console.log(navigator.gpu.wgslLanguageFeatures);
 
         // adapter
         console.log(await this.adapter.requestAdapterInfo());
@@ -87,16 +91,27 @@ export function WebGPUBase (verbose) {
         }
         console.log("adapter features: ", features);
 
+        for (let key in this.requiredDeviceLimits) {
+            if (this.adapter.limits[key] <= this.requiredDeviceLimits[key]) {
+                throw  key + " of " + this.adapter.limits[key] + " is below " + this.requiredDeviceLimits[key] + " required";
+            }
+        }
+
         // device
         this.device = await this.adapter.requestDevice({
             requiredLimits: {
                 maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
-                maxBufferSize: this.adapter.limits.maxBufferSize
+                maxBufferSize: this.adapter.limits.maxBufferSize,
+                maxStorageBuffersPerShaderStage: this.adapter.limits.maxStorageBuffersPerShaderStage
+
             },
             requiredFeatures: ["bgra8unorm-storage"]
         });
         console.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
+
+
+
 
         this.bindGroupLayouts = {
             render0 : this.createBindGroupLayout([
@@ -223,6 +238,8 @@ export function WebGPUBase (verbose) {
     this.generateBG = function(layout, resources, label = "") {
         var entries = [];
         for (let i = 0; i < resources.length; i++) {
+            // skip empty slots
+            if (!resources[i]) continue;
             if (resources[i].constructor == GPUBuffer) {
                 entries.push({
                     binding: i,
@@ -344,10 +361,7 @@ export function WebGPUBase (verbose) {
     // generates a buffer with the information and returns it
     // size is in bytes
     this.makeBuffer = function(byteLength, usage, label = "", mappedAtCreation = false) {
-        var bufferSize = byteLength;
-        if (usage & GPUBuffer.STORAGE) {
-            bufferSize = Math.max(64, bufferSize);
-        }
+        var bufferSize = Math.max(byteLength, 64);
         
         var uniqueLabel = "BUF: "+ (label || "0");
         while(this.GPUResourceBytes[uniqueLabel]) uniqueLabel += "0";
@@ -437,7 +451,10 @@ export function WebGPUBase (verbose) {
 
     this.makeTexture = function(config) {
         // TODO: correctly calculate texel count of cubemap textures
-        var texelCount = (config.size.width ?? 1) * (config.size.height ?? 1) * (config.size.depthOrArrayLayers ?? 1);
+        config.size.width ??= 1;
+        config.size.height ??= 1;
+        config.size.depthOrArrayLayers ??= 1;
+        var texelCount = (config.size.width) * (config.size.height) * (config.size.depthOrArrayLayers);
         var byteLength = texelCount * GPUTexelByteLength?.[config.format];
 
         var uniqueLabel = "TEX: "+ (config.label || "0");

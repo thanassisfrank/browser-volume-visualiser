@@ -8,7 +8,7 @@
 struct CombinedPassInfo {
     @size(208) globalInfo : GlobalUniform,
     @size(160) objectInfo : ObjectInfo,
-    @size(160) passInfo : RayMarchPassInfo,
+    @size(176) passInfo : RayMarchPassInfo,
 };
 
 // tree nodes can be in one of 3 states:
@@ -55,8 +55,7 @@ struct CornerValuesBuff {
 // threshold, data matrix, march parameters
 @group(0) @binding(0) var<storage, read> combinedPassInfo : CombinedPassInfo;
 
-// ray marching data
-// data tree, leaves contain a list of intersecting cell ids
+// mesh geometry information
 @group(1) @binding(0) var<storage, read> treeNodes : TreeNodesBuff;
 @group(1) @binding(1) var<storage, read> treeCells : U32Buff; 
 // positions of each of the vertices in the mesh
@@ -65,25 +64,29 @@ struct CornerValuesBuff {
 @group(1) @binding(3) var<storage, read> cellConnectivity : U32Buff;
 // where the vert index list starts for each cell, indexes into cellConnectivity
 @group(1) @binding(4) var<storage, read> cellOffsets : U32Buff;
-// the data values associated with each vertex
-@group(1) @binding(5) var<storage, read> vertexData : F32Buff;
-// sampled values for the corners of the node bounding boxes in the tree
-@group(1) @binding(6) var<storage, read> cornerValues : CornerValuesBuff;
-
 // the types of each cell i.e. how many verts it has
 // @group(1) @binding(6) var<storage> cellTypes : U32Buff;
+
+// data values
+// vertex centred data arrays
+@group(2) @binding(0) var<storage, read> vertexDataA : F32Buff;
+@group(2) @binding(1) var<storage, read> vertexDataB : F32Buff;
+// sampled values for the corners of the node bounding boxes in the tree
+@group(2) @binding(2) var<storage, read> cornerValues : CornerValuesBuff;
+
+
 
 // images
 // input image f32, the distance to suface from the camera position, if outside, depth is 0
 // if the depth is to the backside of a tri (viewing from inside) depth is negative
-@group(2) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
+@group(3) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
 // two textures used to hold the last best result and write the new best result too
 // previous best results
-@group(2) @binding(1) var offsetOptimisationTextureOld : texture_2d<f32>;
+@group(3) @binding(1) var offsetOptimisationTextureOld : texture_2d<f32>;
 // a texture to write the best results too
-@group(2) @binding(2) var offsetOptimisationTextureNew : texture_storage_2d<rg32float, write>;
+@group(3) @binding(2) var offsetOptimisationTextureNew : texture_storage_2d<rg32float, write>;
 // output image after ray marching into volume
-@group(2) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
+@group(3) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
 
 
 struct KDTreeResult {
@@ -253,7 +256,7 @@ fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
 }
 
 
-fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> InterpolationCell {
+fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u32) -> InterpolationCell {
     var cell : InterpolationCell;
 
     // check the cells in the leaf node found
@@ -284,11 +287,20 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode) -> Interpola
             i++;
             continue;
         };
-        cell.values[0] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 0]];
-        cell.values[1] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 1]];
-        cell.values[2] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 2]];
-        cell.values[3] = vertexData.buffer[cellConnectivity.buffer[pointsOffset + 3]];
-
+        switch (dataSrc) {
+            case DATA_SRC_VALUE_A, default {
+                cell.values[0] = vertexDataA.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+                cell.values[1] = vertexDataA.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+                cell.values[2] = vertexDataA.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+                cell.values[3] = vertexDataA.buffer[cellConnectivity.buffer[pointsOffset + 3]];
+            }
+            case DATA_SRC_VALUE_B {
+                cell.values[0] = vertexDataB.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+                cell.values[1] = vertexDataB.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+                cell.values[2] = vertexDataB.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+                cell.values[3] = vertexDataB.buffer[cellConnectivity.buffer[pointsOffset + 3]];
+            }
+        }
         cell.factors = tetFactors;
         break;
     }
@@ -326,7 +338,14 @@ fn interpolateinNode(p : vec3<f32>, leafBox : AABB) -> f32 {
 // sampling unstructred mesh data
 // have to traverse tree and interpolate within the cell
 // returns -1 if point is not in a cell
-fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
+fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
+    switch (dataSrc) {
+        case DATA_SRC_AXIS_X {return x;}
+        case DATA_SRC_AXIS_Y {return y;}
+        case DATA_SRC_AXIS_Z {return z;}
+        default {}
+    }
+
     var queryPoint = vec3<f32>(x, y, z);
 
     var leafNode : KDTreeNode;
@@ -346,7 +365,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32) -> f32 {
     // sample the leaf depending on what type it is
     if (leafNode.cellCount > 0) {
         // true leaf, sample the cells within
-        var cell : InterpolationCell = getContainingCell(queryPoint, leafNode);
+        var cell : InterpolationCell = getContainingCell(queryPoint, leafNode, dataSrc);
         // interpolate value
         if (length(cell.factors) == 0) {
             return 0;
@@ -518,17 +537,13 @@ fn main(
     }
 
     // do ray-marching step
-    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+    if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+    }
     
-    if (marchResult.foundSurface) {
-        // this ray-march found a surface
-        if (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0) {
-            // new best depth/best uninitialised (surface not previously found)
-            bestSample = OptimisationSample(offset, marchResult.ray.length);
-        } else if (passFlags.useBestDepth) {
-            // found surface this time but previously found was better
-            marchResult.ray = extendRay(marchResult.ray, prevOffsetSample.depth - marchResult.ray.length);
-        }
+    if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {
+        // new best depth/best uninitialised (surface not previously found)
+        bestSample = OptimisationSample(offset, marchResult.ray.length);
     } else if (prevOffsetSample.depth != 0 && passFlags.useBestDepth){
         // no surface found this time and surface has previously been found at this depth
         // use previous best offset, depth for shading

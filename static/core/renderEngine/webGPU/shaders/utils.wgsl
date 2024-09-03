@@ -23,7 +23,7 @@ struct U32Buff {
 struct Material {
     @size(16) diffuseCol : vec3<f32>,
     @size(16) specularCol : vec3<f32>,
-    @size(16)  shininess : f32,
+    @size(16) shininess : f32,
 };
 
 // a global light with colour and direction

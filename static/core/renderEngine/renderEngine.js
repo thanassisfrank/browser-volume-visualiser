@@ -4,6 +4,29 @@ import { WebGPURenderEngine } from "./webGPU/webGPURenderEngine.js";
 import { WebGPUBase } from "./webGPU/webGPUBase.js";
 import { mat4 } from 'https://cdn.skypack.dev/gl-matrix';
 
+export const DataSrcTypes = {
+    NONE: "None",
+    AXIS: "Axis",
+    DATA: "Data" 
+}
+
+export const DataSrcNames = {}
+
+export const DataSrcUints = {
+    NONE:    0,
+    VALUE_A: 1,
+    VALUE_B: 2,
+    AXIS_X:  3,
+    AXIS_Y:  4,
+    AXIS_Z:  5
+}
+
+export const GPUResourceTypes = {
+    NONE: 0,
+    BUFFER: 1,
+    TEXTURE: 2
+}
+
 
 // // applied to scene obj
 // export const RenderModes = {

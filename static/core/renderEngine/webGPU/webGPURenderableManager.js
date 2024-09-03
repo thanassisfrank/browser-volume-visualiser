@@ -55,23 +55,18 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     this.updateSceneObject = function(dt, sceneObj) {
         switch (sceneObj.objectType) {
             case SceneObjectTypes.DATA:
-                this.updateDataRenderables(sceneObj);
+                // propogate the threshold to its renderables
+                for (let renderable of sceneObj.renderables) {
+                    renderable.passData.threshold = sceneObj.threshold;
+                }
+                if (sceneObj.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
+                    this.rayMarcher.updateDataObj(sceneObj);
+                }
                 break;
             default:
                 break;
         }
         
-    }
-
-    this.updateDataRenderables = function(data) {
-        // propogate the threshold to its renderables
-        for (let renderable of data.renderables) {
-            renderable.passData.threshold = data.threshold;
-        }
-        if (data.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME && data.resolutionMode == ResolutionModes.DYNAMIC) {
-            // setup the dataset for ray marching
-            this.rayMarcher.updateDynamicDataObj(data);
-        }
     }
 
     this.clearRenderables = function(sceneObj) {

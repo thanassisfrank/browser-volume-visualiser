@@ -2,6 +2,7 @@
 <html>
     <head>
         <title>Volume visualiser</title>
+        <link rel="icon" type="image/png" href="icon.png">
         <style>
             * {
                 font-family:monospace;
@@ -145,6 +146,12 @@
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
+        <div id="dataset-config-container" class="bottom-bar" style="display: none">
+            <p>Dataset pre-load config</p>
+            
+            <label id="load-dataset-btn" class="clickable">Load dataset</label>
+        </div>
+
         <!-- 
         The container into which views will be pushed
         In this page, this covers the screen 
@@ -158,20 +165,26 @@
                     <p class="view-dataset-name view-info"></p>
                     <p class="view-dataset-size view-info"></p>
                     <div>
-                        <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas>
+                        <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
+                        <!-- <br> -->
+                        <label>Surface col src</label>
+                        <select class="view-surface-col-src-select"></select>
+                        <br>
+                        <label>Iso-surface src</label>
+                        <select class="view-iso-surface-src-select"></select>
                         <br>
                         <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
                         <br>
                         <input type="range" class="view-threshold">
                     </div>
-                    <p class="view-info">Threshold: <span class="view-threshold-value"></span></p>
+                    <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
                     <label class="view-close view-info clickable">Close</label>
                 </div>
             </div>
         </div>
 
         <script type="module">
-            import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims} from "./core/utils.js";
+            import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, removeAllChildren} from "./core/utils.js";
 
             import { dataManager, ResolutionModes } from "./core/data/data.js";
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
@@ -217,7 +230,12 @@
                     .then((renderEngine) => {
                         setUpRayMarchOptions(renderEngine.rayMarcher);
                         return renderEngine;
-                    });
+                    })
+                    .catch((reason) => {
+                        console.error("Could not create rendering engine: " + reason);
+                        return null;
+                    })
+
                 
                 var serverDatasetsPromise = fetch("/data/datasets.json")
                     .then((res) => res.json())
@@ -244,10 +262,18 @@
                     .then((allDatasets) => {
                         dataManager.setConfigSet(allDatasets);
                         populateDataOptions(dataManager);
-                    });
+                        return allDatasets
+                    })
+                    .catch((reason) => {
+                        console.error("Could not get datasets: " + reason);
+                        return null;
+                    })
                 
-                var startupResult = await Promise.all([renderEnginePromise, serverDatasetsPromise]);
-                var renderEngine = startupResult[0];
+                var [renderEngine, allDatasets] = await Promise.all([renderEnginePromise, serverDatasetsPromise]);
+                if (!renderEngine || !allDatasets) {
+                    console.error("Could not initialise program");
+                    return;
+                }
                 
                 var camera = new Camera();
                 // set the max views
@@ -267,13 +293,15 @@
                             dynamicNodeCount: parseInt(opts.dynamicNodes.value)
                         }
                     );
+                    var availableDataArrays = newData.getAvailableDataArrays();
+                    await newData.loadDataArray(availableDataArrays[0]);
 
                     var renderMode = SceneObjectRenderModes.NONE;
                     if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;
                     if (opts.DATA_RAY_VOLUME.checked) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
                     if (opts.DATA_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
                     if (opts.BOUNDING_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
-
+                    
                     var newView = await viewManager.createView({
                         camera: camera,
                         data: newData,
@@ -281,8 +309,8 @@
                     }, renderEngine);
 
                     // hide the window
-                    hide(get("add-view-container"))                     
-                });
+                    hide(get("add-view-container")); 
+                })
 
                 var cameraFollowPath = false;
 

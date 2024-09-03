@@ -23,6 +23,12 @@ export const ResolutionModes = {
     DYNAMIC: 1, // the resolution is variable
 }
 
+export const DataFileTypes = {
+    NONE: 0,
+    RAW:  1,
+    CGNS: 2,
+}
+
 // object that manages data object instances
 // types of data object creatable:
 // - from a function
@@ -328,6 +334,8 @@ function Data(id) {
     this.dataFormat = DataFormats.EMPTY;
     // how the data will be presented to the user
     this.resolutionMode = ResolutionModes.FULL;
+    // the file type underlying this data object
+    this.fileType = DataFileTypes.NONE;
 
     // what this.data represents
     this.dataName = "";
@@ -335,8 +343,9 @@ function Data(id) {
     // the actual data store of the object
     // all entries should be typedarray objects
     this.data = {
-        // only 1 time step supported for now
-        values: null,
+        values: [
+            // {name: null, data: null, limits: [null, null]},
+        ],
         positions: null,
         cellConnectivity: null,
         cellOffsets: null,
@@ -351,6 +360,8 @@ function Data(id) {
         dynamicTreeCells: null,
     };
 
+    this.flowSolutionNode = null;
+
     // supplemental attributes
     // the dimensions in data space
     this.size = [0, 0, 0];
@@ -359,8 +370,6 @@ function Data(id) {
         min: [0, 0, 0],
         max: [0, 0, 0]
     };
-    // min, max of all data values
-    this.limits = [undefined, undefined];
 
     // matrix that captures data space -> object space
     // includes scaling of the grid
@@ -369,7 +378,7 @@ function Data(id) {
     this.createFromFunction = function(config) {
         this.config = config;
         this.dataFormat = DataFormats.STRUCTURED;
-        this.generateData(config);
+        this.fileType = DataFileTypes.NONE;
 
         this.size = [config.size.z, config.size.y, config.size.x];
         this.extentBox.min = [0, 0, 0];
@@ -379,12 +388,10 @@ function Data(id) {
         this.initialised = true;
     };
 
-    this.createFromRaw = async function(config) {
+    this.createFromRaw = function(config) {
         this.config = config;
         this.dataFormat = DataFormats.STRUCTURED;
-        const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
-        this.data.values = new DATA_TYPES[config.dataType](responseBuffer);
-        this.limits = config.limits;
+        this.fileType = DataFileTypes.RAW;
 
         this.size = [config.size.z, config.size.y, config.size.x];
         this.extentBox.min = [0, 0, 0];
@@ -455,58 +462,105 @@ function Data(id) {
         }
 
         // get vertex-centred data
-        var flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
-        var dataNodes = cgns.getChildrenWithLabel(flowSolutionNode, "DataArray_t");
-        console.log(dataNodes);
-        
-        // take the pressure values
-        // Pressure
-        this.data.values = flowSolutionNode.get("Pressure/ data").value;
-        this.limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-        for (let i = 0; i < this.data.values.length; i++) {
-            this.limits = [Math.min(this.limits[0], this.data.values[i]), Math.max(this.limits[1], this.data.values[i])];
-        }
-        console.log(this.limits);
+        this.flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
+
+
+        this.fileType = DataFileTypes.CGNS;
     };
 
-    this.generateData = async function(config) {
+    this.getAvailableDataArrays = function() {
+        var dataArrayNames = [];
+        switch (this.fileType) {
+            case DataFileTypes.NONE:
+            case DataFileTypes.RAW:
+                dataArrayNames.push("Default");
+                break;
+            case DataFileTypes.CGNS:
+                var dataNodes = cgns.getChildrenWithLabel(this.flowSolutionNode, "DataArray_t");
+                console.log(dataNodes);
+                for (let node of dataNodes) {
+                    dataArrayNames.push(node.attrs.name.value);
+                }
+                break;
+        }
+        
+        return dataArrayNames;
+    }
+
+    // returns the slot number that was written to
+    // if it already is loaded, return its slot number
+    this.loadDataArray = async function(name) {
+        var newSlot;
+        
+        var loadedIndex = this.data.values.findIndex(elem => elem.name == name);
+        if (loadedIndex != -1) return loadedIndex;
+                
+        try {
+            switch (this.fileType) {
+                case DataFileTypes.NONE:
+                    this.data.values[0] = this.generateData(this.config);
+                    newSlot = 0;
+                    break;
+                case DataFileTypes.RAW:
+                    const responseBuffer = await fetch(this.config.path).then(resp => resp.arrayBuffer());
+
+                    // load data
+                    this.data.values[0] = {
+                        name: "Default",
+                        data: new DATA_TYPES[this.config.dataType](responseBuffer),
+                        limits: this.config.limits,
+                    }
+                    newSlot = 0;
+                    break;
+                case DataFileTypes.CGNS:
+                    var data = this.flowSolutionNode.get(name + "/ data").value;
+                    var limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+                    for (let i = 0; i < data.length; i++) {
+                        limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
+                    }
+
+                    // console.log(data, limits, name)
+
+                    newSlot = this.data.values.push({name: name, data: data, limits: limits}) - 1;
+                    break;
+            }            
+        } catch (e) {
+            console.warn("Unable to load data array " + name + ": " + e);
+        }
+
+        return newSlot;
+    }
+
+    this.generateData = function(config) {
         const x = config.size.x;
         const y = config.size.y;
         const z = config.size.z;
         const f = config.f;
         let v = 0.0;
-        this.data.values = new Float32Array(x * y * z);
+        var data = new Float32Array(x * y * z);
+        var limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
         for (let i = 0; i < x; i++) {
             for (let j = 0; j < y; j++) {
                 for (let k = 0; k < z; k++) {
                     // values are clamped to >= 0
                     v = Math.max(0, f(i, j, k));
-                    if (!this.limits[0] || v < this.limits[0]) {
-                        this.limits[0] = v;
-                    } else if (!this.limits[1] || v > this.limits[1]) {
-                        this.limits[1] = v;
-                    }
-                    this.data.values[i * y * z + j * z + k] = v;
+                    limits = [Math.min(limits[0], v), Math.max(limits[1], v)];
+                    data[i * y * z + j * z + k] = v;
                 }
             }
         }
-    };
-    // data limits
-    this.getLimits = function() {
-        this.limits[undefined, undefined];
-        for(let i = 0; i < this.data.length; i++) {
-            let v = this.data[i];
-            if (!this.limits[0] || v < this.limits[0]) {
-                this.limits[0] = v;
-            } else if (!this.limits[1] || v > this.limits[1]) {
-                this.limits[1] = v;
-            }
+        return {
+            name: "Default",
+            data: data,
+            limits: limits
         }
-        console.log(this.limits);
     };
     // returns the byte length of the values array
     this.getValuesByteLength = function() {
-        return this.data.values.byteLength;
+        return this.data.values[0]?.data.byteLength;
+    }
+    this.getLimits = function(slotNum) {
+        return this.data.values[slotNum]?.limits;
     }
     // returns the positions of the boundary points
     this.getBoundaryPoints = function() {
@@ -596,8 +650,8 @@ function Data(id) {
         this.extentBox.max = size;
         this.size = size;
     }
-    this.getValues = function() {
-        return this.data.values;
+    this.getValues = function(slotNum) {
+        return this.data.values?.[slotNum]?.data;
     }
     this.getName = function() {
         return this?.config?.name || "Unnamed data";
@@ -613,18 +667,14 @@ function Data(id) {
 
     // returns the number of values within this.data.values that fall into a number of bins
     // bins are in the range this.limits and there are binCount number
-    this.getValueCounts = function(binCount) {
+    this.getValueCounts = function(slotNum, binCount) {
         var counts = new Uint32Array(binCount);
         var max = 0;
         var index;
-        console.log(this.limits);
-        for (let val of this.data.values) {
-            index = Math.floor((val - this.limits[0]) * (binCount-1)/(this.limits[1] - this.limits[0]));
+        var limits = this.getLimits(slotNum);
+        for (let val of this.getValues(slotNum)) {
+            index = Math.floor((val - limits[0]) * (binCount-1)/(limits[1] - limits[0]));
             max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount-1))]);
-            if (Number.isNaN(max)) {
-                console.log(val, index, counts[index])
-                break;
-            }
         }
         return {
             counts: counts,

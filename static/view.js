@@ -2,14 +2,10 @@
 // handles the creation of view objects, their management and deletion
 
 import { get, show, isVisible, toRads, newId, timer } from "./core/utils.js";
-import { VecMath } from "./core/VecMath.js";
-import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
 
+import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
-// import { marcherManager } from "./core/renderEngine/webGL/marcher.js";
 
-import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-import { RenderableTypes } from "./core/renderEngine/renderEngine.js";
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
@@ -26,15 +22,13 @@ export var viewManager = {
         return Object.keys(this.views).length < this.maxViews;
     },
     createView: async function(config, renderEngine) {    
-        // some linking is working
-    
         //check to see if there is already the max amount of views
         if (!this.moreViewsAllowed()) {
             console.log("sorry, max views reached");
             return false;
         }
     
-        // check if the mesh, data and camera objects are supplied
+        // check if the data and camera objects are supplied
         var camera = config.camera;
         var data = config.data;
         dataManager.addUser(data); 
@@ -43,7 +37,7 @@ export var viewManager = {
 
         // generate id
         const id = newId(this.views);
-        var newView = new View(id, camera, data, config.renderMode, (data.limits[0] + data.limits[1])/2);
+        var newView = new View(id, camera, data, config.renderMode);
         this.createViewDOM(id, newView);
         this.setupDOMEventHandlers(newView, renderEngine);
         this.appendDOM(newView);
@@ -64,7 +58,9 @@ export var viewManager = {
         var dataSize =     viewContainer.getElementsByClassName("view-dataset-size")?.[0];
         var threshVal =    viewContainer.getElementsByClassName("view-threshold-value")?.[0];
         var densityGraph = viewContainer.getElementsByClassName("view-value-density")?.[0];
-        var nodeScores =   viewContainer.getElementsByClassName("view-node-scores")?.[0];
+        // var nodeScores =   viewContainer.getElementsByClassName("view-node-scores")?.[0];
+        var isoSurfaceSrc = viewContainer.getElementsByClassName("view-iso-surface-src-select")?.[0];
+        var surfaceColSrc = viewContainer.getElementsByClassName("view-surface-col-src-select")?.[0];
 
         // add references to these in the view
         view.elems.container = viewContainer;
@@ -75,33 +71,47 @@ export var viewManager = {
         view.elems.dataSize = dataSize;
         view.elems.threshVal = threshVal;
         view.elems.densityGraph = densityGraph;
-        view.elems.nodeScores = nodeScores;
+        // view.elems.nodeScores = nodeScores;
+        view.elems.isoSurfaceSrc = isoSurfaceSrc;
+        view.elems.surfaceColSrc = surfaceColSrc;
 
         // populate dataset info
-        dataName.innerText = view.data.getName();
-        dataSize.innerText = view.data.getDataSizeString();
+        if (dataName) dataName.innerText = view.data.getName();
+        if (dataSize) dataSize.innerText = view.data.getDataSizeString();
 
-        slider.min = view.data.limits[0]; // Math.max(view.data.limits[0], 0);
-        slider.max = view.data.limits[1];
-        slider.step = (view.data.limits[1] - view.data.limits[0]) / 1000;
+        // if (slider) {
+        //     view.updateSlider(view.data.getLimits(0));
+        //     slider.min = limits[0]; // Math.max(view.data.limits[0], 0);
+        //     slider.max = limits[1];
+        //     slider.step = (limits[1] - limits[0]) / 1000;
+    
+        //     slider.value = (limits[0] + limits[1]) / 2;
+        // }
 
-        slider.value = (view.data.limits[0] + view.data.limits[1]) / 2;
+        // if (densityGraph) {
+        //     const binCount = 100;
+        //     densityGraph.width = binCount;
+        //     densityGraph.height = 20;
+        //     var {counts, max} = view.data.getValueCounts(0, binCount);
+        //     var densityPlotter = new FrameTimeGraph(densityGraph, Math.log10(max), true, true);
+        //     for (let val of counts) {
+        //         densityPlotter.update(Math.log10(val));
+        //     }
+        // }
+        
 
-
-        const binCount = 100;
-        densityGraph.width = binCount;
-        densityGraph.height = 20;
-        var {counts, max} = view.data.getValueCounts(binCount);
-        var densityPlotter = new FrameTimeGraph(densityGraph, Math.log10(max), true, true);
-        for (let val of counts) {
-            densityPlotter.update(Math.log10(val));
-        }
-
-        // setup node scores display if needed
-        if (view.data.resolutionMode == ResolutionModes.DYNAMIC) {
-
-        } else {
-            nodeScores.classList.add("hidden");
+        for (let dataSrcType of Object.values(DataSrcTypes)) {
+            var names = [""];
+            if (dataSrcType == "Axis") names = ["x", "y", "z"];
+            if (dataSrcType == "Data") names = view.data.getAvailableDataArrays();
+            for (let dataSrcName of names) {
+                var elem = document.createElement("OPTION");
+                elem.dataset.dataSrcType = dataSrcType;     
+                elem.dataset.dataSrcName = dataSrcName;   
+                elem.innerText = dataSrcType + " " + dataSrcName;
+                if (isoSurfaceSrc) isoSurfaceSrc.appendChild(elem.cloneNode(true));
+                if (surfaceColSrc) surfaceColSrc.appendChild(elem);
+            }
         }
     }, 
     setupDOMEventHandlers: function(view, renderEngine) {
@@ -170,6 +180,17 @@ export var viewManager = {
             view.updateThreshold(parseFloat(e.target.value), false);
         });
 
+        view.elems.isoSurfaceSrc.addEventListener("change", (e) => {
+            var elem = e.target;
+            var selected = elem.options[elem.selectedIndex];
+            view.updateIsoSurfaceSrc(selected.dataset.dataSrcType, selected.dataset.dataSrcName);
+        });
+        view.elems.surfaceColSrc.addEventListener("change", (e) => {
+            var elem = e.target;
+            var selected = elem.options[elem.selectedIndex];
+            view.updateSurfaceColSrc(selected.dataset.dataSrcType, selected.dataset.dataSrcName);
+        });
+
         // might want another event listener for when the frame element is moved or resized 
         // to update view.box        
     },
@@ -193,16 +214,20 @@ export var viewManager = {
     
 }
 
-function View(id, camera, data, renderMode, threshold) {
+function View(id, camera, data, renderMode) {
     this.id = id;
 
     this.sceneGraph = new SceneGraph();
     this.camera = camera;
     this.data = data;
 
-    this.threshold = threshold;
+    this.threshold = undefined;
     this.thresholdChanged = true;
     this.marchedThreshold = undefined;
+
+    this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0]};
+    this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0]};
+
     this.renderMode = renderMode;
 
     this.updateDynamicTree = true;
@@ -217,6 +242,11 @@ function View(id, camera, data, renderMode, threshold) {
         // setup camera position
         camera.setProjMat();
         camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
+
+        this.updateIsoSurfaceSrc(this.isoSurfaceSrc.type, this.isoSurfaceSrc.name);
+        this.updateSurfaceColSrc(this.surfaceColSrc.type, this.surfaceColSrc.name);
+        // var limits = data.getLimits(0)
+        // this.updateThreshold((limits[0] + limits[1]) * 0.5);
         switch (data.dataName) {
             case "Silicium":
                 // camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
@@ -235,7 +265,7 @@ function View(id, camera, data, renderMode, threshold) {
                 break;
             case "YF17":
                 camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
-                this.updateThreshold(102022.3);
+                // this.updateThreshold(102022.3);
                 break;
         }
         camera.moveToStart();
@@ -263,6 +293,61 @@ function View(id, camera, data, renderMode, threshold) {
         if (this.elems.threshVal) this.elems.threshVal.innerText = val.toPrecision(3);
     }
 
+    this.updateSlider = function(limits) {
+        this.elems.slider.min = limits[0]; // Math.max(view.data.limits[0], 0);
+        this.elems.slider.max = limits[1];
+        this.elems.slider.step = (limits[1] - limits[0]) / 1000;
+
+        this.updateThreshold((limits[0] + limits[1]) / 2);
+    }
+
+    this.updateDesityGraph = function() {}
+
+    // called when
+    this.updateIsoSurfaceSrc = async function(type, name) {
+        console.log("iso " + type + " " + name);
+        var limits = [0, 0];
+        switch (type) {
+            case DataSrcTypes.AXIS:
+                if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
+                if (name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
+                if (name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
+                break;
+            case DataSrcTypes.DATA:
+                // load data
+                var slotNum = await this.data.loadDataArray(name);
+                // update the limits of slider
+                limits = this.data.getLimits(slotNum);
+                // TODO: update the density view if its an actual dataset
+                console.log(limits, slotNum);
+        }
+        this.updateSlider(limits);
+        // change the source
+        this.isoSurfaceSrc = {type: type, name: name, limits: limits};
+    }
+    
+    this.updateSurfaceColSrc = async function(type, name) {
+        console.log("col " + type + " " + name);
+        // load the data array
+        var limits = [0, 0];
+        switch (type) {
+            case DataSrcTypes.AXIS:
+                if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
+                if (name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
+                if (name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
+                break;
+            case DataSrcTypes.DATA:
+                // load data
+                var slotNum = await this.data.loadDataArray(name);
+                // update the limits of slider
+                limits = this.data.getLimits(slotNum);
+                // TODO: update the density view if its an actual dataset
+                console.log(limits, slotNum);
+        }
+        // change the source
+        this.surfaceColSrc = {type: type, name: name, limits: limits};
+    }
+
 
     this.didThresholdChange = function() {
         var changed = this.thresholdChanged;
@@ -280,8 +365,10 @@ function View(id, camera, data, renderMode, threshold) {
             }
         }
         
-        // propagate the threshold to where is it needed
+        // TODO: better method of propogating this information
         this.data.threshold = this.threshold;
+        this.data.isoSurfaceSrc = this.isoSurfaceSrc;
+        this.data.surfaceColSrc = this.surfaceColSrc;
 
         // need to find the camera position in world space
         if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
