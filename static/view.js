@@ -1,7 +1,7 @@
 // view.js
 // handles the creation of view objects, their management and deletion
 
-import { get, show, isVisible, toRads, newId, timer } from "./core/utils.js";
+import { get, show, hide, isVisible, toRads, newId, timer } from "./core/utils.js";
 
 import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
@@ -79,26 +79,9 @@ export var viewManager = {
         if (dataName) dataName.innerText = view.data.getName();
         if (dataSize) dataSize.innerText = view.data.getDataSizeString();
 
-        // if (slider) {
-        //     view.updateSlider(view.data.getLimits(0));
-        //     slider.min = limits[0]; // Math.max(view.data.limits[0], 0);
-        //     slider.max = limits[1];
-        //     slider.step = (limits[1] - limits[0]) / 1000;
-    
-        //     slider.value = (limits[0] + limits[1]) / 2;
-        // }
-
-        // if (densityGraph) {
-        //     const binCount = 100;
-        //     densityGraph.width = binCount;
-        //     densityGraph.height = 20;
-        //     var {counts, max} = view.data.getValueCounts(0, binCount);
-        //     var densityPlotter = new FrameTimeGraph(densityGraph, Math.log10(max), true, true);
-        //     for (let val of counts) {
-        //         densityPlotter.update(Math.log10(val));
-        //     }
-        // }
-        
+        if (slider) {
+            slider.style.width = "210px";
+        } 
 
         for (let dataSrcType of Object.values(DataSrcTypes)) {
             var names = [""];
@@ -225,8 +208,8 @@ function View(id, camera, data, renderMode) {
     this.thresholdChanged = true;
     this.marchedThreshold = undefined;
 
-    this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0]};
-    this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0]};
+    this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
+    this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
 
     this.renderMode = renderMode;
 
@@ -301,35 +284,55 @@ function View(id, camera, data, renderMode) {
         this.updateThreshold((limits[0] + limits[1]) / 2);
     }
 
-    this.updateDesityGraph = function() {}
+    this.updateDensityGraph = function(slotNum) {
+        if (this.elems.densityGraph) {
+            const binCount = 100;
+            this.elems.densityGraph.width = binCount;
+            this.elems.densityGraph.height = 20;
+            var {counts, max} = this.data.getValueCounts(slotNum, binCount);
+            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, true);
+            for (let val of counts) {
+                densityPlotter.update(Math.log10(val));
+            }
+        }
+    }
 
     // called when
     this.updateIsoSurfaceSrc = async function(type, name) {
         console.log("iso " + type + " " + name);
         var limits = [0, 0];
+        var slotNum = null;
         switch (type) {
             case DataSrcTypes.AXIS:
                 if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
                 if (name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
                 if (name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
+                hide(this.elems.densityGraph);
                 break;
             case DataSrcTypes.DATA:
                 // load data
-                var slotNum = await this.data.loadDataArray(name);
+                slotNum = await this.data.loadDataArray(name);
+                if (slotNum == -1) return;
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
-                // TODO: update the density view if its an actual dataset
-                console.log(limits, slotNum);
+                show(this.elems.densityGraph);
+                this.updateDensityGraph(slotNum);
+                // this.data.updateCornerValues(slotNum);
+                break;
+            default:
+                hide(this.elems.densityGraph);
+                break;
         }
         this.updateSlider(limits);
         // change the source
-        this.isoSurfaceSrc = {type: type, name: name, limits: limits};
+        this.isoSurfaceSrc = {type: type, name: name, limits: limits, slotNum: slotNum};
     }
     
     this.updateSurfaceColSrc = async function(type, name) {
         console.log("col " + type + " " + name);
         // load the data array
         var limits = [0, 0];
+        var slotNum = null;
         switch (type) {
             case DataSrcTypes.AXIS:
                 if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
@@ -338,14 +341,12 @@ function View(id, camera, data, renderMode) {
                 break;
             case DataSrcTypes.DATA:
                 // load data
-                var slotNum = await this.data.loadDataArray(name);
+                slotNum = await this.data.loadDataArray(name);
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
-                // TODO: update the density view if its an actual dataset
-                console.log(limits, slotNum);
         }
         // change the source
-        this.surfaceColSrc = {type: type, name: name, limits: limits};
+        this.surfaceColSrc = {type: type, name: name, limits: limits, slotNum: slotNum};
     }
 
 
@@ -370,9 +371,19 @@ function View(id, camera, data, renderMode) {
         this.data.isoSurfaceSrc = this.isoSurfaceSrc;
         this.data.surfaceColSrc = this.surfaceColSrc;
 
+        var activeValueSlots = [];
+        if (this.isoSurfaceSrc.slotNum != null) activeValueSlots.push(this.isoSurfaceSrc.slotNum);
+        if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
+
         // need to find the camera position in world space
         if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
-            updateDynamicTreeBuffers(this.data, 0, this.sceneGraph.activeCamera.getTarget(),  this.sceneGraph.activeCamera.getEyePos());
+            updateDynamicTreeBuffers(
+                this.data, 
+                0, 
+                this.sceneGraph.activeCamera.getTarget(),  
+                this.sceneGraph.activeCamera.getEyePos(),
+                activeValueSlots
+            );
         }
 
         // update the renderables for the objects in the scene

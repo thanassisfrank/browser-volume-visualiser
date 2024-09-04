@@ -72,7 +72,8 @@ struct CornerValuesBuff {
 @group(2) @binding(0) var<storage, read> vertexDataA : F32Buff;
 @group(2) @binding(1) var<storage, read> vertexDataB : F32Buff;
 // sampled values for the corners of the node bounding boxes in the tree
-@group(2) @binding(2) var<storage, read> cornerValues : CornerValuesBuff;
+@group(2) @binding(2) var<storage, read> cornerValuesA : CornerValuesBuff;
+@group(2) @binding(3) var<storage, read> cornerValuesB : CornerValuesBuff;
 
 
 
@@ -311,8 +312,13 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
 
 // interpolate inside of a node as a hex cell
 // id of the leaf node is stored in the val of the box
-fn interpolateinNode(p : vec3<f32>, leafBox : AABB) -> f32 {
-    var vals : array<f32, 8> = cornerValues.buffer[leafBox.val];
+fn interpolateinNode(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
+    var vals : array<f32, 8>;
+    if (dataSrc == DATA_SRC_VALUE_B) {
+        vals = cornerValuesB.buffer[leafBox.val];
+    } else {
+        vals = cornerValuesA.buffer[leafBox.val];
+    }
     // lerp in z direction
     var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
     var zLerped = array(
@@ -376,7 +382,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
         if (passFlags.renderNodeVals) {
             return leafNode.splitVal;
         } else {
-            return interpolateinNode(queryPoint, lastBox);
+            return interpolateinNode(queryPoint, lastBox, dataSrc);
         }
     }
 

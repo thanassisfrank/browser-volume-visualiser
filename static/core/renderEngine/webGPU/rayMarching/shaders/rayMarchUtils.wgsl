@@ -395,11 +395,28 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32)
         case DATA_SRC_VALUE_A, DATA_SRC_VALUE_B, DATA_SRC_AXIS_X, DATA_SRC_AXIS_Y, DATA_SRC_AXIS_Z {
             var sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, dataSrc);
             var normalisedSampleVal = clamp(normaliseSample(sampleVal, dataSrc), 0.0, 1.0);
-            if (normalisedSampleVal < 0.5) {
-                material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(1, 1, 1), normalisedSampleVal * 2);  
+
+            // var cols = array<vec3<f32>, 3>(vec3<f32>(0, 0, 1))
+
+            // blue -> white -> red
+            // if (normalisedSampleVal < 0.5) {
+            //     material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(1, 1, 1), normalisedSampleVal * 2);  
+            // } else {
+            //     material.diffuseCol = mix(vec3<f32>(1, 1, 1), vec3<f32>(1, 0, 0), normalisedSampleVal * 2 - 1);  
+            // }
+
+            // blue -> cyan -> green -> yellow -> red
+            if (normalisedSampleVal < 0.25) {
+                material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(0, 1, 1), normalisedSampleVal * 4);  
+            } else if (normalisedSampleVal < 0.5){
+                material.diffuseCol = mix(vec3<f32>(0, 1, 1), vec3<f32>(0, 1, 0), normalisedSampleVal * 4 - 1);  
+            } else if (normalisedSampleVal < 0.75){
+                material.diffuseCol = mix(vec3<f32>(0, 1, 0), vec3<f32>(1, 1, 0), normalisedSampleVal * 4 - 2);  
             } else {
-                material.diffuseCol = mix(vec3<f32>(1, 1, 1), vec3<f32>(1, 0, 0), normalisedSampleVal * 2 - 1);  
+                material.diffuseCol = mix(vec3<f32>(1, 1, 0), vec3<f32>(1, 0, 0), normalisedSampleVal * 4 - 3);  
             }
+
+
             material.specularCol = material.diffuseCol * 1.05;
             material.shininess = 10;        
         }

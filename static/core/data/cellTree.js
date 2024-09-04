@@ -213,7 +213,7 @@ var getNodeScores = (dataObj, threshold, focusCoords, camCoords, count) => {
         // console.log(currNode);
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
-            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
+            return {...dataObj.extentBox, uses: 0};
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
@@ -347,7 +347,7 @@ var sanitiseNodeScores = (fullNodes, scores) => {
 }
 
 
-var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCornerValues, fullCornerValues, scores) => {
+var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlots, scores) => {
     // find the amount of changes we can now make
     var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
     // cap this at 1
@@ -365,14 +365,12 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
         writeNodeToBuffer(
             dynamicNodes, 
             scores.low[i].parentPtr * NODE_BYTE_LENGTH,
-            nodeVals[parentFullPtr],//null,
+            null,
             null,
             null,
             0,
             0,
         );
-
-        // console.log(readNodeFromBuffer(dynamicNodes, scores.low[i].parentPtr * NODE_BYTE_LENGTH));
     }
 
     // console.log(freePtrs);
@@ -400,17 +398,12 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
         writeNodeToBuffer(
             dynamicNodes, 
             freePtrs[2*i] * NODE_BYTE_LENGTH, 
-            nodeVals[leftNode.thisPtr], 
+            null, 
             leftNode.cellCount,
             thisNode.thisPtr, 
             leftNode.leftPtr, 
             0
         );
-        writeCornerVals(
-            dynamicCornerValues,
-            freePtrs[2*i],
-            fullCornerValues.slice(leftNode.thisPtr * 8, (leftNode.thisPtr + 1)* 8)
-        )
 
         // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i] * NODE_BYTE_LENGTH));
         // fetch the right node from the full buffer and write to dynamic as pruned leaf
@@ -418,17 +411,25 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
         writeNodeToBuffer(
             dynamicNodes, 
             freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
-            nodeVals[rightNode.thisPtr], 
+            null, 
             rightNode.cellCount,
             thisNode.thisPtr, 
             rightNode.leftPtr, 
             0
         );
-        writeCornerVals(
-            dynamicCornerValues,
-            freePtrs[2*i + 1],
-            fullCornerValues.slice(rightNode.thisPtr * 8, (rightNode.thisPtr + 1)* 8)
-        )
+
+        for (let slotNum of activeValueSlots) {
+            writeCornerVals(
+                dataObj.getDynamicCornerValues(slotNum),
+                freePtrs[2*i],
+                readCornerVals(dataObj.getFullCornerValues(slotNum), leftNode.thisPtr)
+            )
+            writeCornerVals(
+                dataObj.getDynamicCornerValues(slotNum),
+                freePtrs[2*i + 1],
+                readCornerVals(dataObj.getFullCornerValues(slotNum), rightNode.thisPtr)
+            )
+        }
 
         // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i + 1] * NODE_BYTE_LENGTH));
     }
@@ -439,18 +440,17 @@ var changeNodeBufferContents = (dynamicNodes, fullNodes, nodeVals, dynamicCorner
 // split nodes that are too large
 // merge nodes that are too small
 // if a node is 
-export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords) => {
+export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
     // get the node scores, n lowest highest
     var scores = getNodeScores(dataObj, 0, focusCoords, camCoords, 10);
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents
     changeNodeBufferContents(
+        dataObj,
         dataObj.data.dynamicTreeNodes, 
         dataObj.data.treeNodes, 
-        dataObj.data.nodeVals, 
-        dataObj.data.dynamicCornerValues, 
-        dataObj.data.cornerValues, 
+        activeValueSlots,
         scores
     );    
 }
@@ -541,7 +541,7 @@ var pointInTetBounds = (queryPoint, cell) => {
     return pointInAABB(queryPoint, {min: minVec, max: maxVec});
 }
 
-var getContainingCell = (dataObj, queryPoint, leafNode) => {
+var getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
     var cell = {
         points : [
             vec3.create(), vec3.create(), vec3.create(), vec3.create(),
@@ -578,10 +578,10 @@ var getContainingCell = (dataObj, queryPoint, leafNode) => {
             tetFactors[2] == 0 && 
             tetFactors[3] == 0
         ) continue;
-        cell.values[0] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 0]];
-        cell.values[1] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 1]];
-        cell.values[2] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 2]];
-        cell.values[3] = dataObj.data.values[dataObj.data.cellConnectivity[pointsOffset + 3]];
+        cell.values[0] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]];
+        cell.values[1] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 1]];
+        cell.values[2] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 2]];
+        cell.values[3] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 3]];
 
         cell.factors = tetFactors;
         break;
@@ -590,9 +590,9 @@ var getContainingCell = (dataObj, queryPoint, leafNode) => {
 }
 
 // samples a given leaf at the given position
-var sampleLeaf = (dataObj, leafNode, queryPoint) => {
+var sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
     // true leaf, sample the cells within
-    var cell = getContainingCell(dataObj, queryPoint, leafNode);
+    var cell = getContainingCell(dataObj, slotNum, queryPoint, leafNode);
     // interpolate value
     if (vec4.length(cell.factors) == 0) {
         return 0;
@@ -712,17 +712,17 @@ export var createNodeValuesBuffer = (dataObj) => {
 // 6 -> 110  max max min
 // 7 -> 111  max max max
 
-var getCornerVals = (dataObj, leafNode, leafBox) => {
+var getCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
     var cornerVals = new Float32Array(8);
 
-    cornerVals[0] = sampleLeaf(dataObj, leafNode, leafBox.min);
-    cornerVals[1] = sampleLeaf(dataObj, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
-    cornerVals[2] = sampleLeaf(dataObj, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
-    cornerVals[3] = sampleLeaf(dataObj, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
-    cornerVals[4] = sampleLeaf(dataObj, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
-    cornerVals[5] = sampleLeaf(dataObj, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
-    cornerVals[6] = sampleLeaf(dataObj, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
-    cornerVals[7] = sampleLeaf(dataObj, leafNode, leafBox.max);
+    cornerVals[0] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.min);
+    cornerVals[1] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
+    cornerVals[2] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
+    cornerVals[3] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
+    cornerVals[4] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
+    cornerVals[5] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
+    cornerVals[6] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
+    cornerVals[7] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.max);
     
 
     return cornerVals;
@@ -754,7 +754,7 @@ var writeCornerVals = (cornerValBuffer, nodePtr, cornerVals) => {
 // creates an f32 buffer containg 8 values per node
 // these are the values at the vertices where the split plane intersects the node bounding box edges
 // there are not values for true leaves as these don't have a split plane
-export var createNodeCornerValuesBuffer = (dataObj) => {
+export var createNodeCornerValuesBuffer = (dataObj, slotNum) => {
     var start = performance.now();
     var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
@@ -782,7 +782,7 @@ export var createNodeCornerValuesBuffer = (dataObj) => {
         var currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // get the corner values for this box and write to buffer
-            writeCornerVals(nodeCornerVals, currNode.thisPtr, getCornerVals(dataObj, currNode, getThisBox(currNode)));
+            writeCornerVals(nodeCornerVals, currNode.thisPtr, getCornerVals(dataObj, slotNum, currNode, getThisBox(currNode)));
 
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -855,11 +855,11 @@ export var addNodeValsToFullTree = (treeNodes, nodeVals) => {
 
 // create the buffers used for dynamic data resolution
 // for the first iteration, this only modifies the treenodes buffer
-export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
+export var createDynamicTreeNodes = (dataObj, maxNodes) => {
     var fullNodes = dataObj.data.treeNodes;
     // create the empty cache buffers at the given maximum size
     var dynamicNodes = new ArrayBuffer(maxNodes * NODE_BYTE_LENGTH);
-    var dynamicCornerValues = new Float32Array(8 * maxNodes);
+    // var dynamicCornerValues = new Float32Array(8 * maxNodes);
     // find the depth of the tree 
     // fill the dynamic buffer from the full tree buffer, breadth first
     var currNodeIndex = 0; // where to write the next node
@@ -917,33 +917,33 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
                     writeNodeToBuffer(
                         dynamicNodes, 
                         currNodeIndex * NODE_BYTE_LENGTH, 
-                        dataObj.data.nodeVals[leftNode.thisPtr],//leftNode.splitVal, 
+                        leftNode.splitVal, 
                         0,
                         parentLoc/NODE_BYTE_LENGTH, 
                         0, 
                         0
                     );
-                    writeCornerVals(
-                        dynamicCornerValues,
-                        currNodeIndex,
-                        dataObj.data.cornerValues.slice(leftNode.thisPtr * 8, (leftNode.thisPtr + 1)* 8)
-                    );
+                    // writeCornerVals(
+                    //     dynamicCornerValues,
+                    //     currNodeIndex,
+                    //     dataObj.data.cornerValues.slice(leftNode.thisPtr * 8, (leftNode.thisPtr + 1)* 8)
+                    // );
                     // fetch the right node from the full buffer and write to dynamic as pruned leaf
                     var rightNode = readNodeFromBuffer(fullNodes, currParentFull.rightPtr * NODE_BYTE_LENGTH);
                     writeNodeToBuffer(
                         dynamicNodes, 
                         (currNodeIndex + 1) * NODE_BYTE_LENGTH, 
-                        dataObj.data.nodeVals[rightNode.thisPtr],//rightNode.splitVal, 
+                        rightNode.splitVal, 
                         0, 
                         parentLoc/NODE_BYTE_LENGTH, 
                         0, 
                         0
                     )
-                    writeCornerVals( 
-                        dynamicCornerValues,
-                        (currNodeIndex + 1),
-                        dataObj.data.cornerValues.slice(rightNode.thisPtr * 8, (rightNode.thisPtr + 1)* 8)
-                    );
+                    // writeCornerVals( 
+                    //     dynamicCornerValues,
+                    //     (currNodeIndex + 1),
+                    //     dataObj.data.cornerValues.slice(rightNode.thisPtr * 8, (rightNode.thisPtr + 1)* 8)
+                    // );
                 }
                 currNodeIndex += 2;
                 if (currNodeIndex >= maxNodes) break addLayer;
@@ -957,10 +957,47 @@ export var createDynamicTreeBuffers = (dataObj, maxNodes) => {
     for (let i = 0; i < dynamicNodes.byteLength/NODE_BYTE_LENGTH; i++) {
         // console.log(readNodeFromBuffer(dynamicNodes, i * NODE_BYTE_LENGTH));
     }
-    return {
-        nodes: dynamicNodes,
-        cornerValues: dynamicCornerValues,
+    return dynamicNodes;
+}
+
+// creates or modifies the dynamic corner values buffer 
+export var createMatchedDynamicCornerValues = (dataObj, slotNum) => {
+    // use existing or create new
+    var nodeCount = dataObj.getDynamicNodeCount();
+    var dynamicCornerValues = dataObj.getDynamicCornerValues(slotNum) ?? new Float32Array(8 * nodeCount);
+    var fullCornerValues = dataObj.getFullCornerValues(slotNum);
+
+    var dynamicNodes = dataObj.data.dynamicTreeNodes;
+    var fullNodes = dataObj.data.treeNodes;
+
+    var nodes = [readNodeFromBuffer(dynamicNodes, 0)];
+
+    while (nodes.length > 0) {
+        var currNode = nodes.pop();
+        var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);  
+        
+        writeCornerVals(
+            dynamicCornerValues,
+            currNode.thisPtr,
+            readCornerVals(fullCornerValues, currFullNode.thisPtr)
+        );
+        
+        if (currNode.rightPtr != 0) {
+            // add its children to the next nodes
+            var rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
+            var leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
+            nodes.push({
+                ...rightNode, 
+                thisFullPtr: currFullNode.rightPtr,
+            });
+            nodes.push({
+                ...leftNode, 
+                thisFullPtr: currFullNode.leftPtr,
+            });
+        }
     }
+    
+    return dynamicCornerValues;
 }
 
 

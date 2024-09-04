@@ -129,7 +129,7 @@
 
         <div id="add-view-container" class="bottom-bar">
             <select id="data-select"></select><br>
-            <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br>
+            <!-- <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br> -->
             <label><b>Unstructured</b></label><br>
             <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
             <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
@@ -146,7 +146,7 @@
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
-        <div id="dataset-config-container" class="bottom-bar" style="display: none">
+        <div id="dataset-config-container" class="bottom-bar hidden">
             <p>Dataset pre-load config</p>
             
             <label id="load-dataset-btn" class="clickable">Load dataset</label>
@@ -159,7 +159,7 @@
         <div id="view-container-container"></div>
 
         <!-- The prototypical view-container that will be cloned for each view-->
-        <div id="view-container-proto" class="view-container" style="display: none">
+        <div id="view-container-proto" class="view-container hidden">
             <div class="view-frame">
                 <div class="bottom-bar view-bottom-bar">
                     <p class="view-dataset-name view-info"></p>
@@ -286,15 +286,13 @@
                     var newData = await dataManager.getDataObj(
                         d.options[d.selectedIndex].value,
                         {
-                            leafCells: parseInt(opts.leafCells.value),
-                            downSample: parseInt(opts.downsample.value),
-                            forceUnstruct: opts.createUnstructured.checked,
-                            createDynamic: opts.dynamicResolution.checked,
-                            dynamicNodeCount: parseInt(opts.dynamicNodes.value)
+                            leafCells: parseInt(opts.leafCells?.value),
+                            downSample: parseInt(opts?.downsample?.value ?? 1),
+                            forceUnstruct: opts.createUnstructured?.checked,
+                            createDynamic: opts.dynamicResolution?.checked,
+                            dynamicNodeCount: parseInt(opts.dynamicNodes?.value)
                         }
                     );
-                    var availableDataArrays = newData.getAvailableDataArrays();
-                    await newData.loadDataArray(availableDataArrays[0]);
 
                     var renderMode = SceneObjectRenderModes.NONE;
                     if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;

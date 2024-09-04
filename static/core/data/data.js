@@ -3,7 +3,7 @@
 
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES} from "../utils.js";
-import { addNodeValsToFullTree, createDynamicTreeBuffers, createNodeValuesBuffer, createNodeCornerValuesBuffer, getCellTreeBuffers } from "./cellTree.js";
+import { addNodeValsToFullTree, createDynamicTreeNodes, createNodeValuesBuffer, createNodeCornerValuesBuffer, getCellTreeBuffers, createMatchedDynamicCornerValues } from "./cellTree.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
@@ -279,22 +279,23 @@ var dataManager = {
         dataObj.data.treeCells = treeBuffers.cells;
         dataObj.data.treeNodeCount = treeBuffers.nodeCount;
 
-        // need at least an empty buffer here, the render engine expects
-        dataObj.data.cornerValues = new Float32Array(64);
     },
 
 
     createDynamicTree: function(dataObj, dynamicNodeCount) {
         if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic tree, dataset not of dataFormat UNSTRUCTURED";
-        dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
-        addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
-        dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
+        // dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
+        // addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
+        // dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
         if (dynamicNodeCount > dataObj.data.treeNodeCount) {
             console.warn("Attempted to create dynamic tree that is too large, falling back to total nodes in dataset");
         }
-        var dynamicBuffers = createDynamicTreeBuffers(dataObj, Math.min(dynamicNodeCount, dataObj.data.treeNodeCount));
-        dataObj.data.dynamicTreeNodes = dynamicBuffers.nodes;
-        dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+
+        var nodes = Math.min(dynamicNodeCount, dataObj.data.treeNodeCount);
+        dataObj.data.dynamicNodeCount = nodes;
+
+        dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, nodes);
+        // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
 
         dataObj.resolutionMode = ResolutionModes.DYNAMIC;
     },
@@ -343,9 +344,13 @@ function Data(id) {
     // the actual data store of the object
     // all entries should be typedarray objects
     this.data = {
+        
+        // the data values
         values: [
-            // {name: null, data: null, limits: [null, null]},
+            // {name: null, data: null, cornerValues: null, limits: [null, null]},
         ],
+
+        // the geometry
         positions: null,
         cellConnectivity: null,
         cellOffsets: null,
@@ -356,9 +361,11 @@ function Data(id) {
         treeNodes: null,
         treeCells: null,
         treeNodeCount: 0,
+        dynamicNodeCount: 0,
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
     };
+
 
     this.flowSolutionNode = null;
 
@@ -490,27 +497,27 @@ function Data(id) {
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
     this.loadDataArray = async function(name) {
-        var newSlot;
-        
+        // check if already loaded
         var loadedIndex = this.data.values.findIndex(elem => elem.name == name);
         if (loadedIndex != -1) return loadedIndex;
-                
+
+        
+        var newSlotNum;
         try {
             switch (this.fileType) {
                 case DataFileTypes.NONE:
                     this.data.values[0] = this.generateData(this.config);
-                    newSlot = 0;
+                    newSlotNum = 0;
                     break;
                 case DataFileTypes.RAW:
                     const responseBuffer = await fetch(this.config.path).then(resp => resp.arrayBuffer());
 
                     // load data
-                    this.data.values[0] = {
+                    newSlotNum = this.data.values.push({
                         name: "Default",
                         data: new DATA_TYPES[this.config.dataType](responseBuffer),
                         limits: this.config.limits,
-                    }
-                    newSlot = 0;
+                    }) - 1;
                     break;
                 case DataFileTypes.CGNS:
                     var data = this.flowSolutionNode.get(name + "/ data").value;
@@ -521,14 +528,33 @@ function Data(id) {
 
                     // console.log(data, limits, name)
 
-                    newSlot = this.data.values.push({name: name, data: data, limits: limits}) - 1;
+                    newSlotNum = this.data.values.push({name: name, data: data, limits: limits}) - 1;
                     break;
             }            
         } catch (e) {
             console.warn("Unable to load data array " + name + ": " + e);
+            return -1;
         }
 
-        return newSlot;
+        // if this is dynamic, load corner values too
+        if (ResolutionModes.DYNAMIC == this.resolutionMode) {
+            this.createCornerValues(newSlotNum);
+            this.createDynamicCornerValues(newSlotNum);
+        }
+
+
+        return newSlotNum;
+    }
+
+    // creates the full corner values buffer for the full tree, using the data in the specified value slot
+    this.createCornerValues = function(slotNum) {
+        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum);
+    }
+
+    // creates the dynamic corner values buffer from scratch
+    // matches the nodes currently loaded in dynamic tree
+    this.createDynamicCornerValues = function(slotNum) {
+        this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
     }
 
     this.generateData = function(config) {
@@ -555,9 +581,10 @@ function Data(id) {
             limits: limits
         }
     };
+
     // returns the byte length of the values array
-    this.getValuesByteLength = function() {
-        return this.data.values[0]?.data.byteLength;
+    this.getValuesByteLength = function(slotNum) {
+        return this.data.values[slotNum]?.data.byteLength;
     }
     this.getLimits = function(slotNum) {
         return this.data.values[slotNum]?.limits;
@@ -650,9 +677,25 @@ function Data(id) {
         this.extentBox.max = size;
         this.size = size;
     }
+
+    this.getDynamicNodeCount = function() {
+        return this.data.dynamicNodeCount;
+    }
+
     this.getValues = function(slotNum) {
         return this.data.values?.[slotNum]?.data;
     }
+    this.getCornerValues = function(slotNum) {
+        if (ResolutionModes.DYNAMIC == this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+        if (ResolutionModes.FULL == this.resolutionMode) return this.getFullCornerValues(slotNum);
+    }
+    this.getFullCornerValues = function(slotNum) {
+        return this.data.values?.[slotNum]?.cornerValues;
+    }
+    this.getDynamicCornerValues = function(slotNum) {
+        return this.data.values?.[slotNum]?.dynamicCornerValues;
+    }
+    
     this.getName = function() {
         return this?.config?.name || "Unnamed data";
     }

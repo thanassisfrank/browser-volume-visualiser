@@ -11,6 +11,8 @@ import numpy as np
 from http.server import *
 import time
 
+HOST_ADDRESS = "localhost"
+
 static_path = "static/"
 file_types = None
 datasets = None
@@ -512,7 +514,7 @@ def main():
     # uses the request handler class defined above
     port = 8080
     # server = socketserver.ThreadingTCPServer(("localhost", port), requestHandler)
-    server = ThreadingHTTPServer(("localhost", port), requestHandler)
+    server = ThreadingHTTPServer((HOST_ADDRESS, port), requestHandler)
     try:
         # print where the server is listening on
         print("server listening on: %s:%s" % (server.server_address[0], server.server_port))
