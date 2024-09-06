@@ -12,6 +12,12 @@ export const DataSrcUses = {
     SURFACE_COL: 2,
 }
 
+export const ColourScales = {
+    B_W: 0,
+    BL_W_R: 1,
+    BL_C_G_Y_R: 2
+}
+
 export function WebGPURayMarchingEngine(webGPUBase) {
     var webGPU = webGPUBase;
     var device = webGPU.device;
@@ -75,6 +81,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         stepSize: 2,
         maxRayLength: 2000,
         framesSinceMove: 0,
+        colourScale: ColourScales.B_W
     };
 
     this.getPassFlag = function(name) {
@@ -134,6 +141,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.setStepSize = function(step) {
         this.globalPassInfo.stepSize = step;
         this.globalPassInfo.framesSinceMove = 0;
+    }
+
+    this.setColourScale = function(colourScale) {
+        this.globalPassInfo.colourScale = colourScale;
     }
 
     this.setupEngine = async function() {
@@ -942,7 +953,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ]),
                 new Uint32Array([
                     renderable.passData.isoSurfaceSrcUint,
-                    renderable.passData.surfaceColSrcUint
+                    renderable.passData.surfaceColSrcUint,
+                    this.globalPassInfo.colourScale,
                 ])
             ]
         );
@@ -1059,7 +1071,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ]),
                 new Uint32Array([
                     renderable.passData.isoSurfaceSrcUint,
-                    renderable.passData.surfaceColSrcUint
+                    renderable.passData.surfaceColSrcUint,
+                    this.globalPassInfo.colourScale,
                 ])
             ]
         )

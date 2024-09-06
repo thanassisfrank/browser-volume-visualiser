@@ -10,6 +10,7 @@ import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
 import { FrameTimeGraph } from "./frameTimeGraph.js";
+import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 
 
@@ -61,6 +62,7 @@ export var viewManager = {
         // var nodeScores =   viewContainer.getElementsByClassName("view-node-scores")?.[0];
         var isoSurfaceSrc = viewContainer.getElementsByClassName("view-iso-surface-src-select")?.[0];
         var surfaceColSrc = viewContainer.getElementsByClassName("view-surface-col-src-select")?.[0];
+        var colScale = viewContainer.getElementsByClassName("view-surface-col-scale-select")?.[0];
 
         // add references to these in the view
         view.elems.container = viewContainer;
@@ -74,6 +76,7 @@ export var viewManager = {
         // view.elems.nodeScores = nodeScores;
         view.elems.isoSurfaceSrc = isoSurfaceSrc;
         view.elems.surfaceColSrc = surfaceColSrc;
+        view.elems.colScale = colScale;
 
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
@@ -96,7 +99,19 @@ export var viewManager = {
                 if (surfaceColSrc) surfaceColSrc.appendChild(elem);
             }
         }
+
+        if (colScale) {
+            for (let scale in ColourScales) {
+                var elem = document.createElement("OPTION");
+                elem.innerText = scale;
+                elem.value = ColourScales[scale];     
+                colScale.appendChild(elem);
+            }
+        }
     }, 
+    updateColScale: function(val, renderEngine) {
+        renderEngine.rayMarcher.setColourScale(val);
+    },
     setupDOMEventHandlers: function(view, renderEngine) {
         if (view.elems.closeBtn) {
             view.elems.closeBtn.addEventListener("click", (e) => {
@@ -172,6 +187,9 @@ export var viewManager = {
             var elem = e.target;
             var selected = elem.options[elem.selectedIndex];
             view.updateSurfaceColSrc(selected.dataset.dataSrcType, selected.dataset.dataSrcName);
+        });
+        view.elems.colScale.addEventListener("change", (e) => {
+            this.updateColScale(e.target.value, renderEngine);
         });
 
         // might want another event listener for when the frame element is moved or resized 
