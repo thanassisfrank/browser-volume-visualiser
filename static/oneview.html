@@ -125,6 +125,7 @@
             <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
             <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
             <input type="checkbox" class="ray-march-opt" name="renderNodeVals"><label>Render Nodes</label><br>
+            <input type="checkbox" class="ray-march-opt" name="showTestedCells"><label>Cell test count</label><br>
         </div>
 
         <div id="add-view-container" class="bottom-bar">
@@ -132,7 +133,9 @@
             <!-- <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br> -->
             <label><b>Unstructured</b></label><br>
             <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
+            <select id="kd-tree-type-select" class="dataset-opt" name="kdTreeType"></select><br>
             <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
+            <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="16" style="width:5ch"><label>Max depth</label><br>
             <label><b>Dynamic tree</b></label><br>
             <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
             <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
@@ -191,6 +194,7 @@
             import { viewManager } from "./view.js";
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
             import { FrameTimeGraph } from "./frameTimeGraph.js";
+            import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 
 
 
@@ -215,6 +219,16 @@
                     elem.value = id;                
                     elem.innerText = dataManager.configSet[id].name;
                     dataOptions.appendChild(elem);
+                }
+            }
+
+            var populateKDTreeOptions = () => {
+                var kdTreeOptions = get("kd-tree-type-select");
+                for (let type in KDTreeSplitTypes) {
+                    var elem = document.createElement("OPTION");
+                    elem.value = KDTreeSplitTypes[type];                
+                    elem.innerText = type;
+                    kdTreeOptions.appendChild(elem);
                 }
             }
             
@@ -262,6 +276,7 @@
                     .then((allDatasets) => {
                         dataManager.setConfigSet(allDatasets);
                         populateDataOptions(dataManager);
+                        populateKDTreeOptions();
                         return allDatasets
                     })
                     .catch((reason) => {
@@ -290,7 +305,9 @@
                             downSample: parseInt(opts?.downsample?.value ?? 1),
                             forceUnstruct: opts.createUnstructured?.checked,
                             createDynamic: opts.dynamicResolution?.checked,
-                            dynamicNodeCount: parseInt(opts.dynamicNodes?.value)
+                            dynamicNodeCount: parseInt(opts.dynamicNodes?.value),
+                            maxTreeDepth: parseInt(opts.maxDepth.value),
+                            kdTreeType: parseInt(opts.kdTreeType.value),
                         }
                     );
 

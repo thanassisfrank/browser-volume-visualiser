@@ -93,7 +93,7 @@ var dataManager = {
                     newData.createFromFunction(config);
                     break;
                 case "raw":
-                    await newData.createFromRaw(config);
+                    newData.createFromRaw(config);
                     break;
                 case "cgns":
                     await newData.createFromCGNS(config);
@@ -114,9 +114,11 @@ var dataManager = {
             this.convertToUnstructured(newData);
         }
 
-        // create tree if we have unstrucutred data
+        console.log(newData.extentBox);
+
+        // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
-            this.createUnstructuredTree(newData, opts.leafCells);
+            this.createUnstructuredTree(newData, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
         }
 
         // create dynamic tree
@@ -272,9 +274,9 @@ var dataManager = {
         }
     },
 
-    createUnstructuredTree: function(dataObj, cellsPerLeaf) {
+    createUnstructuredTree: function(dataObj, cellsPerLeaf, maxDepth, treeType) {
         // generate the tree for rendering
-        const treeBuffers = getCellTreeBuffers(dataObj, cellsPerLeaf);
+        const treeBuffers = getCellTreeBuffers(dataObj, cellsPerLeaf, maxDepth, treeType);
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
         dataObj.data.treeNodeCount = treeBuffers.nodeCount;
@@ -431,8 +433,7 @@ function Data(id) {
         }
 
         this.dataFormat = DataFormats.UNSTRUCTURED;
-        // cgns arrays are FORTRAM one-based indexed
-        this.data.zeroBased = true;
+        this.fileType = DataFileTypes.CGNS;
 
         // get vertex positions
         var coordsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "GridCoordinates_t")[0];
@@ -472,7 +473,7 @@ function Data(id) {
         this.flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
 
 
-        this.fileType = DataFileTypes.CGNS;
+        
     };
 
     this.getAvailableDataArrays = function() {

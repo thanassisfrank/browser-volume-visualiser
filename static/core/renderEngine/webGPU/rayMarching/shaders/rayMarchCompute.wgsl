@@ -8,7 +8,7 @@
 struct CombinedPassInfo {
     @size(208) globalInfo : GlobalUniform,
     @size(160) objectInfo : ObjectInfo,
-    @size(176) passInfo : RayMarchPassInfo,
+    @size(180) passInfo : RayMarchPassInfo,
 };
 
 // tree nodes can be in one of 3 states:
@@ -368,12 +368,18 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
         lastBox = result.box;
     }
 
+    if (passFlags.showTestedCells) {
+        return f32(leafNode.cellCount);
+    }
+
     // sample the leaf depending on what type it is
     if (leafNode.cellCount > 0) {
         // true leaf, sample the cells within
         var cell : InterpolationCell = getContainingCell(queryPoint, leafNode, dataSrc);
         // interpolate value
         if (length(cell.factors) == 0) {
+            // not in any cell
+            // TODO: handle this better
             return 0;
         };
         return dot(cell.values, cell.factors);
@@ -545,6 +551,17 @@ fn main(
     // do ray-marching step
     if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
         marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+    }
+
+    if (passFlags.showTestedCells) {
+        var count = marchResult.cellsTested;
+        var limit = 5000.0;
+        if (count < limit) {
+            setPixel(id.xy, vec4<f32>(mix(vec3<f32>(1, 1, 1), vec3<f32>(1, 0, 0), count/limit), 1));
+        } else {
+            setPixel(id.xy, vec4<f32>(0,0,0,1));
+        }
+        return;
     }
     
     if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {

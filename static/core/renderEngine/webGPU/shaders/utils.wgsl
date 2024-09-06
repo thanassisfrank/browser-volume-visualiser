@@ -69,6 +69,36 @@ struct Ray {
 
 // functions ======================================================================================
 
+fn mix3(col0 : vec3<f32>, col1 : vec3<f32>, col2 : vec3<f32>, fac : f32) -> vec3<f32> {
+    if (fac < 1./2.) {
+        return mix(col0, col1, fac * 2);  
+    } else {
+        return mix(col1, col2, fac * 2 - 1);  
+    }
+}
+
+fn mix4(col0 : vec3<f32>, col1 : vec3<f32>, col2 : vec3<f32>, col3 : vec3<f32>, fac : f32) -> vec3<f32> {
+    if (fac < 1./3.) {
+        return mix(col0, col1, fac * 3);  
+    } else if (fac < 2./3.){
+        return mix(col1, col2, fac * 3 - 1);  
+    } else {
+        return mix(col2, col3, fac * 3 - 2);  
+    }
+}
+
+fn mix5(col0 : vec3<f32>, col1 : vec3<f32>, col2 : vec3<f32>, col3 : vec3<f32>, col4 : vec3<f32>, fac : f32) -> vec3<f32> {
+    if (fac < 1./4.) {
+        return mix(col0, col1, fac * 4);  
+    } else if (fac < 2./4.){
+        return mix(col1, col2, fac * 4 - 1);  
+    } else if (fac < 3./4.){
+        return mix(col2, col3, fac * 4 - 2);  
+    } else {
+        return mix(col3, col4, fac * 4 - 3);  
+    }
+}
+
 // phong calculates the lighting for a fragment given a material and light according to the phong model
 fn phong (material: Material, normal: vec3<f32>, eye: vec3<f32>, light: DirectionalLight) -> vec3<f32> {
     var diffuseFac = max(dot(normal, -light.direction), 0.0);

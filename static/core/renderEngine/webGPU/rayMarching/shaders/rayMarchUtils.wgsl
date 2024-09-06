@@ -4,7 +4,7 @@
 // structs ========================================================================================
 
 // information needed for the ray marching pass
-// 176 bytes in total
+// 180 bytes in total
 struct RayMarchPassInfo {
     @size(4)  flags : u32,
     @size(4)  framesSinceMove : u32,
@@ -19,6 +19,7 @@ struct RayMarchPassInfo {
     @size(64) dMatInv : mat4x4<f32>, // from world space -> data space
     @size(4)  isoSurfaceSrc : u32,
     @size(4)  surfaceColSrc : u32,
+    @size(4)  colourScale : u32,
 };
 
 // a set of flags for settings within the pass
@@ -43,6 +44,7 @@ struct RayMarchPassFlags {
     secantRoot: bool,
     renderNodeVals: bool,
     useBestDepth: bool,
+    showTestedCells: bool,
 };
 
 // the return value of the ray-march function
@@ -51,6 +53,7 @@ struct RayMarchResult {
     ray : Ray,
     volCol : vec3<f32>,
     normalFac : f32,
+    cellsTested : f32,
 };
 
 // offset optimisation sample
@@ -74,6 +77,10 @@ const DATA_SRC_VALUE_B = 2;
 const DATA_SRC_AXIS_X  = 3;
 const DATA_SRC_AXIS_Y  = 4;
 const DATA_SRC_AXIS_Z  = 5;
+
+const COL_SCALE_B_W = 0;
+const COL_SCALE_BL_W_R = 1;
+const COL_SCALE_BL_C_G_Y_R = 2;
 
 // functions ======================================================================================
 
@@ -100,6 +107,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 17)) != 0,
         (flagUint & (1u << 18)) != 0,
         (flagUint & (1u << 19)) != 0,
+        (flagUint & (1u << 20)) != 0,
     );
 };
 
@@ -254,7 +262,9 @@ fn marchRay(
     var stepsInside = 0u;
     var i = 0u;
 
-    var normalFac = 1.0;
+    var normalFac : f32 = 1.0;
+
+    var cellsTested : f32 = 0.0;
 
 
 
@@ -278,6 +288,10 @@ fn marchRay(
 
             // sample the dataset, this is an external function 
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+            if (passFlags.showTestedCells) {
+                cellsTested += sampleVal;
+                continue;
+            }
             thisAbove = sampleVal > passInfo.threshold;
             if (i > 0u) {
                 // check if the threshold has been crossed
@@ -351,8 +365,7 @@ fn marchRay(
         }
     }                    
 
-    // return RayMarchResult(fragCol, ray.length);
-    return RayMarchResult(foundSurface, ray, volCol, normalFac);
+    return RayMarchResult(foundSurface, ray, volCol, normalFac, cellsTested);
 }
 
 
@@ -397,25 +410,35 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32)
             var normalisedSampleVal = clamp(normaliseSample(sampleVal, dataSrc), 0.0, 1.0);
 
             // var cols = array<vec3<f32>, 3>(vec3<f32>(0, 0, 1))
-
-            // blue -> white -> red
-            // if (normalisedSampleVal < 0.5) {
-            //     material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(1, 1, 1), normalisedSampleVal * 2);  
-            // } else {
-            //     material.diffuseCol = mix(vec3<f32>(1, 1, 1), vec3<f32>(1, 0, 0), normalisedSampleVal * 2 - 1);  
-            // }
-
-            // blue -> cyan -> green -> yellow -> red
-            if (normalisedSampleVal < 0.25) {
-                material.diffuseCol = mix(vec3<f32>(0, 0, 1), vec3<f32>(0, 1, 1), normalisedSampleVal * 4);  
-            } else if (normalisedSampleVal < 0.5){
-                material.diffuseCol = mix(vec3<f32>(0, 1, 1), vec3<f32>(0, 1, 0), normalisedSampleVal * 4 - 1);  
-            } else if (normalisedSampleVal < 0.75){
-                material.diffuseCol = mix(vec3<f32>(0, 1, 0), vec3<f32>(1, 1, 0), normalisedSampleVal * 4 - 2);  
-            } else {
-                material.diffuseCol = mix(vec3<f32>(1, 1, 0), vec3<f32>(1, 0, 0), normalisedSampleVal * 4 - 3);  
+            switch (passInfo.colourScale) {
+                case COL_SCALE_B_W, default {
+                    material.diffuseCol = mix(
+                        vec3<f32>(0, 0, 0),
+                        vec3<f32>(1, 1, 1),
+                        normalisedSampleVal
+                    );
+                }
+                case COL_SCALE_BL_W_R {
+                    // blue -> white -> red
+                    material.diffuseCol = mix3(
+                        vec3<f32>(0, 0, 1),
+                        vec3<f32>(1, 1, 1),
+                        vec3<f32>(1, 0, 0),
+                        normalisedSampleVal
+                    );
+                }
+                case COL_SCALE_BL_C_G_Y_R {
+                    // blue -> cyan -> green -> yellow -> red
+                    material.diffuseCol = mix5(
+                        vec3<f32>(0, 0, 1),
+                        vec3<f32>(0, 1, 1),
+                        vec3<f32>(0, 1, 0),
+                        vec3<f32>(1, 1, 0),
+                        vec3<f32>(1, 0, 0),
+                        normalisedSampleVal
+                    );
+                }
             }
-
 
             material.specularCol = material.diffuseCol * 1.05;
             material.shininess = 10;        
