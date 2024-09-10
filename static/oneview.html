@@ -292,6 +292,11 @@
                     console.error("Could not initialise program");
                     return;
                 }
+
+                // show/hide the correct options
+                get("data-select").addEventListener("change", (e) => {
+
+                });
                 
                 var camera = new Camera();
                 // set the max views
@@ -422,6 +427,13 @@
                         description: "Display GPU memory usage",
                         f: function(e) {
                             console.log(renderEngine.getWebGPU().getResourcesString());
+                        }
+                    },
+                    "c": {
+                        description: "Copy frametime samples to clipboard",
+                        f: function(e) {
+                            frameTimeGraph.copySamples();
+                            console.log("Samples copied");
                         }
                     },
                     "Alt": {

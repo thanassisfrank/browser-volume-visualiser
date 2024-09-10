@@ -73,5 +73,13 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlready
         return total/this.lastSamples.length;
     }
 
+    this.copySamples = function() {
+        var str = "";
+        for (let sample of this.lastSamples) {
+            str += sample + "\n";
+        }
+        navigator.clipboard.writeText(str);
+    }
+
     this.init();
 }

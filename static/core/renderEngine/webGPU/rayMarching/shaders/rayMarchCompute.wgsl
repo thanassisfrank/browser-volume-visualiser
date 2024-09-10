@@ -100,6 +100,7 @@ struct InterpolationCell {
     points : array<array<f32, 3>, 4>,
     values : vec4<f32>,
     factors : vec4<f32>,
+    valid : bool, // wether the sample actually found a cell or not
 };
 
 struct Sample {
@@ -107,8 +108,15 @@ struct Sample {
     valid : bool
 };
 
+struct CellTestResult {
+    factors : vec4<f32>,
+    inside : bool
+}
+
 // used to keep a track of the last leaves sampled
-var<workgroup> lastLeavesBox : array<AABB, {{WGVol}}>;
+var<workgroup> lastLeafNodes : array<KDTreeNode, {{WGVol}}>;
+var<workgroup> lastLeafBoxes : array<AABB, {{WGVol}}>;
+
 var<workgroup> datasetBox : AABB;
 var<workgroup> passInfo : RayMarchPassInfo;
 var<workgroup> passFlags : RayMarchPassFlags;
@@ -117,6 +125,10 @@ var<private> threadIndex : u32;
 var<private> globalInfo : GlobalUniform;
 var<private> objectInfo : ObjectInfo;
 
+// cached results between sample points
+// var<private> lastLeafNode : KDTreeNode;
+// var<private> lastLeafBox : AABB;
+
 
 // returns the lowest node in the tree which contains the query point
 fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
@@ -124,28 +136,21 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
     var depth : u32 = 0u;
     var splitDimension : u32 = 0u;
     var currNodePtr : u32 = 0u;
-    var currNode : KDTreeNode;
+    var currNode : KDTreeNode = treeNodes.buffer[0];
     var box : AABB = datasetBox;
-    loop {
-        // make a node at the current position
-        currNode = treeNodes.buffer[currNodePtr];//makeNodeFrom(currNodePtr);
-        box.val = currNodePtr;
-        if (currNode.rightPtr != 0u) {
-            // have to carry on down the tree
-            if (queryPoint[splitDimension] <= currNode.splitVal) {
-                currNodePtr = currNode.leftPtr;
-                box.max[splitDimension] = currNode.splitVal;
-            } else {
-                currNodePtr = currNode.rightPtr;
-                box.min[splitDimension] = currNode.splitVal;
-            }
-            depth++;
-            splitDimension = depth % 3;
-        } else {
-            // got to the bottom
-            break;
-        }
 
+    while (currNode.rightPtr != 0) {
+        if (queryPoint[splitDimension] <= currNode.splitVal) {
+            box.max[splitDimension] = currNode.splitVal;
+            currNodePtr = currNode.leftPtr;
+        } else {
+            box.min[splitDimension] = currNode.splitVal;
+            currNodePtr = currNode.rightPtr;
+        }
+        currNode = treeNodes.buffer[currNodePtr];
+        box.val = currNodePtr;
+        depth++;
+        splitDimension = depth % 3;
     }
 
     return KDTreeResult(currNode, box, depth);
@@ -188,7 +193,7 @@ fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f3
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
-fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> CellTestResult {
     var x = queryPoint.x;
     var y = queryPoint.y;
     var z = queryPoint.z;
@@ -229,15 +234,10 @@ fn pointInTetDet(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> 
         1, p[3][0], p[3][1], p[3][2],      
     ));
 
-    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
-    } else if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol;
-    } else {
-        // not in this cell
-        return vec4<f32>(0);
-    }
-
+    return CellTestResult(
+        vec4<f32>(lambda1, lambda2, lambda3, lambda4)/vol,
+        (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) || (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0)
+    );
 }
 
 
@@ -260,34 +260,36 @@ fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u32) -> InterpolationCell {
     var cell : InterpolationCell;
 
+    var cellTest : CellTestResult;
+
     // check the cells in the leaf node found
     var cellsPtr = leafNode.leftPtr; // go to where cells are stored
     var foundCell = false;
     var cellID : u32;
-    var i = 0u;
-    loop {
-        if (i >= leafNode.cellCount) {break;}
+    var pointsOffset : u32;
+    for (var i = 0u; i < leafNode.cellCount; i++) {
+
         // go through and check all the contained cells
         cellID = treeCells.buffer[cellsPtr + i];
-        // create a cell from the data
 
         // figure out if cell is inside using barycentric coords
-        var pointsOffset : u32 = cellOffsets.buffer[cellID];
+        pointsOffset = cellOffsets.buffer[cellID];
         cell.points[0] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 0]];
         cell.points[1] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 1]];
         cell.points[2] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 2]];
         cell.points[3] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 3]];
 
         // check cell bounding box
-        if(!pointInTetBounds(queryPoint, cell)) {
-            i++;
-            continue;
+        if (pointInTetBounds(queryPoint, cell)) {
+            cellTest = pointInTetDet(queryPoint, cell);
+            cell.factors = cellTest.factors;
+            cell.valid = cellTest.inside;
         }
-        var tetFactors = pointInTetDet(queryPoint, cell);
-        if (length(tetFactors) == 0) {
-            i++;
-            continue;
-        };
+
+        if (cell.valid) {break;}
+    }
+
+    if (cell.valid) {
         switch (dataSrc) {
             case DATA_SRC_VALUE_A, default {
                 cell.values[0] = vertexDataA.buffer[cellConnectivity.buffer[pointsOffset + 0]];
@@ -302,9 +304,8 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
                 cell.values[3] = vertexDataB.buffer[cellConnectivity.buffer[pointsOffset + 3]];
             }
         }
-        cell.factors = tetFactors;
-        break;
     }
+
     return cell;
 }
 
@@ -314,10 +315,13 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
 // id of the leaf node is stored in the val of the box
 fn interpolateinNode(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
     var vals : array<f32, 8>;
-    if (dataSrc == DATA_SRC_VALUE_B) {
-        vals = cornerValuesB.buffer[leafBox.val];
-    } else {
-        vals = cornerValuesA.buffer[leafBox.val];
+    switch (dataSrc) {
+        case DATA_SRC_VALUE_A, default {
+            vals = cornerValuesA.buffer[leafBox.val];
+        }
+        case DATA_SRC_VALUE_B {
+            vals = cornerValuesB.buffer[leafBox.val];
+        }
     }
     // lerp in z direction
     var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
@@ -354,44 +358,45 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
 
     var queryPoint = vec3<f32>(x, y, z);
 
-    var leafNode : KDTreeNode;
-    var lastBox = lastLeavesBox[threadIndex];
-    // look at the previous leaf node queried
-    if (pointInAABB(queryPoint, lastBox)) {
-        // still in last leaf
-        var leafNode = treeNodes.buffer[lastBox.val];
+    var currLeafNode : KDTreeNode;
+    var currLeafBox : AABB;
+
+    // look at the previous leaf nodes found
+    if (pointInAABB(queryPoint, lastLeafBoxes[threadIndex])) {
+        currLeafNode = lastLeafNodes[threadIndex];
+        currLeafBox = lastLeafBoxes[threadIndex];
     } else {
         // gone to new leaf
         var result = getContainingLeafNode(queryPoint);
-        // cache the left node for the next sample along the ray
-        leafNode = result.node;
-        lastBox = result.box;
+        currLeafNode = result.node;
+        currLeafBox = result.box;
+        // cache the leaf node for the next sample along the ray
+        lastLeafNodes[threadIndex] = result.node;
+        lastLeafBoxes[threadIndex] = result.box;
     }
+
+    var sampleVal : f32;
 
     if (passFlags.showTestedCells) {
-        return f32(leafNode.cellCount);
-    }
-
-    // sample the leaf depending on what type it is
-    if (leafNode.cellCount > 0) {
+        sampleVal =  f32(currLeafNode.cellCount);
+    } else if (currLeafNode.cellCount > 0) {
+        // sample the leaf depending on what type it is
         // true leaf, sample the cells within
-        var cell : InterpolationCell = getContainingCell(queryPoint, leafNode, dataSrc);
+        var cell : InterpolationCell = getContainingCell(queryPoint, currLeafNode, dataSrc);
         // interpolate value
-        if (length(cell.factors) == 0) {
-            // not in any cell
-            // TODO: handle this better
-            return 0;
-        };
-        return dot(cell.values, cell.factors);
-    } else {
-        // pruned leaf, sample the node as a cell from its corner values
-        if (passFlags.renderNodeVals) {
-            return leafNode.splitVal;
+        if (!cell.valid) {
+            sampleVal = F32_OUTSIDE_CELLS;
         } else {
-            return interpolateinNode(queryPoint, lastBox, dataSrc);
+            sampleVal =  dot(cell.values, cell.factors);
         }
+    } else if (passFlags.renderNodeVals) {
+        // pruned leaf, sample the node as a cell from its corner values
+        sampleVal = currLeafNode.splitVal;
+    } else {
+        sampleVal = interpolateinNode(queryPoint, currLeafBox, dataSrc);
     }
 
+    return sampleVal;
     
 }
 
@@ -410,11 +415,7 @@ fn pixelOnVolume(x : u32, y : u32) -> bool {
 
 fn isFrontFacing(x : u32, y : u32) -> bool {
     var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
-    if (pixVal > 0) {
-        return true;
-    } else {
-        return false;
-    }
+    return pixVal > 0;
 }
 
 
@@ -436,7 +437,7 @@ fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
         - yProp*tan(camera.fovy/2)*normalize(camera.upDirection);
     ray.direction = normalize(unormRay);
     ray.tip = camera.position;
-    ray.length = 0;
+    ray.length = 0.0;
     return ray;
 }
 
@@ -471,12 +472,36 @@ fn main(
     passInfo = combinedPassInfo.passInfo;
     objectInfo = combinedPassInfo.objectInfo;
     globalInfo = combinedPassInfo.globalInfo;
+    passFlags = getFlags(passInfo.flags);
 
+    datasetBox = passInfo.dataBox;
     threadIndex = localIndex;
-    if (threadIndex == 1u) {
-        datasetBox = passInfo.dataBox;
-    }
     workgroupBarrier();
+
+    // A NEW ==========================================================
+
+    // var imageSize : vec2<u32> = textureDimensions(outputImage);
+    // // check if this thread is within the input image and on the mesh
+    // if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
+    //     // outside the image
+    //     return;
+    // }
+
+    // // calculate the world position of the starting fragment
+    // var ray = getRay(id.x, id.y, globalInfo.camera);
+
+    // var dataIntersect : RayIntersectionResult = intersectAABB(ray, datasetBox);
+
+    // if (dataIntersect.tNear > dataIntersect.tFar) {
+    //     // ray doesnt intersect dataset bounding box
+    //     return;
+    // }
+
+    // // extend to the closest touch of bounding box
+    // // extendRay(ray, max(0, dataIntersect.tNear + 0.1));
+    // var startInside = true;
+
+    // B OLD ===========================================================
 
     var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image and on the mesh
@@ -484,9 +509,6 @@ fn main(
         // outside the image
         return;
     }
-
-    // get the flags governing this pass
-    passFlags = getFlags(passInfo.flags);
 
     // calculate the world position of the starting fragment
     var ray = getRay(id.x, id.y, globalInfo.camera);
@@ -498,6 +520,11 @@ fn main(
         ray = extendRay(ray, depthVal + 0.01); // nudge the start just inside
         startInside = true;
     }
+
+    // ===========================================================================
+
+
+
     if (passFlags.showRayDirs) {
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
         return;

@@ -69,6 +69,11 @@ struct AABB {
     val : u32,
 };
 
+struct RayIntersectionResult {
+    tNear : f32,
+    tFar : f32
+};
+
 // constants ======================================================================================
 
 const DATA_SRC_NONE    = 0;
@@ -81,6 +86,9 @@ const DATA_SRC_AXIS_Z  = 5;
 const COL_SCALE_B_W = 0;
 const COL_SCALE_BL_W_R = 1;
 const COL_SCALE_BL_C_G_Y_R = 2;
+
+// placeholder value to indicate a sample is outside of the cells of the dataset
+const F32_OUTSIDE_CELLS : f32 = -exp2(32);
 
 // functions ======================================================================================
 
@@ -147,16 +155,27 @@ fn getOptimisationOffset(x : f32, prevOffset : f32, seed : u32) -> f32 {
     return prevOffset;
 }
 
+// https://tavianator.com/2011/ray_box.html
+// https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
+// https://github.com/codedhead/webrtx/blob/master/src/glsl/intersect.glsl
+// https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
+// returns tNear, tFar
+fn intersectAABB(ray : Ray, box : AABB) -> RayIntersectionResult {
+    var rayStart = ray.tip - ray.direction * ray.length;
+    var rayDirInv : vec3<f32> = 1/ray.direction;
+    var tMin : vec3<f32> = (box.min - rayStart) * rayDirInv;
+    var tMax : vec3<f32> = (box.max - rayStart) * rayDirInv;
+    var t1 : vec3<f32> = min(tMin, tMax);
+    var t2 : vec3<f32> = max(tMin, tMax);
+    return RayIntersectionResult(
+        max(max(t1.x, t1.y), t1.z), 
+        min(min(t2.x, t2.y), t2.z)
+    );
+}
+
 // test if a given point is within an AABB
 fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
-    if (
-        p.x < box.min.x || p.y < box.min.y || p.z < box.min.z ||
-        p.x > box.max.x || p.y > box.max.y || p.z > box.max.z
-    ) {
-        return false;
-    } else {
-        return true;
-    }
+    return !(p.x < box.min.x || p.y < box.min.y || p.z < box.min.z || p.x > box.max.x || p.y > box.max.y || p.z > box.max.z);
 };
 
 // recovers the normal (gradient) of the data at the given point
@@ -266,103 +285,87 @@ fn marchRay(
 
     var cellsTested : f32 = 0.0;
 
-
-
-    // main march loop
-    loop {
-        if (ray.length > passInfo.maxLength) {
-            break;
-        }
+    while (ray.length < passInfo.maxLength) {
         tipDataPos = toDataSpace(ray.tip); // the tip in data space
         // check if tip has left data
         if (!pointInAABB(tipDataPos, dataBox)) {
-            // not inside dataset
-            if (enteredDataset) {
-                // have gone all the way through the dataset
-                break;
-            }
-        } else {
-            // within dataset
-            enteredDataset = true;
-            stepsInside++;
+            // have gone all the way through the dataset
+            break;
+        }
 
-            // sample the dataset, this is an external function 
-            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
-            if (passFlags.showTestedCells) {
-                cellsTested += sampleVal;
-                continue;
-            }
-            thisAbove = sampleVal > passInfo.threshold;
-            if (i > 0u) {
-                // check if the threshold has been crossed
-                foundSurface = thisAbove != lastAbove && passFlags.showSurface && stepsInside > 1u;
+        stepsInside++;
 
-                if (passFlags.showVolume) {
-                    // acumulate colour
-                    volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
-                    // check if the volume is too opaque
-                    var cutoff : f32 = 1000;
-                    if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
-                        break;
-                    }
-                }
+        // sample the dataset, this is an external function 
+        sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+        if (passFlags.showTestedCells) {
+            cellsTested += sampleVal;
+            continue;
+        }
 
-                if (foundSurface) {
-                    normalFac -= (2 * f32(!thisAbove && lastAbove)); // invert normal if surface is intersected from behind
+        thisAbove = sampleVal > passInfo.threshold;
+        if (stepsInside > 1) {
+            // check if the threshold has been crossed
+            foundSurface = thisAbove != lastAbove && passFlags.showSurface;
+
+            if (passFlags.showVolume) {
+                // acumulate colour
+                volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                // check if the volume is too opaque
+                var cutoff : f32 = 1000;
+                if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
                     break;
                 }
             }
         }
-        
-        continuing {
-            var thisStepSize = passInfo.stepSize;//*ray.length/10;
 
-            if (stepsInside == 1u) {
-                // extend by the offset amount
-                thisStepSize *= offset;
-            }
-            ray = extendRay(ray, thisStepSize);
-            lastAbove = thisAbove;
-            lastLastSampleVal = lastSampleVal;
-            lastSampleVal = sampleVal;
-            lastStepSize = thisStepSize;
-            i += 1u;
+        if (foundSurface) {
+            normalFac -= (2 * f32(!thisAbove && lastAbove)); // invert normal if surface is intersected from behind
+            break;
         }
+        
+        var thisStepSize = passInfo.stepSize;//*ray.length/10;
+
+        if (stepsInside == 1u) {
+            // extend by the offset amount
+            thisStepSize *= offset;
+        }
+        ray = extendRay(ray, thisStepSize);
+        lastAbove = thisAbove;
+        lastLastSampleVal = lastSampleVal;
+        lastSampleVal = sampleVal;
+        lastStepSize = thisStepSize;
     }
 
+
     // handle surface intersection
-    if (foundSurface) {
-        // look for intersection between last two sample points
-        if (passFlags.backStep) {
-            var iSec = 0u;
+    if (foundSurface && passFlags.backStep) {
+        var iSec = 0u;
 
-            var xn0 = 0.0;
+        var xn0 = 0.0;
 
-            var xn1 = 0.0;
-            var fn1 = sampleVal - passInfo.threshold;
+        var xn1 = 0.0;
+        var fn1 = sampleVal - passInfo.threshold;
 
-            var xn2 = -lastStepSize;
-            var fn2 = lastSampleVal - passInfo.threshold;
-            loop {
-                if (iSec >= 1u) {break;}
-                if (iSec > 0u) {
-                    xn2 = xn1;
-                    fn2 = fn1;
+        var xn2 = -lastStepSize;
+        var fn2 = lastSampleVal - passInfo.threshold;
+        loop {
+            if (iSec >= 1u) {break;}
+            if (iSec > 0u) {
+                xn2 = xn1;
+                fn2 = fn1;
 
-                    xn1 = xn0;
-                    var secRay = extendRay(ray, xn0);
-                    var secDataPos = toDataSpace(secRay.tip);
-                    fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z, passInfo.isoSurfaceSrc) - passInfo.threshold;
-                }
-                xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
-                iSec++;
+                xn1 = xn0;
+                var secRay = extendRay(ray, xn0);
+                var secDataPos = toDataSpace(secRay.tip);
+                fn1 = sampleDataValue(secDataPos.x, secDataPos.y, secDataPos.z, passInfo.isoSurfaceSrc) - passInfo.threshold;
             }
-            // adjust last step for correct volume integration
-            lastStepSize += min(0, max(-lastStepSize, xn0));
-            ray = extendRay(ray, xn0);
-            tipDataPos = toDataSpace(ray.tip);
-
+            xn0 = (xn2*fn1 - xn1*fn2)/(fn1 - fn2);
+            iSec++;
         }
+        // adjust last step for correct volume integration
+        lastStepSize += min(0, max(-lastStepSize, xn0));
+        ray = extendRay(ray, xn0);
+        tipDataPos = toDataSpace(ray.tip);
     }                    
 
     return RayMarchResult(foundSurface, ray, volCol, normalFac, cellsTested);
