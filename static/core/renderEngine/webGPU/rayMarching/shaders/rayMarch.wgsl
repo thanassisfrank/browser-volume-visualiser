@@ -180,7 +180,8 @@ fn fragment_main(
     
     if (passFlags.showDeviceCoords) {
         return FragmentOut(
-            vec4<f32>(deviceCoords, 0, 1), 
+            // vec4<f32>(deviceCoords, 0, 1), 
+            vec4<f32>(fragInfo.outPosition.z, 0, 0, 1), 
             vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
         );
     }

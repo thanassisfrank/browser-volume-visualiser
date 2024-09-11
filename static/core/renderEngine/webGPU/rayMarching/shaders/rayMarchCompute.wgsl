@@ -97,7 +97,7 @@ struct KDTreeResult {
 }
 
 struct InterpolationCell {
-    points : array<array<f32, 3>, 4>,
+    points : array<vec3<f32>, 4>,
     values : vec4<f32>,
     factors : vec4<f32>,
     valid : bool, // wether the sample actually found a cell or not
@@ -158,12 +158,12 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 
 
 // this implementation uses the scalar triple product
-fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f32> {
+fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> CellTestResult {
     var p = queryPoint;
-    var a = vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
-    var b = vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
-    var c = vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
-    var d = vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
+    var a = cell.points[0];////vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
+    var b = cell.points[1];////vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
+    var c = cell.points[2];////vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
+    var d = cell.points[3];////vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
 
     var vap : vec3<f32> = p - a;
     var vbp : vec3<f32> = p - b;
@@ -174,20 +174,16 @@ fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> vec4<f3
     var vbc : vec3<f32> = c - b;
     var vbd : vec3<f32> = d - b;
     
-    var lambda1 : f32 = scalarTriple(vbp, vbd, vbc);
-    var lambda2 : f32 = scalarTriple(vap, vac, vad);
-    var lambda3 : f32 = scalarTriple(vap, vad, vab);
-    var lambda4 : f32 = scalarTriple(vap, vab, vac);
-    var v : f32 = scalarTriple(vab, vac, vad);
+    var lambda1 : f32 = dot(vbp, cross(vbd, vbc));
+    var lambda2 : f32 = dot(vap, cross(vac, vad));
+    var lambda3 : f32 = dot(vap, cross(vad, vab));
+    var lambda4 : f32 = dot(vap, cross(vab, vac));
+    var v : f32 =       dot(vab, cross(vac, vad));
 
-    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
-    } else if (lambda1 > 0 && lambda2 > 0 && lambda3 > 0 && lambda4 > 0) {
-        return vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v;
-    } else {
-        // not in this cell
-        return vec4<f32>(0);
-    }
+    return CellTestResult(
+        vec4<f32>(lambda1, lambda2, lambda3, lambda4)/v,
+        (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) || (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0)
+    );
 }
 
 
@@ -267,6 +263,10 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
     var foundCell = false;
     var cellID : u32;
     var pointsOffset : u32;
+    var p0 : array<f32, 3>;
+    var p1 : array<f32, 3>;
+    var p2 : array<f32, 3>;
+    var p3 : array<f32, 3>;
     for (var i = 0u; i < leafNode.cellCount; i++) {
 
         // go through and check all the contained cells
@@ -274,14 +274,24 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
 
         // figure out if cell is inside using barycentric coords
         pointsOffset = cellOffsets.buffer[cellID];
-        cell.points[0] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 0]];
-        cell.points[1] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 1]];
-        cell.points[2] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 2]];
-        cell.points[3] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 3]];
+
+        p0 = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+        cell.points[0] = vec3<f32>(p0[0], p0[1], p0[2]);
+        p1 = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+        cell.points[1] = vec3<f32>(p1[0], p1[1], p1[2]);
+        p2 = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+        cell.points[2] = vec3<f32>(p2[0], p2[1], p2[2]);
+        p3 = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 3]];
+        cell.points[3] = vec3<f32>(p3[0], p3[1], p3[2]);
+
+        // cell.points[0] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 0]];
+        // cell.points[1] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 1]];
+        // cell.points[2] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 2]];
+        // cell.points[3] = vertexPositions.buffer[cellConnectivity.buffer[pointsOffset + 3]];
 
         // check cell bounding box
         if (pointInTetBounds(queryPoint, cell)) {
-            cellTest = pointInTetDet(queryPoint, cell);
+            cellTest = pointInTetTriple(queryPoint, cell);
             cell.factors = cellTest.factors;
             cell.valid = cellTest.inside;
         }

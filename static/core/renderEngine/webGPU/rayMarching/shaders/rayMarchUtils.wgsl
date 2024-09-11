@@ -178,11 +178,31 @@ fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
     return !(p.x < box.min.x || p.y < box.min.y || p.z < box.min.z || p.x > box.max.x || p.y > box.max.y || p.z > box.max.z);
 };
 
+// fn intersectPlane(ray : Ray, normal : vec3<f32>, p0 : vec3<f32>) -> RayIntersectionResult {
+//     p0-
+// }
+
 // recovers the normal (gradient) of the data at the given point
 fn getDataNormal (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
     var epsilon : f32 = 0.5;
     var gradient : vec3<f32>;
     var p0 = sampleDataValue(x, y, z, dataSrc);
+    // gradient.x = select(
+    //     (p0 - sampleDataValue(x + epsilon, y, z, dataSrc))/epsilon, 
+    //     -(p0 - sampleDataValue(x - epsilon, y, z, dataSrc))/epsilon, 
+    //     x > epsilon
+    // );
+    // gradient.y = select(
+    //     (p0 - sampleDataValue(x, y + epsilon, z, dataSrc))/epsilon, 
+    //     -(p0 - sampleDataValue(x, y - epsilon, z, dataSrc))/epsilon, 
+    //     y > epsilon
+    // );
+    // gradient.z = select(
+    //     (p0 - sampleDataValue(x, y, z + epsilon, dataSrc))/epsilon, 
+    //     -(p0 - sampleDataValue(x, y, z - epsilon, dataSrc))/epsilon, 
+    //     z > epsilon
+    // );
+
     if (x > epsilon) {
         gradient.x = -(p0 - sampleDataValue(x - epsilon, y, z, dataSrc))/epsilon;
     } else {
@@ -284,58 +304,60 @@ fn marchRay(
     var normalFac : f32 = 1.0;
 
     var cellsTested : f32 = 0.0;
+    
 
+    // march the actual datasets
     while (ray.length < passInfo.maxLength) {
         tipDataPos = toDataSpace(ray.tip); // the tip in data space
-        // check if tip has left data
+        // check if tip is inside dataset
         if (!pointInAABB(tipDataPos, dataBox)) {
             // have gone all the way through the dataset
-            break;
-        }
+            if (enteredDataset) {
+                break;
+            }
+        } else {
+            enteredDataset = true;
+            stepsInside++;
 
-        stepsInside++;
+            // sample the dataset, this is an external function 
+            sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+            if (passFlags.showTestedCells) {
+                cellsTested += sampleVal;
+                continue;
+            }
 
-        // sample the dataset, this is an external function 
-        sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
-        if (passFlags.showTestedCells) {
-            cellsTested += sampleVal;
-            continue;
-        }
+            thisAbove = sampleVal > passInfo.threshold;
+            if (stepsInside > 1) {
+                // check if the threshold has been crossed
+                foundSurface = thisAbove != lastAbove && passFlags.showSurface;
 
-        thisAbove = sampleVal > passInfo.threshold;
-        if (stepsInside > 1) {
-            // check if the threshold has been crossed
-            foundSurface = thisAbove != lastAbove && passFlags.showSurface;
-
-            if (passFlags.showVolume) {
-                // acumulate colour
-                volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
-                // check if the volume is too opaque
-                var cutoff : f32 = 1000;
-                if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
-                    break;
+                if (passFlags.showVolume) {
+                    // acumulate colour
+                    volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                    // check if the volume is too opaque
+                    var cutoff : f32 = 1000;
+                    if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
+                        break;
+                    }
                 }
+            }
+
+            if (foundSurface) {
+                normalFac = select(1.0, -1.0, !thisAbove && lastAbove);
+                break;
             }
         }
 
-        if (foundSurface) {
-            normalFac -= (2 * f32(!thisAbove && lastAbove)); // invert normal if surface is intersected from behind
-            break;
-        }
-        
         var thisStepSize = passInfo.stepSize;//*ray.length/10;
 
-        if (stepsInside == 1u) {
-            // extend by the offset amount
-            thisStepSize *= offset;
-        }
+        thisStepSize *= select(1.0, offset, stepsInside == 1u);
+
         ray = extendRay(ray, thisStepSize);
         lastAbove = thisAbove;
         lastLastSampleVal = lastSampleVal;
         lastSampleVal = sampleVal;
         lastStepSize = thisStepSize;
     }
-
 
     // handle surface intersection
     if (foundSurface && passFlags.backStep) {

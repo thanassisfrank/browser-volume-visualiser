@@ -442,7 +442,7 @@ var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlo
 // if a node is 
 export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
     // get the node scores, n lowest highest
-    var scores = getNodeScores(dataObj, 0, focusCoords, camCoords, 10);
+    var scores = getNodeScores(dataObj, 0, focusCoords, camCoords, 20);
     scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
     // console.log(scores);
     // update the dynamic buffer contents
