@@ -205,7 +205,7 @@ fn fragment_main(
 
     // do ray-marching step
     if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, passInfo.maxLength);
     }
 
     if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {

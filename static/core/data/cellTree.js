@@ -733,6 +733,28 @@ var getCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rightPtr) =
     var rightCorners = cornerValBuffer.slice(rightPtr*8, (rightPtr + 1)*8);
     var thisCorners = new Float32Array(8);
 
+
+    // thisCorners[0] = 0.5*leftCorners[0] + (leftCorners[1] + leftCorners[2] + leftCorners[4])/6;
+    // thisCorners[1] = 0.5*leftCorners[1] + (leftCorners[0] + leftCorners[3] + leftCorners[5])/6;
+    // thisCorners[2] = 0.5*leftCorners[2] + (leftCorners[0] + leftCorners[3] + leftCorners[4])/6;
+    // thisCorners[3] = 0.5*leftCorners[3] + (leftCorners[1] + leftCorners[2] + leftCorners[7])/6;
+
+    // thisCorners[4] = 0.5*rightCorners[4] + (rightCorners[0] + rightCorners[5] + rightCorners[6])/6;
+    // thisCorners[5] = 0.5*rightCorners[5] + (rightCorners[1] + rightCorners[4] + rightCorners[7])/6;
+    // thisCorners[6] = 0.5*rightCorners[6] + (rightCorners[2] + rightCorners[4] + rightCorners[7])/6;
+    // thisCorners[7] = 0.5*rightCorners[6] + (rightCorners[3] + rightCorners[5] + rightCorners[6])/6;
+    
+
+    // // perform averaging for low-pass effect
+    // for (let i = 0; i < 8; i++) {
+    //     if ((i >> splitDim & 1) == 1) {
+    //         thisCorners[i] = 0.5*rightCorners[i] + 0.5*leftCorners[i];
+    //     } else {
+    //         thisCorners[i] = 0.5*leftCorners[i] + 0.5*rightCorners[i];
+    //     }
+    // }
+
+    // select which is coincident with the parent node's corners
     for (let i = 0; i < 8; i++) {
         if ((i >> splitDim & 1) == 1) {
             thisCorners[i] = rightCorners[i];

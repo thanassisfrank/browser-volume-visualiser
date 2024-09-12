@@ -146,6 +146,7 @@
             <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" checked><label>Bounding box</label><br>
             <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
             <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Mesh wireframe</label><br>
+            <input type="checkbox" class="dataset-opt" name="GEOMETRY" ><label>Geometry</label><br>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -324,6 +325,7 @@
                     if (opts.DATA_RAY_VOLUME.checked) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
                     if (opts.DATA_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
                     if (opts.BOUNDING_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+                    if (opts.GEOMETRY.checked) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
                     
                     var newView = await viewManager.createView({
                         camera: camera,

@@ -278,7 +278,8 @@ fn marchRay(
     rayStub : Ray, 
     dataBox : AABB,
     startInDataset : bool, 
-    offset : f32
+    offset : f32,
+    maxLength : f32
 ) -> RayMarchResult {
     var ray = rayStub;
     var enteredDataset = startInDataset;
@@ -307,7 +308,7 @@ fn marchRay(
     
 
     // march the actual datasets
-    while (ray.length < passInfo.maxLength) {
+    while (ray.length < maxLength) {
         tipDataPos = toDataSpace(ray.tip); // the tip in data space
         // check if tip is inside dataset
         if (!pointInAABB(tipDataPos, dataBox)) {
@@ -321,30 +322,28 @@ fn marchRay(
 
             // sample the dataset, this is an external function 
             sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
-            if (passFlags.showTestedCells) {
-                cellsTested += sampleVal;
-                continue;
-            }
+            cellsTested += sampleVal;
+            if (!passFlags.showTestedCells) {
+                thisAbove = sampleVal > passInfo.threshold;
+                if (stepsInside > 1) {
+                    // check if the threshold has been crossed
+                    foundSurface = thisAbove != lastAbove && passFlags.showSurface;
 
-            thisAbove = sampleVal > passInfo.threshold;
-            if (stepsInside > 1) {
-                // check if the threshold has been crossed
-                foundSurface = thisAbove != lastAbove && passFlags.showSurface;
-
-                if (passFlags.showVolume) {
-                    // acumulate colour
-                    volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
-                    // check if the volume is too opaque
-                    var cutoff : f32 = 1000;
-                    if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
-                        break;
+                    if (passFlags.showVolume) {
+                        // acumulate colour
+                        volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                        // check if the volume is too opaque
+                        var cutoff : f32 = 1000;
+                        if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (foundSurface) {
-                normalFac = select(1.0, -1.0, !thisAbove && lastAbove);
-                break;
+                if (foundSurface) {
+                    normalFac = select(1.0, -1.0, !thisAbove && lastAbove);
+                    break;
+                }
             }
         }
 

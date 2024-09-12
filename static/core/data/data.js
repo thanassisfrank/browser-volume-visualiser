@@ -203,7 +203,6 @@ var dataManager = {
             dataObj.data.positions[3 * pointIndex + 2] = z;
         }
         
-        // looks like only last tet is being written/read
         // rip hexahedra
         for (let k = 0; k < dataSize[2] - 1; k++) { // loop z
             for (let j = 0; j < dataSize[1] - 1; j++) { // loop y
@@ -219,7 +218,7 @@ var dataManager = {
                         ]
                     );
 
-                    // // tet 2
+                    // tet 2
                     writeTet(5 * thisIndex + 1, 
                         [
                             [i + 1, j,     k    ],
@@ -229,7 +228,7 @@ var dataManager = {
                         ]
                     );
                         
-                    // // tet 3
+                    // tet 3
                     writeTet(5 * thisIndex + 2, 
                         [
                             [i,     j,     k + 1],
@@ -239,7 +238,7 @@ var dataManager = {
                         ]
                     );
 
-                    // // tet 4
+                    // tet 4
                     writeTet(5 * thisIndex + 3, 
                         [
                             [i,     j,     k + 1],
@@ -249,7 +248,7 @@ var dataManager = {
                         ]
                     );
 
-                    // // tet 5
+                    // tet 5
                     writeTet(5 * thisIndex + 4, 
                         [
                             [i + 1, j,     k    ],
@@ -368,6 +367,11 @@ function Data(id) {
         dynamicTreeCells: null,
     };
 
+    // any additional mesh geometry that is part of the dataset but not part of the mesh
+    this.geometry = {
+
+    }
+
 
     this.flowSolutionNode = null;
 
@@ -444,10 +448,11 @@ function Data(id) {
 
         
         // get connectivity information for an element node of this zone
-        var elementsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "Elements_t")[0]; // get zone type node
-        var elementTypeInt = elementsNode.get(" data").value[0];
-        var elementRange = elementsNode.get("ElementRange/ data").value;
-        var connectivityNode = elementsNode.get("ElementConnectivity");
+        var gridElementsNode = CGNSZoneNode.get("GridElements");
+
+        var elementTypeInt = gridElementsNode.get(" data").value[0];
+        var elementRange = gridElementsNode.get("ElementRange/ data").value;
+        var connectivityNode = gridElementsNode.get("ElementConnectivity");
         
         var elementCount = elementRange[1] - elementRange[0] + 1;
         
@@ -473,6 +478,28 @@ function Data(id) {
         this.flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
 
 
+        // extract any mesh elements for structures/boundaries etc
+        // look for element nodes where the type is TRI_3 = 5
+        // the indices all reference this.data.positions
+        var elementNodes = cgns.getChildrenWithLabel(CGNSZoneNode, "Elements_t");
+        for (let node of elementNodes) {
+            if (cgns.ELEMENT_TYPES[node.get(" data").value[0]] != "TRI_3") continue
+            var meshName = node.attrs.name.value;
+            // don't include the boundary planes
+            if (["symmetry", "downstream", "upstream", "side", "lower", "upper"].includes(meshName)) continue;
+
+            // we have a triangular mesh element node
+            var indices = node.get("ElementConnectivity/ data").value;
+            for (let i = 0; i < indices.length; i++) {
+                indices[i]--;
+            }
+
+            this.geometry[node.attrs.name.value] = {
+                indices: indices
+            };
+        }
+
+        console.log(this.geometry);
         
     };
 

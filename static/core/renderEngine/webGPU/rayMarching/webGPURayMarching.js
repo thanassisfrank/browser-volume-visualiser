@@ -244,7 +244,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 {
                     visibility: GPUShaderStage.COMPUTE,
                     texture: {
-                        sampleType: "unfilterable-float",
+                        sampleType: "depth",
                         viewDimension: "2d",
                         multiSampled: "false"
                     }
@@ -289,7 +289,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 return webGPU.createPassDescriptor(
                     webGPU.PassTypes.RENDER, 
                     {
-                        vertexLayout: webGPU.vertexLayouts.justPosition, 
+                        vertexLayout: webGPU.vertexLayouts.position, 
                         colorAttachmentFormats: ["bgra8unorm", "rg32float"],
                         topology: "triangle-list", 
                         indexed: true
@@ -305,7 +305,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 return webGPU.createPassDescriptor(
                     webGPU.PassTypes.RENDER,
                     {
-                        vertexLayout: webGPU.vertexLayouts.justPosition, 
+                        vertexLayout: webGPU.vertexLayouts.position, 
                         colorAttachmentFormats: ["r32float"],
                         topology: "triangle-list", 
                         indexed: true,
@@ -388,7 +388,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
     this.createUnstructuredDataRenderable = async function(dataObj) {
-        var renderable = new Renderable(RenderableTypes.UNSTRUCTURED_DATA, RenderableRenderModes.NONE);
+        var renderable = new Renderable(RenderableTypes.UNSTRUCTURED_DATA, RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME);
         var renderData = renderable.renderData;
 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -403,6 +403,12 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
         renderable.passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};;
         renderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
+
+        renderable.passData.dataBoxMin = dataObj.extentBox.min;
+        renderable.passData.dataBoxMax = dataObj.extentBox.max;
+        renderable.passData.dMatInv = dataObj.getdMatInv();
+
+        renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
         renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
         renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
@@ -420,6 +426,40 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         } else {
             throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode?.toString() + "'";
         }
+
+        renderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
+        renderable.renderData.buffers.objectInfo = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
+
+        renderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
+        
+        
+        renderable.renderData.bindGroups.compute0 = webGPU.generateBG(
+            this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
+            [
+                renderable.renderData.buffers.combinedPassInfo, 
+            ],
+        );
+
+        renderable.renderData.bindGroups.compute1 = webGPU.generateBG(
+            this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
+            [
+                renderable.renderData.buffers.treeNodes,
+                renderable.renderData.buffers.treeCells,
+                renderable.renderData.buffers.positions,
+                renderable.renderData.buffers.cellConnectivity,
+                renderable.renderData.buffers.cellOffsets,
+                
+            ]
+        );
+        renderable.renderData.bindGroups.compute2 = webGPU.generateBG(
+            this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
+            [
+                renderable.renderData.buffers.valuesA,
+                renderable.renderData.buffers.valuesB,
+                renderable.renderData.buffers.cornerValuesA,
+                renderable.renderData.buffers.cornerValuesB,
+            ]
+        );
         
         return renderable;
     }
@@ -459,6 +499,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 faceRenderMode == RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME
             );
             faceRenderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
+            faceRenderable.passData.faceIndex = i;
+
+
             // calculate the midpoint
             var midPoint = [0, 0, 0];
             for (let j = 0; j < faceIndices.length; j++) {
@@ -472,6 +515,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
             faceRenderable.objectSpaceMidPoint = midPoint;
             faceRenderable.depthSort = true;
+            faceRenderable.highPriority = true;
 
             // faceRenderable.passData.threshold = dataObj.threshold;
             // faceRenderable.passData.limits = dataObj.getLimits(0);
@@ -503,50 +547,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         dataRenderable.renderData.textures.valuesB.createView(),
                     ],
                 );
-            } else {
-                // unstructured
-                // setup buffers for compute ray march pass
-                faceRenderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
-                faceRenderable.renderData.buffers.objectInfoStorage = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
-                faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
-
-                faceRenderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
-                
-                faceRenderable.renderData.bindGroups.depth0 = webGPU.generateBG(
-                    this.depthRenderPassDescriptor.bindGroupLayouts[0],
-                    [
-                        constsBuffer, 
-                        faceRenderable.renderData.buffers.objectInfo
-                    ]
-                );
-                
-                faceRenderable.renderData.bindGroups.compute0 = webGPU.generateBG(
-                    this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
-                    [
-                        faceRenderable.renderData.buffers.combinedPassInfo, 
-                    ],
-                );
-
-                faceRenderable.renderData.bindGroups.compute1 = webGPU.generateBG(
-                    this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
-                    [
-                        dataRenderable.renderData.buffers.treeNodes,
-                        dataRenderable.renderData.buffers.treeCells,
-                        dataRenderable.renderData.buffers.positions,
-                        dataRenderable.renderData.buffers.cellConnectivity,
-                        dataRenderable.renderData.buffers.cellOffsets,
-                        
-                    ]
-                );
-                faceRenderable.renderData.bindGroups.compute2 = webGPU.generateBG(
-                    this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
-                    [
-                        dataRenderable.renderData.buffers.valuesA,
-                        dataRenderable.renderData.buffers.valuesB,
-                        dataRenderable.renderData.buffers.cornerValuesA,
-                        dataRenderable.renderData.buffers.cornerValuesB,
-                    ]
-                );
             }
 
 
@@ -564,6 +564,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // create the renderable that contains the data
         if (dataObj.dataFormat == DataFormats.STRUCTURED) {
             var dataRenderable = await this.createStructuredDataRenderable(dataObj);
+            // create and add the mesh renderables
+            dataObj.renderables.push(...this.createDataMeshRenderables(dataObj, dataRenderable));
         } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
             var dataRenderable = await this.createUnstructuredDataRenderable(dataObj);
         } else {
@@ -586,8 +588,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         // add the data renderable
         dataObj.renderables.push(dataRenderable);
-        // create and add the mesh renderables
-        dataObj.renderables.push(...this.createDataMeshRenderables(dataObj, dataRenderable));
+        
         
         console.log("setup data for ray marching");
     }
@@ -755,6 +756,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     var valueBufferCreatedCol = colLoadResult.created;
                 }
 
+                passData.isoSurfaceSrc = dataObj.isoSurfaceSrc;
+                passData.surfaceColSrc = dataObj.surfaceColSrc;
+
                 // true if a buffer was created for either
                 valueBufferCreated = valueBufferCreatedIso || valueBufferCreatedCol;
 
@@ -779,24 +783,29 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             }
         }
 
+
+
         if (!dataRenderable) return;
+
+        if (dataRenderable.type == RenderableTypes.UNSTRUCTURED_DATA && valueBufferCreated) {
+            // recreate bindgroup 2 from the compute pass
+            dataRenderable.renderData.bindGroups.compute2 = webGPU.generateBG(
+                this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
+                [
+                    dataRenderable.renderData.buffers.valuesA,
+                    dataRenderable.renderData.buffers.valuesB,
+                    dataRenderable.renderData.buffers.cornerValuesA,
+                    dataRenderable.renderData.buffers.cornerValuesB,
+                ]
+            );
+        }
+
         
         // update the face renderables
         for (let renderable of dataObj.renderables) {
             if (renderable.type != RenderableTypes.MESH) continue;
             if (valueBufferCreated) {
-                if(dataRenderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
-                    // recreate bindgroup 2 from the compute pass
-                    renderable.renderData.bindGroups.compute2 = webGPU.generateBG(
-                        this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
-                        [
-                            dataRenderable.renderData.buffers.valuesA,
-                            dataRenderable.renderData.buffers.valuesB,
-                            dataRenderable.renderData.buffers.cornerValuesA,
-                            dataRenderable.renderData.buffers.cornerValuesB,
-                        ]
-                    );
-                } else if (dataRenderable.type == RenderableTypes.DATA) {
+                if (dataRenderable.type == RenderableTypes.DATA) {
                     renderable.renderData.bindGroups.rayMarch1 =  webGPU.generateBG(
                         this.rayMarchPassDescriptor.bindGroupLayouts[1],
                         [
@@ -885,6 +894,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
     // do ray marching on the data
+    // this is run for every face of the bounding box
     this.march = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, canvas) {
         var commandEncoder = await device.createCommandEncoder();
         
@@ -962,35 +972,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         device.queue.submit([commandEncoder.finish()]);
     }
 
+    // this is run for every face of the bounding box
     this.marchUnstructured = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
+        // if (renderable.passData.faceIndex != 0) return;
         var commandEncoder = await device.createCommandEncoder();
-
-        var attachments = {
-            colorAttachments: [{
-                clearValue: {r: 0, g: 0, b: 0, a: 0},
-                loadOp: "clear",
-                storeOp: "store",
-                view: this.depthTexture.createView()
-            }],
-            depthStencilAttachment: outputDepthAttachment
-        }
-
-        // draw the mesh into the texture
-        var depthPass = {
-            ...this.depthRenderPassDescriptor,
-            renderDescriptor: attachments,
-            bindGroups: {
-                0: renderable.renderData.bindGroups.depth0
-            },
-            box: box,
-            boundingBox: ctx.canvas.getBoundingClientRect(),
-            vertexBuffers: [renderable.renderData.buffers.vertex],
-            indexBuffer: renderable.renderData.buffers.index,
-            indicesCount: renderable.indexCount,
-        }
-
-        // encode the depth pass
-        webGPU.encodeGPUPass(commandEncoder, depthPass);
 
 
         // do a full ray march pass
@@ -1008,7 +993,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 3: webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[3],
                     [
-                        this.depthTexture.createView(),
+                        outputDepthAttachment.view,
                         this.offsetOptimisationTextureOld.createView(),
                         this.offsetOptimisationTextureNew.createView(),
                         outputColourAttachment.view
@@ -1020,18 +1005,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         // encode the render pass
         webGPU.encodeGPUPass(commandEncoder, rayMarchComputePass);
-
-        // write buffers
-        // global info buffer for depth pass
-        webGPU.writeDataToBuffer(
-            constsBuffer,
-            [camera.serialise(), new Uint32Array([performance.now()])]
-        );
-        // object info for depth pass
-        webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.objectInfo, 
-            [new Float32Array(renderable.transform), renderable.serialisedMaterials]
-        );
         
 
         // global info buffer for compute
@@ -1066,7 +1039,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
-                    0, 0, // padding
+                    0, 0,
                     ...renderable.passData.dMatInv,
                 ]),
                 new Uint32Array([
@@ -1078,5 +1051,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         )
 
         device.queue.submit([commandEncoder.finish()]);
+        // console.log(renderable.passData);
     }
 }

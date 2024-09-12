@@ -158,59 +158,65 @@
 		},
 		"dataType": "int16"
 	},
-	"bluntfin": {
-		"name": "Blunt fin",
-		"path": "data/bluntfin/",
-		"type": "structuredGrid",
-		"originalFiles": [
-			"bluntfin_0.vts",
-			"bluntfin_1.vts"
+	"fuel": {
+		"name": "Fuel",
+		"path": "data/fuel_64x64x64_uint8.raw",
+		"type": "raw",
+		"limits": [
+			0,
+			255
 		],
-		"pieces": [
-			{
-				"fileName": "bluntfin_0",
-				"size": {
-					"x": 32,
-					"y": 32,
-					"z": 40
-				},
-				"blocksSize": {
-					"x": 8,
-					"y": 8,
-					"z": 10
-				}
-			},
-			{
-				"fileName": "bluntfin_1",
-				"size": {
-					"x": 32,
-					"y": 32,
-					"z": 40
-				},
-				"blocksSize": {
-					"x": 8,
-					"y": 8,
-					"z": 10
-				}
-			}
-		],
-		"data": {
-			"Density": {
-				"name": "Density",
-				"limits": [
-					0.19259999692440033,
-					4.977499961853027
-				],
-				"dataType": "float32",
-				"components": 1
-			}
+		"size": {
+			"x": 64,
+			"y": 64,
+			"z": 64
 		},
-		"origin": [
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"dataType": "uint8"
+	},
+	"shockwave": {
+		"name": "Shockwave",
+		"path": "data/shockwave_64x64x512_uint8.raw",
+		"type": "raw",
+		"limits": [
 			0,
-			0,
-			0
+			255
 		],
-		"complexAvailable": true
+		"size": {
+			"x": 512,
+			"y": 64,
+			"z": 64
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"dataType": "uint8"
+	},
+	"hcci": {
+		"name": "HCCI",
+		"path": "data/hcci_oh_560x560x560_float32.raw",
+		"type": "raw",
+		"limits": [
+			-1,
+			12
+		],
+		"size": {
+			"x": 560,
+			"y": 560,
+			"z": 560
+		},
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+		"dataType": "float32"
 	},
 	"yf17_hdf5": {
 		"name": "YF17",

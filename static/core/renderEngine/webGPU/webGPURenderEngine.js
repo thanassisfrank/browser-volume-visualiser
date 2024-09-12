@@ -64,7 +64,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.surfaceRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {
-                vertexLayout: webGPU.vertexLayouts.positionAndNormal,
+                vertexLayout: webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"], 
                 topology: "triangle-list", 
                 indexed: true
@@ -76,7 +76,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.pointsRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {
-                vertexLayout: webGPU.vertexLayouts.positionAndNormal, 
+                vertexLayout: webGPU.vertexLayouts.position, 
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "point-list", 
                 indexed: false
@@ -88,7 +88,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.linesRenderPassDescriptor = webGPU.createPassDescriptor(
             webGPU.PassTypes.RENDER, 
             {
-                vertexLayout: webGPU.vertexLayouts.positionAndNormal, 
+                vertexLayout: webGPU.vertexLayouts.position, 
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "line-list", 
                 indexed: true
@@ -128,7 +128,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             },
             dimension: "2d",
             format: "depth32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
         });
 
         const renderPassDescriptor = {
@@ -195,7 +195,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             ...thisPassDescriptor,
             vertexCount: renderable.vertexCount,
             indicesCount: renderable.indexCount,
-            vertexBuffers: [renderable.renderData.buffers.vertex, renderable.renderData.buffers.normal],
+            vertexBuffers: [renderable.renderData.buffers.vertex],
             indexBuffer: renderable.renderData.buffers?.index,
             bindGroups: {
                 0: webGPU.generateBG(
@@ -277,9 +277,12 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
                     this.rayMarcher.march(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.canvas);
                 } else if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
-                    this.rayMarcher.marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
                 } else {
                     this.renderMesh(renderable, camera, outputColourAttachment, outputDepthAttachment, box);
+                }
+            } else if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
+                if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
+                    this.rayMarcher.marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
                 }
             }
         }

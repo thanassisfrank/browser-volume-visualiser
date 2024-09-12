@@ -110,6 +110,7 @@ export const SceneObjectRenderModes = {
     DATA_RAY_VOLUME:       64,
     BOUNDING_WIREFRAME:   128,
     DATA_WIREFRAME:       256,
+    DATA_MESH_GEOMETRY:   512,
 }
 
 export function SceneObject(objectType = SceneObjectTypes.EMPTY, renderMode = SceneObjectRenderModes.NONE) {

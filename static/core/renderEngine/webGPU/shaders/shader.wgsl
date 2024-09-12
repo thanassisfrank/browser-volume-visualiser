@@ -12,23 +12,20 @@
 
 struct VertexOut {
     @builtin(position) position : vec4<f32>,
-    @location(0) normal : vec3<f32>,
-    @location(1) eye : vec3<f32>,
-    @location(2) worldPos : vec3<f32>,
+    @location(0) eye : vec3<f32>,
+    @location(1) worldPos : vec3<f32>,
 };
 
 
 @vertex
 fn vertex_main(
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>
+    @location(0) position: vec3<f32>
 ) -> VertexOut
 {
     var out : VertexOut;
     var vert : vec4<f32> = globalInfo.camera.mvMat * vec4<f32>(position, 1.0);
     
     out.position = globalInfo.camera.pMat * vert;
-    out.normal = normal;
     out.eye = -vec3<f32>(vert.xyz);
     out.worldPos = vert.xyz;
 
@@ -42,7 +39,7 @@ fn fragment_main(
 ) 
     -> @location(0) vec4<f32>
 {
-    var phongShading = false;
+    var phongShading = true;
     var light1 : DirectionalLight;
     light1.direction = vec3<f32>(0.0, 0.0, -1.0);
     light1.colour = vec3<f32>(1.0);

@@ -29,7 +29,7 @@ export function WebGPUBase (verbose) {
 
     this.vertexLayouts = {
         // the layout for only a position buffer, f32
-        justPosition: [
+        position: [
             {
                 // x y z location, 4 bytes each
                 attributes: [{
@@ -319,7 +319,7 @@ export function WebGPUBase (verbose) {
         var renderable = new Renderable(RenderableTypes.MESH, renderMode);
         // move vertex data to the gpu
         renderable.renderData.buffers.vertex = this.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh vert");
-        renderable.renderData.buffers.normal = this.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh norm");
+        // renderable.renderData.buffers.normal = this.createFilledBuffer("f32", norms, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh norm");
         renderable.renderData.buffers.index = this.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC, "mesh index");
 
         // make the uniform to store the constant data

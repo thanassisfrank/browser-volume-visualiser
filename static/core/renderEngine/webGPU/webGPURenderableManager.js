@@ -186,6 +186,42 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 console.error("Unable to setup data object for DATA_RAY_VOLUME render mode:", e);
             }
         }
+        if (data.renderMode & SceneObjectRenderModes.DATA_MESH_GEOMETRY) {
+            // setup the triangular geometry inside the dataset for rendering
+            try {
+                this.setupDatasetMeshGeometry(data);
+            } catch (e) {
+                console.error("Unable to setup data object for DATA_MESH_GEOMETRY render mode:", e);
+            }
+        }
+    }
+
+    this.setupDatasetMeshGeometry = function(data) {
+        for (let meshName in data.geometry) {
+            var renderable = webGPU.meshRenderableFromArrays(
+                data.data.positions, 
+                null, 
+                data.geometry[meshName].indices, 
+                RenderableRenderModes.MESH_SURFACE
+            );
+            var mag = 0.7;
+            renderable.serialisedMaterials = webGPU.serialiseMaterials(
+                {
+                    diffuseCol: [mag, mag, mag],
+                    specularCol: [mag, mag, mag],
+                    shininess: 50
+                }, 
+                {
+                    diffuseCol: [mag, mag, mag],
+                    specularCol: [mag, mag, mag],
+                    shininess: 50
+                }
+            );
+
+            // renderable.highPriority = true;
+    
+            data.renderables.push(renderable);
+        }
     }
 
     this.setupDataPointsMeshObject = function(data) {
@@ -295,12 +331,20 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         vector.renderables.push(renderable);
     }
 
+
+
+
+
     // sorts a list of renderables, primarily by distance from camera
-    // the sorted list will look like:
+    // -1 -> a before b, 0 -> either, 1 -> b before a
+    // the sorted list will look like (in reverse):
     // [high priority se (sorted), high priority sd (unsorted), sort enabled (sorted), sort disabled (unsorted)]
     this.sortRenderables = function(renderables, camera) {
         var camPos = camera.getEyePos();
         var renderablesSortFunc = (a, b) => {
+            // move ray march renderable last
+            if (a.type == RenderableTypes.UNSTRUCTURED_DATA && b.type != RenderableTypes.UNSTRUCTURED_DATA) return 1;
+            if (a.type != RenderableTypes.UNSTRUCTURED_DATA && b.type == RenderableTypes.UNSTRUCTURED_DATA) return -1;
             // first check if either is one is high and other normal priority
             if (a.highPriority && !b.highPriority) return -1;
             if (!a.highPriority && b.highPriority) return 1;

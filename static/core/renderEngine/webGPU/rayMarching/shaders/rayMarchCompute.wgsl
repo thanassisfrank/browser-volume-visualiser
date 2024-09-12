@@ -78,9 +78,9 @@ struct CornerValuesBuff {
 
 
 // images
-// input image f32, the distance to suface from the camera position, if outside, depth is 0
-// if the depth is to the backside of a tri (viewing from inside) depth is negative
-@group(3) @binding(0) var boundingVolDepthImage : texture_2d<f32>;
+// the depth of the rest of the scene geometry (ray-marching performed last)
+// facilitates combined rendering with the volume and iso-surface
+@group(3) @binding(0) var sceneDepthTexture : texture_depth_2d;
 // two textures used to hold the last best result and write the new best result too
 // previous best results
 @group(3) @binding(1) var offsetOptimisationTextureOld : texture_2d<f32>;
@@ -417,18 +417,6 @@ fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
 }
 
 
-fn pixelOnVolume(x : u32, y : u32) -> bool {
-    var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
-    return pixVal != 0;
-}
-
-
-fn isFrontFacing(x : u32, y : u32) -> bool {
-    var pixVal : f32 = textureLoad(boundingVolDepthImage, vec2<u32>(x, y), 0)[0];
-    return pixVal > 0;
-}
-
-
 // takes camera and x
 fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
     // get the forward vector
@@ -469,6 +457,29 @@ fn getRandF32(seed : u32) -> f32 {
     return f32(randU32)/exp2(32);
 }
 
+// https://learnopengl.com/Advanced-OpenGL/Depth-testing
+fn getWorldSpaceSceneDepth(x : u32, y : u32) -> f32 {
+    var ndc : f32 =  textureLoad(sceneDepthTexture, vec2<u32>(x, y), 0);
+    // var ndc = depth * 2.0 - 1.0;
+    // TODO: read near/far planes from projection matrix
+    var near : f32 = 1;
+    var far : f32 = 2000;
+    return (2.0 * near * far) / (far + near - ndc * (far - near));
+}
+
+fn getWorldSpaceSceneDistance(x : u32, y : u32) -> f32 {
+    var d : f32 = getWorldSpaceSceneDepth(x, y);
+
+    var imageDims = textureDimensions(outputImage);
+    var xProp : f32 = 2*(f32(x) + 0.5)/f32(imageDims.x) - 1;
+    var yProp : f32 = 2*(f32(y) + 0.5)/f32(imageDims.y) - 1;
+
+    var th = globalInfo.camera.fovx/2 * xProp;
+    var phi = globalInfo.camera.fovy/2 * yProp;
+
+    return d/(cos(th) * cos(phi));
+}
+
 
 // workgroups work on 2d tiles of the input image
 @compute @workgroup_size({{WGSizeX}}, {{WGSizeY}}, 1)
@@ -490,50 +501,29 @@ fn main(
 
     // A NEW ==========================================================
 
-    // var imageSize : vec2<u32> = textureDimensions(outputImage);
-    // // check if this thread is within the input image and on the mesh
-    // if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
-    //     // outside the image
-    //     return;
-    // }
-
-    // // calculate the world position of the starting fragment
-    // var ray = getRay(id.x, id.y, globalInfo.camera);
-
-    // var dataIntersect : RayIntersectionResult = intersectAABB(ray, datasetBox);
-
-    // if (dataIntersect.tNear > dataIntersect.tFar) {
-    //     // ray doesnt intersect dataset bounding box
-    //     return;
-    // }
-
-    // // extend to the closest touch of bounding box
-    // // extendRay(ray, max(0, dataIntersect.tNear + 0.1));
-    // var startInside = true;
-
-    // B OLD ===========================================================
-
     var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image and on the mesh
-    if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1 || !pixelOnVolume(id.x, id.y)) {
+    if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
         // outside the image
         return;
     }
 
-    // calculate the world position of the starting fragment
+    // calculate the ray from the camera to this pixel
     var ray = getRay(id.x, id.y, globalInfo.camera);
+    
+    if (!pointInAABB(toDataSpace(globalInfo.camera.position), datasetBox)) {
+        // camera point is outside bounding box
+        var dataIntersect : RayIntersectionResult = intersectAABB(ray, datasetBox);
+        if (dataIntersect.tNear > dataIntersect.tFar || dataIntersect.tNear < 0) {
+            // ray does not intersect bounding box
+            return;
+        }
+        // extend to the closest touch of bounding box
+        ray = extendRay(ray, max(0, dataIntersect.tNear + 0.1));
 
-    var startInside = false;
-
-    if (isFrontFacing(id.x, id.y)) {
-        var depthVal : f32 = textureLoad(boundingVolDepthImage, id.xy, 0)[0];
-        ray = extendRay(ray, depthVal + 0.01); // nudge the start just inside
-        startInside = true;
     }
 
-    // ===========================================================================
-
-
+    var startInside = true;
 
     if (passFlags.showRayDirs) {
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
@@ -587,7 +577,7 @@ fn main(
 
     // do ray-marching step
     if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset);
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y)));
     }
 
     if (passFlags.showTestedCells) {
@@ -619,7 +609,7 @@ fn main(
 
     if (passFlags.showOffset) {
         setPixel(id.xy, vec4<f32>(vec3<f32>(bestSample.offset), 1));
-    } else {
+    } else  if (outCol.a > 0) {
         setPixel(id.xy, outCol);
     }
 }

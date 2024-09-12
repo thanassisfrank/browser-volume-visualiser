@@ -276,7 +276,7 @@ function View(id, camera, data, renderMode) {
         // setup the scene
         this.sceneGraph.insertChild(this.camera, undefined, true);
         this.sceneGraph.insertChild(this.data);
-        this.sceneGraph.insertChild(new Axes(10));
+        // this.sceneGraph.insertChild(new Axes(10));
         
         // setup the renderables
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
