@@ -734,15 +734,15 @@ var getCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rightPtr) =
     var thisCorners = new Float32Array(8);
 
 
-    // thisCorners[0] = 0.5*leftCorners[0] + (leftCorners[1] + leftCorners[2] + leftCorners[4])/6;
-    // thisCorners[1] = 0.5*leftCorners[1] + (leftCorners[0] + leftCorners[3] + leftCorners[5])/6;
-    // thisCorners[2] = 0.5*leftCorners[2] + (leftCorners[0] + leftCorners[3] + leftCorners[4])/6;
-    // thisCorners[3] = 0.5*leftCorners[3] + (leftCorners[1] + leftCorners[2] + leftCorners[7])/6;
+    // thisCorners[0] = (17/20)*leftCorners[0] + (1/20)*(leftCorners[1] + leftCorners[2] + leftCorners[4]);
+    // thisCorners[1] = (17/20)*leftCorners[1] + (1/20)*(leftCorners[0] + leftCorners[3] + leftCorners[5]);
+    // thisCorners[2] = (17/20)*leftCorners[2] + (1/20)*(leftCorners[0] + leftCorners[3] + leftCorners[4]);
+    // thisCorners[3] = (17/20)*leftCorners[3] + (1/20)*(leftCorners[1] + leftCorners[2] + leftCorners[7]);
 
-    // thisCorners[4] = 0.5*rightCorners[4] + (rightCorners[0] + rightCorners[5] + rightCorners[6])/6;
-    // thisCorners[5] = 0.5*rightCorners[5] + (rightCorners[1] + rightCorners[4] + rightCorners[7])/6;
-    // thisCorners[6] = 0.5*rightCorners[6] + (rightCorners[2] + rightCorners[4] + rightCorners[7])/6;
-    // thisCorners[7] = 0.5*rightCorners[6] + (rightCorners[3] + rightCorners[5] + rightCorners[6])/6;
+    // thisCorners[4] = (17/20)*rightCorners[4] + (1/20)*(rightCorners[0] + rightCorners[5] + rightCorners[6]);
+    // thisCorners[5] = (17/20)*rightCorners[5] + (1/20)*(rightCorners[1] + rightCorners[4] + rightCorners[7]);
+    // thisCorners[6] = (17/20)*rightCorners[6] + (1/20)*(rightCorners[2] + rightCorners[4] + rightCorners[7]);
+    // thisCorners[7] = (17/20)*rightCorners[6] + (1/20)*(rightCorners[3] + rightCorners[5] + rightCorners[6]);
     
 
     // // perform averaging for low-pass effect

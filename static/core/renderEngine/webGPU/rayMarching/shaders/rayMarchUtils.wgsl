@@ -229,9 +229,13 @@ fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
 // implements the transfer function from sample value and gradient to emission and absorption coeff
 // emission is rgb, absorption is a
 fn getSampleVolCol(sample : f32, grad : vec3<f32>) -> vec4<f32> {
+
     var absorptionCoeff = select(0, 0.1, sample < 1);
-    var emission = select(vec3<f32>(0.1, 0.05, 0), vec3<f32>(0, 0.05, 0.1), sample < 0.2);
-    emission *= 10;
+    var emission = select(vec3<f32>(0.1, 0.05, 0), vec3<f32>(0, 0.05, 0.1), sample < 0.2) * 10;
+
+    // var absorptionCoeff = select(0, 0.1, sample % 20.0 < 2);
+    // var emission = vec3<f32>(0, 0.05, 0.1) * absorptionCoeff * 100;
+
     return vec4<f32>(emission, absorptionCoeff);
 }
 
@@ -350,8 +354,7 @@ fn marchRay(
                         sampleVolCol = getSampleVolCol(sampleVal, grad);
                         volCol = accumulateSampleCol(sampleVolCol, lastStepSize, volCol);
                         // check if the volume is too opaque
-                        var cutoff : f32 = 1000;
-                        if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
+                        if (volCol.a < 0.005) {
                             break;
                         }
                     }
