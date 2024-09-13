@@ -46,7 +46,7 @@ struct TreeNodesBuff {
 };
 
 struct CornerValuesBuff {
-    buffer : array<array<f32, 8> >
+    buffer : array<array<f32, 8>>
 }
 
 // data important for drawing objects

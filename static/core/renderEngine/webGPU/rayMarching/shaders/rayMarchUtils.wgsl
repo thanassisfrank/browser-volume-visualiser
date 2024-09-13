@@ -51,7 +51,7 @@ struct RayMarchPassFlags {
 struct RayMarchResult {
     foundSurface : bool,
     ray : Ray,
-    volCol : vec3<f32>,
+    volCol : vec4<f32>,
     normalFac : f32,
     cellsTested : f32,
 };
@@ -182,8 +182,8 @@ fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
 //     p0-
 // }
 
-// recovers the normal (gradient) of the data at the given point
-fn getDataNormal (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
+// recovers the gradient of the data at the given point
+fn getDataGrad (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
     var epsilon : f32 = 0.5;
     var gradient : vec3<f32>;
     var p0 = sampleDataValue(x, y, z, dataSrc);
@@ -218,7 +218,7 @@ fn getDataNormal (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
     } else {
         gradient.z = (p0 - sampleDataValue(x, y, z + epsilon, dataSrc))/epsilon;
     }
-    return normalize(gradient);
+    return gradient;
 }
 
 // converts from world space -> data space relative
@@ -226,22 +226,34 @@ fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
     return (vec4<f32>(pos, 1) * transpose(passInfo.dMatInv)).xyz;
 }
 
-// adds the contribution of this segment to the previous absorption amount
-// to get the attenuation factor, a base is raised to this power
-// implements the transfer function
-fn accumulateSampleCol(sample : f32, length : f32, prevCol : vec3<f32>, lowLimit : f32, highLimit : f32, threshold : f32) -> vec3<f32> {
-    var normalisedSample = max(0, (sample - lowLimit)/(highLimit - lowLimit));
-    var normalisedThreshold = (threshold - lowLimit)/(highLimit - lowLimit);
-    var absorptionCoeff = pow(normalisedSample/1.8, 1.1);
-    // var absorptionCoeff = pow(normalisedSample/0.7, 1.2);
-    var sampleCol = absorptionCoeff * vec3<f32>(1.0) * length;
+// implements the transfer function from sample value and gradient to emission and absorption coeff
+// emission is rgb, absorption is a
+fn getSampleVolCol(sample : f32, grad : vec3<f32>) -> vec4<f32> {
+    var absorptionCoeff = select(0, 0.1, sample < 1);
+    var emission = select(vec3<f32>(0.1, 0.05, 0), vec3<f32>(0, 0.05, 0.1), sample < 0.2);
+    emission *= 10;
+    return vec4<f32>(emission, absorptionCoeff);
+}
+
+// adds the contribution of a colour sample to the 
+fn accumulateSampleCol(sampleVolCol : vec4<f32>, stepLength : f32, frontVolCol : vec4<f32>) -> vec4<f32> {
+    let k = 1.0;
+
+    var dT : f32 = exp2(-stepLength * sampleVolCol.a * k);
     
-    return prevCol + sampleCol;
+    var newCol = frontVolCol;
+    newCol.a *= dT;
+    newCol.r += sampleVolCol.r * (1-dT) * frontVolCol.a / k;
+    newCol.g += sampleVolCol.g * (1-dT) * frontVolCol.a / k;
+    newCol.b += sampleVolCol.b * (1-dT) * frontVolCol.a / k;
+
+    
+    return newCol;
 }
 
 // attenuates a background colour by a medium colour
 // takes the absorption coefficients as input and converts into transmission factors
-fn attenuateCol(inCol : vec4<f32>, absorptionCol : vec3<f32>) -> vec4<f32> {
+fn attenuateCol(inCol : vec4<f32>, absorptionCol : vec4<f32>) -> vec4<f32> {
     var transmission = exp2(-absorptionCol);
     return vec4<f32>(
         inCol.r * transmission.r,
@@ -287,7 +299,8 @@ fn marchRay(
     var fragCol = vec4<f32>(1, 1, 1, 0);    
 
     // accumulated ray casting colour from samples
-    var volCol = vec3<f32>(0, 0, 0);
+    var sampleVolCol : vec4<f32>;
+    var volCol = vec4<f32>(0, 0, 0, 1);
 
     // march the ray
     var lastAbove = false;
@@ -297,6 +310,8 @@ fn marchRay(
     var sampleVal : f32;
     var thisAbove = false;
     var tipDataPos : vec3<f32>;
+
+    var grad : vec3<f32>;
 
     var foundSurface = false;
     var stepsInside = 0u;
@@ -331,7 +346,9 @@ fn marchRay(
 
                     if (passFlags.showVolume) {
                         // acumulate colour
-                        volCol = accumulateSampleCol(sampleVal, lastStepSize, volCol, passInfo.dataLowLimit, passInfo.dataHighLimit, passInfo.threshold);
+                        grad = getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+                        sampleVolCol = getSampleVolCol(sampleVal, grad);
+                        volCol = accumulateSampleCol(sampleVolCol, lastStepSize, volCol);
                         // check if the volume is too opaque
                         var cutoff : f32 = 1000;
                         if (volCol.r > cutoff && volCol.g > cutoff && volCol.b > cutoff) {
@@ -485,9 +502,9 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
         var material : Material = getIsoSurfaceMaterial(passInfo.surfaceColSrc, tipDataPos, rayMarchResult.normalFac);
 
         if (passFlags.showNormals) {
-            fragCol = vec4<f32>(getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc), 1.0);
+            fragCol = vec4<f32>(normalize(getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc)), 1.0);
         } else if (passFlags.phong) {
-            var normal = getDataNormal(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+            var normal = normalize(getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc));
             fragCol = vec4<f32>(phong(material, rayMarchResult.normalFac * normal, -rayMarchResult.ray.direction, light), 1.0);
         } else {
             fragCol = vec4<f32>(material.diffuseCol, 1.0);
@@ -496,7 +513,9 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
 
     if (passFlags.showVolume) {
         // attenuate col by the volume colour
-        fragCol = attenuateCol(fragCol, rayMarchResult.volCol);
+        fragCol = accumulateSampleCol(vec4<f32>(fragCol.rgb, exp2(32)), 1, rayMarchResult.volCol);
+        fragCol.a = 1 - fragCol.a;
+        // fragCol = attenuateCol(fragCol, rayMarchResult.volCol);
     }
 
     if (passFlags.showRayLength) {

@@ -977,6 +977,21 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // if (renderable.passData.faceIndex != 0) return;
         var commandEncoder = await device.createCommandEncoder();
 
+        // clamp the dataset box to shave off regions
+
+        var clampedDataBox = {
+            min: [
+                renderable.passData.dataBoxMin[0], 
+                renderable.passData.dataBoxMin[1], 
+                renderable.passData.dataBoxMin[2]
+            ],
+            max: [
+                renderable.passData.dataBoxMax[0], 
+                renderable.passData.dataBoxMax[1], 
+                renderable.passData.dataBoxMax[2]
+            ],
+        }
+
 
         // do a full ray march pass
         var WGs = [
@@ -1034,8 +1049,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.valuesB.limits[0],
                     renderable.passData.valuesB.limits[1],
                     0,
-                    ...renderable.passData.dataBoxMin, 0,
-                    ...renderable.passData.dataBoxMax, 0,
+                    ...clampedDataBox.min, 0,
+                    ...clampedDataBox.max, 0,
                     0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
