@@ -227,7 +227,7 @@ fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
 }
 
 // implements the transfer function from sample value and gradient to emission and absorption coeff
-// emission is rgb, absorption is a
+// emission is rgb, attenuation is a
 fn getSampleVolCol(sample : f32, grad : vec3<f32>) -> vec4<f32> {
 
     var absorptionCoeff = select(0, 0.1, sample < 1);
@@ -239,8 +239,8 @@ fn getSampleVolCol(sample : f32, grad : vec3<f32>) -> vec4<f32> {
     return vec4<f32>(emission, absorptionCoeff);
 }
 
-// adds the contribution of a colour sample to the 
-fn accumulateSampleCol(sampleVolCol : vec4<f32>, stepLength : f32, frontVolCol : vec4<f32>) -> vec4<f32> {
+// calculates the resulting rgb emission strength and attentuation for a sample added behind another
+fn accumulateVolumeColourBehind(sampleVolCol : vec4<f32>, stepLength : f32, frontVolCol : vec4<f32>) -> vec4<f32> {
     let k = 1.0;
 
     var dT : f32 = exp2(-stepLength * sampleVolCol.a * k);
@@ -255,17 +255,6 @@ fn accumulateSampleCol(sampleVolCol : vec4<f32>, stepLength : f32, frontVolCol :
     return newCol;
 }
 
-// attenuates a background colour by a medium colour
-// takes the absorption coefficients as input and converts into transmission factors
-fn attenuateCol(inCol : vec4<f32>, absorptionCol : vec4<f32>) -> vec4<f32> {
-    var transmission = exp2(-absorptionCol);
-    return vec4<f32>(
-        inCol.r * transmission.r,
-        inCol.g * transmission.g,
-        inCol.b * transmission.b,
-        max(inCol.a, max(1-transmission.r, max(1-transmission.g, 1-transmission.b)))
-    );
-}
 
 // do linear interpolation to find the intersection point
 // returns a value between 0, 1
@@ -352,7 +341,7 @@ fn marchRay(
                         // acumulate colour
                         grad = getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
                         sampleVolCol = getSampleVolCol(sampleVal, grad);
-                        volCol = accumulateSampleCol(sampleVolCol, lastStepSize, volCol);
+                        volCol = accumulateVolumeColourBehind(sampleVolCol, lastStepSize, volCol);
                         // check if the volume is too opaque
                         if (volCol.a < 0.005) {
                             break;
@@ -515,10 +504,9 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
     }
 
     if (passFlags.showVolume) {
-        // attenuate col by the volume colour
-        fragCol = accumulateSampleCol(vec4<f32>(fragCol.rgb, exp2(32)), 1, rayMarchResult.volCol);
+        // add in the iso-surface as if it were a volume colour sample of very high attentuation (opaque)
+        fragCol = accumulateVolumeColourBehind(vec4<f32>(fragCol.rgb, exp2(32)), 1, rayMarchResult.volCol);
         fragCol.a = 1 - fragCol.a;
-        // fragCol = attenuateCol(fragCol, rayMarchResult.volCol);
     }
 
     if (passFlags.showRayLength) {

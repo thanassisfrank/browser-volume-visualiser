@@ -323,7 +323,7 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
 
 // interpolate inside of a node as a hex cell
 // id of the leaf node is stored in the val of the box
-fn interpolateinNode(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
+fn sampleNodeCornerVals(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
     var vals : array<f32, 8>;
     switch (dataSrc) {
         case DATA_SRC_VALUE_A, default {
@@ -333,24 +333,35 @@ fn interpolateinNode(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
             vals = cornerValuesB.buffer[leafBox.val];
         }
     }
-    // lerp in z direction
-    var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
-    var zLerped = array(
-        mix(vals[0], vals[4], zFac), // 00
-        mix(vals[2], vals[6], zFac), // 01
-        mix(vals[1], vals[5], zFac), // 10
-        mix(vals[3], vals[7], zFac), // 11
-    );
-    // lerp in y direction
-    var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
-    var yLerped = array(
-        mix(zLerped[0], zLerped[1], yFac),
-        mix(zLerped[2], zLerped[3], yFac)
-    );
-    // lerp in x direction
-    var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
 
-    return mix(yLerped[0], yLerped[1], xFac);
+    // sample corner vals version
+
+    // // lerp in z direction
+    // var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
+    // var zLerped = array(
+    //     mix(vals[0], vals[4], zFac), // 00
+    //     mix(vals[2], vals[6], zFac), // 01
+    //     mix(vals[1], vals[5], zFac), // 10
+    //     mix(vals[3], vals[7], zFac), // 11
+    // );
+    // // lerp in y direction
+    // var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
+    // var yLerped = array(
+    //     mix(zLerped[0], zLerped[1], yFac),
+    //     mix(zLerped[2], zLerped[3], yFac)
+    // );
+    // // lerp in x direction
+    // var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
+
+    // return mix(yLerped[0], yLerped[1], xFac);
+
+
+    // poly corner vals version
+
+    return vals[0] + 
+           vals[1] * p.x + vals[2] * p.y + vals[3] * p.z + 
+           vals[4] * p.x * p.y + vals[5] * p.x * p.z + vals[6] * p.y * p.z + 
+           vals[7] * p.x * p.y * p.z;
 }
 
 
@@ -403,7 +414,7 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
         // pruned leaf, sample the node as a cell from its corner values
         sampleVal = currLeafNode.splitVal;
     } else {
-        sampleVal = interpolateinNode(queryPoint, currLeafBox, dataSrc);
+        sampleVal = sampleNodeCornerVals(queryPoint, currLeafBox, dataSrc);
     }
 
     return sampleVal;
@@ -575,10 +586,11 @@ fn main(
         offset = getRandF32(seed);
     }
 
-    // do ray-marching step
-    if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y)));
+    if (passInfo.isoSurfaceSrc == DATA_SRC_NONE) {
+        return;
     }
+    // do ray-marching step
+    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y)));
 
     if (passFlags.showTestedCells) {
         var count = marchResult.cellsTested;

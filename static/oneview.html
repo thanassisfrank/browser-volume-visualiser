@@ -11,6 +11,9 @@
                 padding: 0px;
                 margin: 0px;
             }
+            summary {
+                font-weight: bold;
+            }
             .hidden {
                 display: none
             }
@@ -33,7 +36,7 @@
                 position: absolute;
                 width: calc(100%);
                 height: calc(100%);
-                text-align: center;
+                /* text-align: center; */
                 /* border: 1px solid red; */
             }
             .view-threshold {
@@ -110,43 +113,53 @@
             <input type="checkbox" class="ray-march-opt" name="randStart"><label>Random offset</label><br>
             <input type="checkbox" class="ray-march-opt" name="optimiseOffset"><label>Offset tuning</label><br>
             <input type="checkbox" class="ray-march-opt" name="useBestDepth"><label>Use best depth</label><br>
-            <label>Performance</label><br>
-            <input type="checkbox" class="ray-march-opt" name="cheapMove"><label>Cheap move</label><br>
-            <input type="checkbox" class="ray-march-opt" name="sampleNearest"><label>Sample nearest</label><br>
-            <label>Debug</label><br>
-            <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showCells"><label>Data cells</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNodeVals"><label>Node values</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNodeLoc"><label>Node indexes</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNodeDepth"><label>Node depth</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
-            <input type="checkbox" class="ray-march-opt" name="renderNodeVals"><label>Render Nodes</label><br>
-            <input type="checkbox" class="ray-march-opt" name="showTestedCells"><label>Cell test count</label><br>
+            <details>
+                <summary>Performance</summary>
+                <input type="checkbox" class="ray-march-opt" name="cheapMove"><label>Cheap move</label><br>
+                <input type="checkbox" class="ray-march-opt" name="sampleNearest"><label>Sample nearest</label><br>
+            </details>
+            <details>
+                <summary>Debug</summary>
+                <input type="checkbox" class="ray-march-opt" name="fixedCamera"><label>Fixed camera</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showRayDirs"><label>Ray direction</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showCells"><label>Data cells</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showNodeVals"><label>Node values</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showNodeLoc"><label>Node indexes</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showNodeDepth"><label>Node depth</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showDeviceCoords"><label>Device coords</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showOffset"><label>Ray offset</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showRayLength"><label>Ray length</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showNormals"><label>Normals</label><br>
+                <input type="checkbox" class="ray-march-opt" name="renderNodeVals"><label>Render Nodes</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showTestedCells"><label>Cell test count</label><br>
+            </details>
         </div>
 
         <div id="add-view-container" class="bottom-bar">
             <select id="data-select"></select><br>
-            <!-- <input type="number" class="dataset-opt" name="downsample" min="1" max="16" value="1" style="width:5ch"><label>Cell scale</label><br> -->
-            <label><b>Unstructured</b></label><br>
-            <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
-            <select id="kd-tree-type-select" class="dataset-opt" name="kdTreeType"></select><br>
-            <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
-            <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="16" style="width:5ch"><label>Max depth</label><br>
-            <label><b>Dynamic tree</b></label><br>
-            <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
-            <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
-            <span class="hidden"><input type="checkbox" class="dataset-opt" name="nodeValues"><label>Node vals</label><br></span>
-            <span class="hidden"><input type="checkbox" class="dataset-opt" name="cornerValues"><label>Corner vals</label><br></span>
-            <label><b>Rendering</b></label><br>
-            <input type="checkbox" class="dataset-opt" name="DATA_RAY_VOLUME" checked><label>Ray March</label><br>
-            <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" checked><label>Bounding box</label><br>
-            <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
-            <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Mesh wireframe</label><br>
-            <input type="checkbox" class="dataset-opt" name="GEOMETRY" ><label>Geometry</label><br>
+            <details>
+                <summary>Conversion</summary>
+                <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
+            </details>
+            <details>
+                <summary>Unstructured</summary>
+                <select id="kd-tree-type-select" class="dataset-opt" name="kdTreeType"></select><br>
+                <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
+                <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="16" style="width:5ch"><label>Max depth</label><br>
+            </details>
+            <details>
+                <summary>Dynamic tree</summary>
+                <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
+                <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
+            </details>
+            <details>
+                <summary>Rendering</summary>
+                <input type="checkbox" class="dataset-opt" name="DATA_RAY_VOLUME" checked><label>Ray March</label><br>
+                <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" checked><label>Bounding box</label><br>
+                <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
+                <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Mesh wireframe</label><br>
+                <input type="checkbox" class="dataset-opt" name="GEOMETRY" ><label>Geometry</label><br>
+            </details>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
@@ -165,26 +178,36 @@
         <!-- The prototypical view-container that will be cloned for each view-->
         <div id="view-container-proto" class="view-container hidden">
             <div class="view-frame">
-                <div class="bottom-bar view-bottom-bar">
+                <div class="bottom-bar view-bottom-bar" onmousedown="event.stopPropagation()">
                     <p class="view-dataset-name view-info"></p>
                     <p class="view-dataset-size view-info"></p>
-                    <div>
-                        <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
-                        <!-- <br> -->
-                        <label>Colour scale</label>
-                        <select class="view-surface-col-scale-select"></select>
+                    <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
+                    <!-- <br> -->
+                    <details>
+                        <summary>Data source</summary>
+                        <select class="view-iso-surface-src-select"></select><label>Iso-surface src</label>
                         <br>
-                        <label>Surface col src</label>
-                        <select class="view-surface-col-src-select"></select>
+                        <select class="view-surface-col-src-select"></select><label>Surface col src</label>
+                    </details>
+                    <details>
+                        <summary>Surface config</summary>
+                        <select class="view-surface-col-scale-select"></select><label>Colour scale</label>
                         <br>
-                        <label>Iso-surface src</label>
-                        <select class="view-iso-surface-src-select"></select>
+                        <input type="checkbox"><label>Colour iso-surface</label>
                         <br>
-                        <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
+                        <input type="checkbox"><label>Colour bounding box</label>
                         <br>
-                        <input type="range" class="view-threshold">
-                    </div>
-                    <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
+                        <input type="checkbox"><label>Colour geometry</label>
+                        <div style="text-align: center;">
+                            <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
+                            <br>
+                            <input type="range" class="view-threshold">
+                        </span>
+                        <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
+                    </details>
+                    <details>
+                        <summary>Volume config</summary>
+                    </details>
                     <label class="view-close view-info clickable">Close</label>
                 </div>
             </div>
@@ -200,7 +223,12 @@
             import { FrameTimeGraph } from "./frameTimeGraph.js";
             import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 
+            // import math from "https://cdnjs.cloudflare.com/ajax/libs/mathjs/13.1.1/math.js";
+            // import { math } from "./core/math.js";
+            // const math = create(all, {});
+            // console.log(math);
 
+            import { VecMath } from "./core/VecMath.js"
 
 
             var setUpRayMarchOptions = (rayMarcher) => {
@@ -238,6 +266,32 @@
             
             // define the main function
             async function main() {
+                // this matrix is rank 6 thus (ATA)-1 does not exist
+                var matA = [
+                    [1, 19, 0, 2, 0,  38, 0, 0],
+                    [1, 17, 0, 2, 0,  34, 0, 0],
+                    [1, 19, 1, 1, 19, 19, 1, 19],
+                    [1, 18, 0, 3, 0,  54, 0, 0],
+                    [1, 18, 1, 1, 18, 18, 1, 18],
+                    [1, 18, 1, 2, 18, 36, 2, 36],
+                    [1, 17, 1, 1, 17, 17, 1, 17],
+                    [1, 18, 0, 2, 0,  36, 0, 0]
+                ];
+                console.log(VecMath.matStringify(matA));
+                var matAT = VecMath.matTranspose(matA);
+                console.log(VecMath.matStringify(matAT));
+                var mult = VecMath.matMult(matAT, matA);
+
+                console.log(VecMath.matStringify(mult));
+
+                console.log(VecMath.matInverse(mult));
+
+
+
+
+
+
+
                 var canvas = get("c");
                 
                 var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 600);

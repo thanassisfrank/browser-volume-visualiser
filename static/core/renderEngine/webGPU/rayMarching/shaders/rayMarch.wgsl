@@ -203,10 +203,11 @@ fn fragment_main(
         offset = getRandF32(seed);
     }
 
-    // do ray-marching step
-    if (passInfo.isoSurfaceSrc != DATA_SRC_NONE) {
-        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, passInfo.maxLength);
+    if (passInfo.isoSurfaceSrc == DATA_SRC_NONE) {
+        discard;
     }
+    // do ray-marching step
+    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, passInfo.maxLength);
 
     if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {
         // new best depth/best uninitialised (surface not previously found)

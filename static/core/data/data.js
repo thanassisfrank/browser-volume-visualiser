@@ -3,7 +3,8 @@
 
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES} from "../utils.js";
-import { addNodeValsToFullTree, createDynamicTreeNodes, createNodeValuesBuffer, createNodeCornerValuesBuffer, getCellTreeBuffers, createMatchedDynamicCornerValues } from "./cellTree.js";
+import { createDynamicTreeNodes, getCellTreeBuffers } from "./cellTree.js";
+import { createNodeSampleCornerValuesBuffer, createNodePolyCornerValuesBuffer, createMatchedDynamicCornerValues } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
@@ -576,7 +577,8 @@ function Data(id) {
 
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
     this.createCornerValues = function(slotNum) {
-        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum);
+        // this.data.values[slotNum].cornerValues = createNodeSampleCornerValuesBuffer(this, slotNum);
+        this.data.values[slotNum].cornerValues = createNodePolyCornerValuesBuffer(this, slotNum);
     }
 
     // creates the dynamic corner values buffer from scratch
