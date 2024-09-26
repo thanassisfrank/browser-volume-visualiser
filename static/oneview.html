@@ -277,14 +277,14 @@
                     [1, 17, 1, 1, 17, 17, 1, 17],
                     [1, 18, 0, 2, 0,  36, 0, 0]
                 ];
-                console.log(VecMath.matStringify(matA));
-                var matAT = VecMath.matTranspose(matA);
-                console.log(VecMath.matStringify(matAT));
-                var mult = VecMath.matMult(matAT, matA);
+                // console.log(VecMath.matStringify(matA));
+                // var matAT = VecMath.matTranspose(matA);
+                // console.log(VecMath.matStringify(matAT));
+                // var mult = VecMath.matMult(matAT, matA);
 
-                console.log(VecMath.matStringify(mult));
+                // console.log(VecMath.matStringify(mult));
 
-                console.log(VecMath.matInverse(mult));
+                // console.log(VecMath.matInverse(mult));
 
 
 
@@ -395,6 +395,28 @@
 
                 // shortcuts
                 const shortcuts = {
+                    "d": {
+                        description: "Get the current ray length texture from the ray marcher",
+                        f: function(e) {
+                            renderEngine.rayMarcher.getCenterRayLength()
+                            .then(depth => {
+                                console.log(depth);
+                                var currView = Object.values(viewManager.views)[0];
+                                if (!currView) return;
+                                
+                                if (!depth) {
+                                    currView.adjustedFocusPoint = null;
+                                } else {
+                                    var cam = currView.sceneGraph.activeCamera;
+                                    currView.adjustedFocusPoint = VecMath.vecAdd(cam.getEyePos(), VecMath.scalMult(depth, cam.getForwardVec()));
+                                }
+                            })
+                            .catch(e => {
+                                console.warn("Couldn't read ray length tex");
+                                console.error(e);
+                            });
+                        }
+                    },
                     "h": {
                         description: "Help",
                         f: function(e) {

@@ -173,6 +173,10 @@ export var xyzToA = (obj) => {
     return [obj.x, obj.y, obj.z];
 }
 
+export var aToXYZ = (a) => {
+    return {x: a[0], y:a[1], z:a[2]};
+}
+
 export var volume = (arr) => {
     return arr[0]*arr[1]*arr[2];
 }

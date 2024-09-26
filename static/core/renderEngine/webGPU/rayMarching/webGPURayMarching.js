@@ -5,6 +5,7 @@ import {mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { DataFormats, ResolutionModes } from "../../../data/data.js";
 import { clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
+import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
 
 export const DataSrcUses = {
     NONE: 0,
@@ -845,7 +846,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 dimension: "2d",
                 format: "r32float",
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-            })
+            });
+            console.log(this.depthTexture);
 
             webGPU.deleteTexture(this.offsetOptimisationTextureOld);
             // create texture for offset optimisation
@@ -858,7 +860,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 },
                 dimension: "2d",
                 format: "rg32float",
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
             })
 
             webGPU.deleteTexture(this.offsetOptimisationTextureNew);
@@ -1067,5 +1069,55 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         device.queue.submit([commandEncoder.finish()]);
         // console.log(renderable.passData);
+    }
+
+    // reads the texture corresponding to the best found ray depth
+    // returns the length of the ray at the center of the image
+    this.getCenterRayLength = async function() {
+        const texSrc = this.offsetOptimisationTextureOld;
+        if (!texSrc) return;
+
+        const start = performance.now();
+
+
+        // find where the center pixel is in the image
+        const texSrcCenter = {
+            x: Math.round(texSrc.width/2),
+            y: Math.round(texSrc.height/2)
+        }
+
+        // the target width and height of the region to get from the depth texture
+        const targetRegionSize = 8;
+
+        // work out the smallest box around the centre of the image that can be taken
+        // the restriction is bytesPerRow must be multiple of 256
+        
+        const widthAlign = BYTES_PER_ROW_ALIGN/GPUTexelByteLength[texSrc.format];
+        const minCorner = [texSrcCenter.x - targetRegionSize/2, texSrcCenter.y - targetRegionSize/2, 0];
+        const clipBox = {
+            min: minCorner,
+            max: [
+                minCorner[0] + widthAlign * Math.ceil(targetRegionSize/widthAlign),
+                minCorner[1] + targetRegionSize,
+                1
+            ]
+        }
+        const mappedTexData = await webGPU.readTexture(texSrc, clipBox);
+
+        var tex =  new GPUTextureMapped(
+            mappedTexData.buffer, 
+            mappedTexData.width, 
+            mappedTexData.height, 
+            mappedTexData.depthOrArrayLayers, 
+            "rg32float"
+        );
+
+        
+        // debugger;
+        const centerDepth = tex.readTexel(texSrcCenter.x - clipBox.min[0], texSrcCenter.y - clipBox.min[1])[1];
+
+        console.log("reading centre depth took:", performance.now() - start, "ms");
+
+        return centerDepth;
     }
 }

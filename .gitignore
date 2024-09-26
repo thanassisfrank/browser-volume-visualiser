@@ -1,4 +1,5 @@
 static/data/magnetic_reconnection_512x512x512_float32.raw
 static/data/pancreas_240x512x512_int16.raw
+static/data/hcci_oh_560x560x560_float32.raw
 old/
 .vscode

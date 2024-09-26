@@ -577,8 +577,8 @@ function Data(id) {
 
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
     this.createCornerValues = function(slotNum) {
-        // this.data.values[slotNum].cornerValues = createNodeSampleCornerValuesBuffer(this, slotNum);
-        this.data.values[slotNum].cornerValues = createNodePolyCornerValuesBuffer(this, slotNum);
+        this.data.values[slotNum].cornerValues = createNodeSampleCornerValuesBuffer(this, slotNum);
+        // this.data.values[slotNum].cornerValues = createNodePolyCornerValuesBuffer(this, slotNum);
     }
 
     // creates the dynamic corner values buffer from scratch

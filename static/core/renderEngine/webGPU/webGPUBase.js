@@ -1,13 +1,45 @@
 // webGPUBase.js
 // holds utility functions for webgpu, common to both rendering and compute passes
 
-import { stringFormat, clampBox, floorBox } from "../../utils.js";
+import { stringFormat, clampBox, floorBox, aToXYZ } from "../../utils.js";
 import { Renderable, RenderableTypes, RenderableRenderModes } from "../renderEngine.js";
 
-const GPUTexelByteLength = {
+export const GPUTexelByteLength = {
     "depth32float": 4,
     "r32float": 4,
     "rg32float": 8
+}
+
+// when copying texture->buffer bytesPerRow must be multiple of 256
+export const BYTES_PER_ROW_ALIGN = 256;
+
+// creates a JS-accessible texture-like object to wrap a buffer returned from a GPUTexture
+// the origin will always remain in the same place but the width of the copy region may be altered to adhere
+// to the bytesPerRow restriction
+export function GPUTextureMapped (buffer, width, height, depthOrArrayLayers, format) {
+    if (format.includes("32float")) {
+        this.data = new Float32Array(buffer)
+    }
+    
+    if (format.slice(0, 3) == "rgb") {
+        this.stride = 3;
+    } else if (format.slice(0, 2) == "rg") {
+        this.stride = 2;
+    } else {
+        this.stride = 1;
+    }
+    this.width = width;
+    this.height = height;
+    this.depthOrArrayLayers = depthOrArrayLayers;
+    this.format = format;
+
+    this.readTexel = function(x=0, y=0, z=0) {
+        if (!this.data) return;
+
+        const index = this.stride * (z * this.width * this.height + y * this.width + x);
+
+        return this.data.slice(index, index + this.stride);
+    }
 }
 
 
@@ -424,7 +456,7 @@ export function WebGPUBase (verbose) {
         commandEncoder.copyBufferToBuffer(buffer, start, readBuffer, 0, byteLength);
         this.device.queue.submit([commandEncoder.finish()]);
 
-        await this.waitForDone();
+        // await this.waitForDone();
         // this.device.queue.onSubmittedWorkDone();
     
         await readBuffer.mapAsync(GPUMapMode.READ);
@@ -448,7 +480,7 @@ export function WebGPUBase (verbose) {
     }
 
     // Texture management ===================================================================================
-
+    
     this.makeTexture = function(config) {
         // TODO: correctly calculate texel count of cubemap textures
         config.size.width ??= 1;
@@ -557,6 +589,93 @@ export function WebGPUBase (verbose) {
             extent
         )
         this.device.queue.submit([commandEncoder.finish()]) 
+    }
+
+    // copies the supplied texture to a temporary read buffer and maps this to the cpu
+    // if box is supplied, copies the texture only between the min and max bounds of the box
+    // box region is not inclusive of the max 
+    this.readTexture = async function(texture, box) {
+        var requestedSize, origin;
+
+        if (box) {
+            // read only a portion of the texture
+            if (
+                box.min[0] < 0 || box.max[0] > texture.width ||
+                box.min[1] < 0 || box.max[1] > texture.height ||
+                box.min[2] < 0 || box.max[2] > texture.depthOrArrayLayers
+            ) {
+                throw Error("Requested copy region is out of texture bounds");
+            }
+
+            origin = aToXYZ(box.min); 
+            requestedSize = {
+                width: box.max[0] - box.min[0],
+                height: box.max[1] - box.min[1],
+                depthOrArrayLayers: box.max[2] - box.min[2],
+            };
+        } else {
+            origin = {};
+            requestedSize = {
+                width: texture.width,
+                height: texture.height,
+                depthOrArrayLayers: texture.depthOrArrayLayers
+            }
+        }
+        
+        // bytesPerRow has to be a multiple of 256
+        const fullBytesPerRow = requestedSize.width * GPUTexelByteLength?.[texture.format];
+        // go down in width such that the bytesPerRow is n*256
+        const bytesPerRowClipped = Math.floor(fullBytesPerRow/BYTES_PER_ROW_ALIGN) * BYTES_PER_ROW_ALIGN;
+
+        const widthClipped = bytesPerRowClipped/GPUTexelByteLength?.[texture.format];
+
+
+        const texelCount = widthClipped * requestedSize.height * requestedSize.depthOrArrayLayers;
+        const textureByteLength = texelCount * GPUTexelByteLength?.[texture.format];
+        var readBuffer = this.makeBuffer(
+            textureByteLength, 
+            GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, 
+            "texture read buffer for " + texture.label,
+        );
+        var commandEncoder = await this.device.createCommandEncoder();
+        
+        
+
+        commandEncoder.copyTextureToBuffer(
+            {
+                texture: texture, 
+                origin: origin
+            },
+            {
+                buffer: readBuffer,
+                bytesPerRow: bytesPerRowClipped,
+                rowsPerImage: requestedSize.height
+            },
+            {
+                height: requestedSize.height,
+                width: widthClipped,
+                depthOrArrayLayers: requestedSize.depthOrArrayLayers
+            }
+        );
+
+        this.device.queue.submit([commandEncoder.finish()]);    
+        
+        await readBuffer.mapAsync(GPUMapMode.READ);
+
+        // map to main memory
+        var mappedArrayBuffer = readBuffer.getMappedRange();
+        // copy to persistent data
+        var readArrayBuffer = mappedArrayBuffer.slice();
+        // clean up the temporary read buffer
+        readBuffer.unmap();
+        this.deleteBuffer(readBuffer);
+
+        return {
+            width: widthClipped,
+            height: texture.height,
+            depthOrArrayLayers: texture.depthOrArrayLayers,
+            buffer: readArrayBuffer,
+        };
     }
 
     this.deleteTexture = function(texture) {

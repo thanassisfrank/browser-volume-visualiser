@@ -226,7 +226,7 @@ export function Camera(id) {
         // get the forward and up vectors from the view matrix
         // assumes the projection matrix is axis aligned
         var viewMat = this.getViewMat();
-        var fwd = VecMath.normalise(VecMath.vecMinus(this.target, this.getEyePos()));
+        var fwd = this.getForwardVec();
         
         var up = [viewMat[1], viewMat[5], viewMat[9]];
         var right = [viewMat[0], viewMat[4], viewMat[8]];
@@ -239,6 +239,9 @@ export function Camera(id) {
             ...right, 0,               // right vector
             toRads(this.fovY), toRads(this.fovX), 0, 0 // fovs
         ])
+    }
+    this.getForwardVec = function() {
+        return VecMath.normalise(VecMath.vecMinus(this.target, this.getEyePos()));
     }
     // sets the aspect ratio for the camera, recalc proj mat
     this.setAspectRatio = function(aspect) {

@@ -3,6 +3,8 @@
 
 import { get, show, hide, isVisible, toRads, newId, timer } from "./core/utils.js";
 
+import { VecMath } from "./core/VecMath.js";
+
 import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 
@@ -226,6 +228,9 @@ function View(id, camera, data, renderMode) {
     this.thresholdChanged = true;
     this.marchedThreshold = undefined;
 
+    // an estimate of where the viewer is actually focusing on
+    this.adjustedFocusPoint = null;
+
     this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
     this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
 
@@ -393,12 +398,16 @@ function View(id, camera, data, renderMode) {
         if (this.isoSurfaceSrc.slotNum != null) activeValueSlots.push(this.isoSurfaceSrc.slotNum);
         if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
 
+        // calculate the estimated actual focus point
+        var cam = this.sceneGraph.activeCamera;
+        var focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
+
         // need to find the camera position in world space
         if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
             updateDynamicTreeBuffers(
                 this.data, 
                 0, 
-                this.sceneGraph.activeCamera.getTarget(),  
+                focusPoint,  
                 this.sceneGraph.activeCamera.getEyePos(),
                 activeValueSlots
             );
