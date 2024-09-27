@@ -575,7 +575,8 @@
                         renderEngine.clearScreen();
                     } else {
                         for (let view of viewList) {
-                            await renderEngine.renderView(view);
+                            // await renderEngine.renderView(view);
+                            renderEngine.renderView(view);
                         }
                     }
                     

@@ -35,6 +35,9 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     this.uniformBuffer;
 
+    this.renderDepthTexture = null;
+    this.renderColorTexture = null;
+
     var shaderCode = webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
 
     this.getWebGPU = function() {
@@ -45,15 +48,18 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // begin setting up modules
         var rayMarcherSetupPromise = this.rayMarcher.setupEngine();
 
-        // setup this
+        // setup the canvas for drawing to
         this.ctx = this.canvas.getContext("webgpu");
-
-        // setup swapchain
         this.ctx.configure({
             device: webGPU.device,
             format: "bgra8unorm",
             alphaMode: "opaque"
         });
+
+        // create the textures used in the render pass; these will be copied to the canvas as the last step
+        const renderTextures = this.createRenderTextures(this.canvas.wdith, this.canvas.height);
+        this.renderDepthTexture = renderTextures.depth;
+        this.renderColorTexture = renderTextures.color;
 
         this.uniformBuffer = webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
@@ -105,6 +111,39 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         return this;
     }
 
+    this.createRenderTextures = function(width, height) {
+        var depthTexture = webGPU.makeTexture({
+            label: "render depth texture",
+            size: {
+                width: this.canvas.width,
+                height: this.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "depth32float",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+        });
+
+        var colorTexture = webGPU.makeTexture({
+            label: "render color texture",
+            size: {
+                width: this.canvas.width,
+                height: this.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "bgra8unorm",
+            usage: 
+                GPUTextureUsage.RENDER_ATTACHMENT | 
+                GPUTextureUsage.TEXTURE_BINDING | 
+                GPUTextureUsage.STORAGE_BINDING | 
+                GPUTextureUsage.COPY_SRC |
+                GPUTextureUsage.COPY_DST
+        });
+
+        return {depth: depthTexture, color: colorTexture};
+    }
+
     this.beginFrame = function(cameraMoved, thresholdChanged) {
         this.rayMarcher.beginFrame(this.ctx, this.canvasResized, cameraMoved, thresholdChanged);
     }
@@ -119,30 +158,18 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // provide details of load and store part of pass
         // here there is one color output that will be cleared on load
 
-        var depthStencilTexture = webGPU.makeTexture({
-            label: "depth texture",
-            size: {
-                width: this.canvas.width,
-                height: this.canvas.height,
-                depthOrArrayLayers: 1
-            },
-            dimension: "2d",
-            format: "depth32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-        });
-
         const renderPassDescriptor = {
             colorAttachments: [{
                 clearValue: this.clearColor,
                 loadOp: "clear",
                 storeOp: "store",
-                view: this.ctx.getCurrentTexture().createView()
+                view: this.renderColorTexture.createView()
             }],
             depthStencilAttachment: {
                 depthClearValue: 1.0,
                 depthLoadOp: "clear",
                 depthStoreOp: "store",
-                view: depthStencilTexture.createView()
+                view: this.renderDepthTexture.createView()
             }
         };
 
@@ -155,8 +182,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         webGPU.device.queue.submit([commandEncoder.finish()]);
 
         return {
-            color: this.ctx.getCurrentTexture(),
-            depth: depthStencilTexture
+            color: this.renderColorTexture,
+            depth: this.renderDepthTexture
         }
     };
 
@@ -227,7 +254,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     this.clearScreen = async function () {
         var clearedAttachments = await this.getClearedRenderAttachments();
-        webGPU.deleteTexture(clearedAttachments.depth);
+
+        webGPU.copyTextureToTexture(clearedAttachments.color, this.ctx.getCurrentTexture());
     }
     // renders a view object, datasets
     // for now, all share a canvas
@@ -262,12 +290,14 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 clearValue: this.clearColor,
                 loadOp: "load",
                 storeOp: "store",
+                texture: outputRenderAttachments.color,
                 view: outputRenderAttachments.color.createView()
             }
             var outputDepthAttachment = {
                 depthClearValue: 1.0,
                 depthLoadOp: "load",
                 depthStoreOp: "store",
+                texture: outputRenderAttachments.depth,
                 view: outputRenderAttachments.depth.createView()
             }
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
@@ -277,6 +307,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
                     this.rayMarcher.march(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.canvas);
                 } else if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
+                    // nothing here
                 } else {
                     this.renderMesh(renderable, camera, outputColourAttachment, outputDepthAttachment, box);
                 }
@@ -286,9 +317,16 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 }
             }
         }
+
+        // copy the working colour texture to the canvas
         await webGPU.waitForDone();
+        webGPU.copyTextureToTexture(outputRenderAttachments.color, this.ctx.getCurrentTexture());
+        
+        // await webGPU.waitForDone();
+        // end the frame
         this.endFrame();
-        webGPU.deleteTexture(outputRenderAttachments.depth); 
+        // webGPU.deleteTexture(outputRenderAttachments.depth); 
+        // webGPU.deleteTexture(outputRenderAttachments.color); 
     }
 
     this.resizeRenderingContext = function() {
@@ -296,11 +334,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             device: webGPU.device,
             format: "bgra8unorm",
             alphaMode: "opaque",
-            usage: 
-                GPUTextureUsage.RENDER_ATTACHMENT | 
-                GPUTextureUsage.COPY_DST |
-                GPUTextureUsage.STORAGE_BINDING
+            usage: GPUTextureUsage.COPY_DST
         });
+
+        const renderTextures = this.createRenderTextures(this.canvas.wdith, this.canvas.height);
+        this.renderDepthTexture = renderTextures.depth;
+        this.renderColorTexture = renderTextures.color;
+
         this.canvasResized = true;
     }
 }

@@ -254,6 +254,9 @@ export function Camera(id) {
     
         mat4.perspective(projMat, toRads(this.fovY), this.aspect, this.zNear, this.zFar);
         this.projMat = projMat;
+        // console.log(this.projMat);
+        // console.log("zNear:", this.projMat[14]/(this.projMat[10]+this.projMat[11]));
+        // console.log("zFar:",  this.projMat[14]/(this.projMat[10]-this.projMat[11]));
     }
     this.getEyePos = function() {
         var vec = [0, 0, this.dist];
@@ -268,24 +271,11 @@ export function Camera(id) {
     }
     this.getViewMat = function() {
         this.viewMat = mat4.create();
-        mat4.lookAt(this.viewMat, this.getEyePos(), this.target, [0, 1, 0]);
-
-        // if (!this.modelViewMatValid) {
-        //     let viewMat = mat4.create();
-        
-        //     // calculate eye position in world space from distance and angle values
-            
-            
-        //     mat4.multiply(this.modelViewMat, viewMat, this.modelMat);
-
-        //     this.modelViewMatValid = true;
-        //     // console.log(this.modelViewMat);
-        // };
-    
+        mat4.lookAt(this.viewMat, this.getEyePos(), this.target, [0, 1, 0]);    
         return this.viewMat;
     }
     this.setDist = function(dist) {
-        this.dist = Math.min(dist, this.zFar/2);
+        this.dist = Math.min(dist, this.zFar);
         this.viewMatValid = false;
     }
     this.getDist = function() {

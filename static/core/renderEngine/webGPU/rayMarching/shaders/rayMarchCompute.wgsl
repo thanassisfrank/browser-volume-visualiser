@@ -86,8 +86,10 @@ struct CornerValuesBuff {
 @group(3) @binding(1) var offsetOptimisationTextureOld : texture_2d<f32>;
 // a texture to write the best results too
 @group(3) @binding(2) var offsetOptimisationTextureNew : texture_storage_2d<rg32float, write>;
+// the frame buffer before this pass for writing transparent pixels correctly
+@group(3) @binding(3) var inputImage : texture_2d<f32>;
 // output image after ray marching into volume
-@group(3) @binding(3) var outputImage : texture_storage_2d<bgra8unorm, write>;
+@group(3) @binding(4) var outputImage : texture_storage_2d<bgra8unorm, write>;
 
 
 struct KDTreeResult {
@@ -422,8 +424,17 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
 }
 
 
+// sets the pixel the the supplied colour
 fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
     var outCol = vec4<f32>(vec3<f32>(1-col.a), 0) + vec4<f32>(col.a*col.rgb, col.a);
+    textureStore(outputImage, coords, outCol);
+}
+
+// calculates the correct pixel colour using the over operation with the previous image
+// adds this correct colour to the output image
+fn drawPixel(coords : vec2<u32>, newCol : vec4<f32>) {
+    var oldCol : vec4<f32> = textureLoad(inputImage, coords, 0);
+    var outCol : vec4<f32> = over(newCol, oldCol);
     textureStore(outputImage, coords, outCol);
 }
 
@@ -473,8 +484,9 @@ fn getWorldSpaceSceneDepth(x : u32, y : u32) -> f32 {
     var ndc : f32 =  textureLoad(sceneDepthTexture, vec2<u32>(x, y), 0);
     // var ndc = depth * 2.0 - 1.0;
     // TODO: read near/far planes from projection matrix
-    var near : f32 = 1;
-    var far : f32 = 2000;
+    var near : f32 = globalInfo.camera.pMat[3][2]/(globalInfo.camera.pMat[2][2] + globalInfo.camera.pMat[2][3]);
+    var far : f32 = globalInfo.camera.pMat[3][2]/(globalInfo.camera.pMat[2][2] - globalInfo.camera.pMat[2][3]);
+    // var far : f32 = 2000;
     return (2.0 * near * far) / (far + near - ndc * (far - near));
 }
 
@@ -622,6 +634,6 @@ fn main(
     if (passFlags.showOffset) {
         setPixel(id.xy, vec4<f32>(vec3<f32>(bestSample.offset), 1));
     } else  if (outCol.a > 0) {
-        setPixel(id.xy, outCol);
+        drawPixel(id.xy, outCol);
     }
 }

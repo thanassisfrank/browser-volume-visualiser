@@ -482,6 +482,7 @@ export function WebGPUBase (verbose) {
     // Texture management ===================================================================================
     
     this.makeTexture = function(config) {
+        // console.log(config);
         // TODO: correctly calculate texel count of cubemap textures
         config.size.width ??= 1;
         config.size.height ??= 1;
@@ -497,6 +498,27 @@ export function WebGPUBase (verbose) {
         finalConfig.label = uniqueLabel;
 
         return this.device.createTexture(config);
+    }
+
+    this.duplicateTexture = async function(texture, usage) {
+        // console.log(texture);
+        const texExtent = {
+            width: texture.width,
+            height: texture.height,
+            depthOrArrayLayers: texture.depthOrArrayLayers
+        };
+
+        var newTex = this.makeTexture({
+            size: texExtent,
+            usage: usage,
+            format: texture.format,
+            dimension: texture.dimension,
+            label: "Copy of: " + texture.label
+        });
+
+        await this.copyTextureToTexture(texture, newTex, texExtent);
+
+        return newTex;
     }
 
 
@@ -581,12 +603,25 @@ export function WebGPUBase (verbose) {
         
     }
 
+    // TODO: allow copying from arbitrary origins within both images
     this.copyTextureToTexture = async function(srcTexture, dstTexture, extent) {
+        var copyExtent = extent ?? {
+            width: Math.min(srcTexture.width, dstTexture.width),
+            height: Math.min(srcTexture.height, dstTexture.height),
+            depthOrArrayLayers: Math.min(srcTexture.depthOrArrayLayers, dstTexture.depthOrArrayLayers)
+        };
+
         var commandEncoder = await this.device.createCommandEncoder();
         commandEncoder.copyTextureToTexture(
-            {texture: srcTexture},
-            {texture: dstTexture},
-            extent
+            {
+                texture: srcTexture,
+                origin: {}
+            },
+            {
+                texture: dstTexture,
+                origin: {}
+            },
+            copyExtent
         )
         this.device.queue.submit([commandEncoder.finish()]) 
     }

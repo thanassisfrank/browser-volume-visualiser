@@ -268,6 +268,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 },
                 {
                     visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "float",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
                     storageTexture: {
                         access: "write-only",
                         format: "bgra8unorm",
@@ -891,8 +899,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 depthOrArrayLayers: 1
             }
         );
-
-        
     }
 
     // do ray marching on the data
@@ -979,8 +985,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // if (renderable.passData.faceIndex != 0) return;
         var commandEncoder = await device.createCommandEncoder();
 
-        // clamp the dataset box to shave off regions
+        // debugger;
+        // make a copy of the current colour frame buffer
+        var copiedColourTexture = await webGPU.duplicateTexture(
+            outputColourAttachment.texture, 
+            GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING
+        );
 
+        // TODO: clamp the dataset box to shave off regions
         var clampedDataBox = {
             min: [
                 renderable.passData.dataBoxMin[0], 
@@ -1013,6 +1025,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         outputDepthAttachment.view,
                         this.offsetOptimisationTextureOld.createView(),
                         this.offsetOptimisationTextureNew.createView(),
+                        copiedColourTexture.createView(),
                         outputColourAttachment.view
                     ]
                 ),
@@ -1069,6 +1082,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         device.queue.submit([commandEncoder.finish()]);
         // console.log(renderable.passData);
+        await webGPU.waitForDone();
+        webGPU.deleteTexture(copiedColourTexture);
     }
 
     // reads the texture corresponding to the best found ray depth
