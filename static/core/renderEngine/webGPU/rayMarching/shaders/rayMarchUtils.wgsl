@@ -178,10 +178,6 @@ fn pointInAABB(p : vec3<f32>, box : AABB) -> bool {
     return !(p.x < box.min.x || p.y < box.min.y || p.z < box.min.z || p.x > box.max.x || p.y > box.max.y || p.z > box.max.z);
 };
 
-// fn intersectPlane(ray : Ray, normal : vec3<f32>, p0 : vec3<f32>) -> RayIntersectionResult {
-//     p0-
-// }
-
 // recovers the gradient of the data at the given point
 fn getDataGrad (x : f32, y : f32, z : f32, dataSrc : u32) -> vec3<f32> {
     var epsilon : f32 = 0.5;
@@ -505,7 +501,8 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
 
     if (passFlags.showVolume) {
         // add in the iso-surface as if it were a volume colour sample of very high attentuation (opaque)
-        fragCol = accumulateVolumeColourBehind(vec4<f32>(fragCol.rgb, exp2(32)), 1, rayMarchResult.volCol);
+        // if there is no surface found then the default alpha of 0 will mean this has no effect
+        fragCol = accumulateVolumeColourBehind(vec4<f32>(fragCol.rgb, fragCol.a * exp2(16)), 1, rayMarchResult.volCol);
         fragCol.a = 1 - fragCol.a;
     }
 

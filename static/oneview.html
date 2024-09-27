@@ -145,7 +145,7 @@
                 <summary>Unstructured</summary>
                 <select id="kd-tree-type-select" class="dataset-opt" name="kdTreeType"></select><br>
                 <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
-                <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="16" style="width:5ch"><label>Max depth</label><br>
+                <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="20" style="width:5ch"><label>Max depth</label><br>
             </details>
             <details>
                 <summary>Dynamic tree</summary>
@@ -158,7 +158,7 @@
                 <input type="checkbox" class="dataset-opt" name="BOUNDING_WIREFRAME" checked><label>Bounding box</label><br>
                 <input type="checkbox" class="dataset-opt" name="DATA_POINTS" ><label>Data points</label><br>
                 <input type="checkbox" class="dataset-opt" name="DATA_WIREFRAME" ><label>Mesh wireframe</label><br>
-                <input type="checkbox" class="dataset-opt" name="GEOMETRY" ><label>Geometry</label><br>
+                <input type="checkbox" class="dataset-opt" name="GEOMETRY" checked><label>Geometry</label><br>
             </details>
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
@@ -294,7 +294,7 @@
 
                 var canvas = get("c");
                 
-                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 600);
+                var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
 
 
                 var renderEnginePromise = createRenderEngine(canvas)

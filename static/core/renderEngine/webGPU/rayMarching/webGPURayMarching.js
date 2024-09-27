@@ -24,7 +24,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     var device = webGPU.device;
 
     var constsBuffer;
-    this.depthTexture;
     this.offsetOptimisationTextureOld;
     this.offsetOptimisationTextureNew;
 
@@ -37,6 +36,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     // > 8x8 corresponds to 64 threads which is the size of 1 or 2 waves on Nvidia or AMD hardware
     this.WGSize = {x: 8, y: 8};
 
+    // materials used as the defaults for the ray-marched iso-surface
     this.materials = {
         frontMaterial: {
             diffuseCol: [0.7, 0.2, 0.2],
@@ -842,21 +842,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         }
         // check if the size of the canvas is the same as what is was previously
         if (resized) {
-            webGPU.deleteTexture(this.depthTexture);
-            // create the texture that the mesh depth will be drawn onto
-            this.depthTexture = webGPU.makeTexture({
-                label: "march depth texture",
-                size: {
-                    width: ctx.canvas.width,
-                    height: ctx.canvas.height,
-                    depthOrArrayLayers: 1
-                },
-                dimension: "2d",
-                format: "r32float",
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-            });
-            console.log(this.depthTexture);
-
             webGPU.deleteTexture(this.offsetOptimisationTextureOld);
             // create texture for offset optimisation
             this.offsetOptimisationTextureOld = webGPU.makeTexture({

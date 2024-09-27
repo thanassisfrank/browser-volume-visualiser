@@ -435,6 +435,7 @@ fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
 fn drawPixel(coords : vec2<u32>, newCol : vec4<f32>) {
     var oldCol : vec4<f32> = textureLoad(inputImage, coords, 0);
     var outCol : vec4<f32> = over(newCol, oldCol);
+    // var outCol : vec4<f32> = vec4<f32>(newCol.a, newCol.a, newCol.a, 1);
     textureStore(outputImage, coords, outCol);
 }
 
