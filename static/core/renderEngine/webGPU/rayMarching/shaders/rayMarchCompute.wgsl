@@ -65,10 +65,10 @@ struct CornerValuesBuff {
 // where the vert index list starts for each cell, indexes into cellConnectivity
 @group(1) @binding(4) var<storage, read> cellOffsets : U32Buff;
 // the types of each cell i.e. how many verts it has
-// @group(1) @binding(6) var<storage> cellTypes : U32Buff;
+// @group(1) @binding(5) var<storage> cellTypes : U32Buff;
 
 // data values
-// vertex centred data arrays
+// vertex centered data arrays
 @group(2) @binding(0) var<storage, read> vertexDataA : F32Buff;
 @group(2) @binding(1) var<storage, read> vertexDataB : F32Buff;
 // sampled values for the corners of the node bounding boxes in the tree
@@ -162,10 +162,10 @@ fn getContainingLeafNode(queryPoint : vec3<f32>) -> KDTreeResult {
 // this implementation uses the scalar triple product
 fn pointInTetTriple(queryPoint : vec3<f32>, cell : InterpolationCell) -> CellTestResult {
     var p = queryPoint;
-    var a = cell.points[0];////vec3<f32>(cell.points[0][0], cell.points[0][1], cell.points[0][2]);
-    var b = cell.points[1];////vec3<f32>(cell.points[1][0], cell.points[1][1], cell.points[1][2]);
-    var c = cell.points[2];////vec3<f32>(cell.points[2][0], cell.points[2][1], cell.points[2][2]);
-    var d = cell.points[3];////vec3<f32>(cell.points[3][0], cell.points[3][1], cell.points[3][2]);
+    var a = cell.points[0];
+    var b = cell.points[1];
+    var c = cell.points[2];
+    var d = cell.points[3];
 
     var vap : vec3<f32> = p - a;
     var vbp : vec3<f32> = p - b;

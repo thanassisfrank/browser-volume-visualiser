@@ -190,6 +190,20 @@
                         <select class="view-surface-col-src-select"></select><label>Surface col src</label>
                     </details>
                     <details>
+                        <summary>Clip Planes</summary>
+                        <input class="view-clip-min-x" type="range"><label>Min x</label>
+                        <br>
+                        <input class="view-clip-max-x" type="range"><label>Max x</label>
+                        <br>
+                        <input class="view-clip-min-y" type="range"><label>Min y</label>
+                        <br>
+                        <input class="view-clip-max-y" type="range"><label>Max y</label>
+                        <br>
+                        <input class="view-clip-min-z" type="range"><label>Min z</label>
+                        <br>
+                        <input class="view-clip-max-z" type="range"><label>Max z</label>
+                    </details>
+                    <details>
                         <summary>Surface config</summary>
                         <select class="view-surface-col-scale-select"></select><label>Colour scale</label>
                         <br>
@@ -222,11 +236,6 @@
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
             import { FrameTimeGraph } from "./frameTimeGraph.js";
             import { KDTreeSplitTypes } from "./core/data/cellTree.js";
-
-            // import math from "https://cdnjs.cloudflare.com/ajax/libs/mathjs/13.1.1/math.js";
-            // import { math } from "./core/math.js";
-            // const math = create(all, {});
-            // console.log(math);
 
             import { VecMath } from "./core/VecMath.js"
 
@@ -277,20 +286,6 @@
                     [1, 17, 1, 1, 17, 17, 1, 17],
                     [1, 18, 0, 2, 0,  36, 0, 0]
                 ];
-                // console.log(VecMath.matStringify(matA));
-                // var matAT = VecMath.matTranspose(matA);
-                // console.log(VecMath.matStringify(matAT));
-                // var mult = VecMath.matMult(matAT, matA);
-
-                // console.log(VecMath.matStringify(mult));
-
-                // console.log(VecMath.matInverse(mult));
-
-
-
-
-
-
 
                 var canvas = get("c");
                 

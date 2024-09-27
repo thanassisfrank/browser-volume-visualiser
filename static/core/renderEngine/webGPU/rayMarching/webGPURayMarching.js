@@ -21,11 +21,11 @@ export const ColourScales = {
 
 export function WebGPURayMarchingEngine(webGPUBase) {
     var webGPU = webGPUBase;
-    var device = webGPU.device;
 
     var constsBuffer;
     this.offsetOptimisationTextureOld;
     this.offsetOptimisationTextureNew;
+    this.colorCopyDstTexture;
 
     this.rayMarchPassDescriptor;
     this.depthRenderPassDescriptor;
@@ -35,6 +35,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     // optimal seems to be 8x8
     // > 8x8 corresponds to 64 threads which is the size of 1 or 2 waves on Nvidia or AMD hardware
     this.WGSize = {x: 8, y: 8};
+
 
     // materials used as the defaults for the ray-marched iso-surface
     this.materials = {
@@ -371,24 +372,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             dimension: "3d",
             format: "r32float",
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-        })
-
-        // renderData.textures.data = webGPU.makeTexture({
-        //     label: "whole data texture",
-        //     size: textureSize,
-        //     dimension: "3d",
-        //     format: "r32float",
-        //     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-        // });
-
-        // await webGPU.fillTexture(renderData.textures.data, textureSize, 4, Float32Array.from(dataObj.getValues(0)).buffer);
-
-        // create sampler for data texture
-        // doesn't work for float32 data
-        renderData.samplers.data = device.createSampler({
-            label: "ray data sampler",
-            magFilter: "linear",
-            minFilter: "linear"
         });
 
         renderData.buffers.passInfo = webGPU.makeBuffer(512, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray pass info");
@@ -603,7 +586,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     }
 
 
-
     this.getDataSrcUint = function(type, name) {        
         // catch the simple cases
         switch (type) {
@@ -715,18 +697,20 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
 
     //updates the renderables for a data object
-    this.updateDataObj = async function(dataObj) {
+    this.updateDataObj = async function(dataObj, updateObj) {
         // update the data renderable first 
         var dataRenderable;
         var valueBufferCreated;
 
         for (let renderable of dataObj.renderables) {
+
+            renderable.passData.clippedDataBox = updateObj.clippedDataBox;
             
             if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA || renderable.type == RenderableTypes.DATA) {
                 dataRenderable = renderable
                 var passData = dataRenderable.passData; 
-                if (dataObj.isoSurfaceSrc.type != DataSrcTypes.DATA) {
-                    passData.isoSurfaceSrcUint = this.getDataSrcUint(dataObj.isoSurfaceSrc.type, dataObj.isoSurfaceSrc.name);
+                if (updateObj.isoSurfaceSrc.type != DataSrcTypes.DATA) {
+                    passData.isoSurfaceSrcUint = this.getDataSrcUint(updateObj.isoSurfaceSrc.type, updateObj.isoSurfaceSrc.name);
                 } else {
                     // deal with data
                     // var slotNum = await dataObj.loadDataArray(dataObj.isoSurfaceSrc.name)
@@ -734,7 +718,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         dataObj,
                         dataObj.isoSurfaceSrc.slotNum, 
                         dataObj.getDataSize(),
-                        dataObj.isoSurfaceSrc, 
+                        updateObj.isoSurfaceSrc, 
                         DataSrcUses.ISO_SURFACE,
                         passData,
                         renderable.renderData,
@@ -745,16 +729,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     var valueBufferCreatedIso = isoLoadResult.created;
                 }
 
-                if (dataObj.surfaceColSrc.type != DataSrcTypes.DATA) {
-                    passData.surfaceColSrcUint = this.getDataSrcUint(dataObj.surfaceColSrc.type, dataObj.surfaceColSrc.name);
+                if (updateObj.surfaceColSrc.type != DataSrcTypes.DATA) {
+                    passData.surfaceColSrcUint = this.getDataSrcUint(updateObj.surfaceColSrc.type, updateObj.surfaceColSrc.name);
                 } else {
                     // deal with data
                     // var slotNum = await dataObj.loadDataArray(dataObj.surfaceColSrc.name);
                     var colLoadResult = this.loadDataIntoValues(
                         dataObj,
-                        dataObj.surfaceColSrc.slotNum, 
+                        updateObj.surfaceColSrc.slotNum, 
                         dataObj.getDataSize(),
-                        dataObj.surfaceColSrc, 
+                        updateObj.surfaceColSrc, 
                         DataSrcUses.SURFACE_COL,
                         passData,
                         renderable.renderData,
@@ -765,8 +749,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     var valueBufferCreatedCol = colLoadResult.created;
                 }
 
-                passData.isoSurfaceSrc = dataObj.isoSurfaceSrc;
-                passData.surfaceColSrc = dataObj.surfaceColSrc;
+                passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
+                passData.surfaceColSrc = updateObj.surfaceColSrc;
 
                 // true if a buffer was created for either
                 valueBufferCreated = valueBufferCreatedIso || valueBufferCreatedCol;
@@ -776,16 +760,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
                     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_A) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(dataObj.isoSurfaceSrc.slotNum)]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
                     }
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_B) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(dataObj.isoSurfaceSrc.slotNum)]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
                     }
                     if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_A) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(dataObj.surfaceColSrc.slotNum)]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
                     }
                     if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_B) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(dataObj.surfaceColSrc.slotNum)]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
                     }
                 }
 
@@ -854,7 +838,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 dimension: "2d",
                 format: "rg32float",
                 usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
-            })
+            });
 
             webGPU.deleteTexture(this.offsetOptimisationTextureNew);
             // create texture for offset optimisation
@@ -868,7 +852,21 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 dimension: "2d",
                 format: "rg32float",
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
-            })
+            });
+
+            webGPU.deleteTexture(this.colorCopyDstTexture);
+
+            this.colorCopyDstTexture = webGPU.makeTexture({
+                label: "colour copy destination",
+                size: {
+                    width: ctx.canvas.width,
+                    height: ctx.canvas.height,
+                    depthOrArrayLayers: 1
+                },
+                dimension: "2d",
+                format: "bgra8unorm",
+                usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING
+            });
         }
     }
 
@@ -889,7 +887,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     // do ray marching on the data
     // this is run for every face of the bounding box
     this.march = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, canvas) {
-        var commandEncoder = await device.createCommandEncoder();
+        var commandEncoder = await webGPU.createCommandEncoder();
         
         var rayMarchRenderPass = {
             ...this.rayMarchPassDescriptor,
@@ -946,8 +944,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.valuesB.limits[0],
                     renderable.passData.valuesB.limits[1],
                     0,
-                    ...renderable.passData.dataBoxMin, 0,
-                    ...renderable.passData.dataBoxMax, 0,
+                    ...renderable.passData.clippedDataBox.min, 0,
+                    ...renderable.passData.clippedDataBox.max, 0,
                     0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
@@ -962,35 +960,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             ]
         );
 
-        device.queue.submit([commandEncoder.finish()]);
+        webGPU.submitCommandEncoder(commandEncoder);
+    }
+
+    this.marchNew = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, canvas) {
+        
     }
 
     // this is run for every face of the bounding box
     this.marchUnstructured = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
-        // if (renderable.passData.faceIndex != 0) return;
-        var commandEncoder = await device.createCommandEncoder();
+        var commandEncoder = await webGPU.createCommandEncoder();
 
-        // debugger;
         // make a copy of the current colour frame buffer
-        var copiedColourTexture = await webGPU.duplicateTexture(
-            outputColourAttachment.texture, 
-            GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING
-        );
-
-        // TODO: clamp the dataset box to shave off regions
-        var clampedDataBox = {
-            min: [
-                renderable.passData.dataBoxMin[0], 
-                renderable.passData.dataBoxMin[1], 
-                renderable.passData.dataBoxMin[2]
-            ],
-            max: [
-                renderable.passData.dataBoxMax[0], 
-                renderable.passData.dataBoxMax[1], 
-                renderable.passData.dataBoxMax[2]
-            ],
-        }
-
+        webGPU.encodeCopyTextureToTexture(commandEncoder, outputColourAttachment.texture, this.colorCopyDstTexture);
 
         // do a full ray march pass
         var WGs = [
@@ -1010,7 +992,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         outputDepthAttachment.view,
                         this.offsetOptimisationTextureOld.createView(),
                         this.offsetOptimisationTextureNew.createView(),
-                        copiedColourTexture.createView(),
+                        this.colorCopyDstTexture.createView(),
                         outputColourAttachment.view
                     ]
                 ),
@@ -1020,7 +1002,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         // encode the render pass
         webGPU.encodeGPUPass(commandEncoder, rayMarchComputePass);
-        
 
         // global info buffer for compute
         webGPU.writeDataToBuffer(
@@ -1049,8 +1030,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.valuesB.limits[0],
                     renderable.passData.valuesB.limits[1],
                     0,
-                    ...clampedDataBox.min, 0,
-                    ...clampedDataBox.max, 0,
+                    ...renderable.passData.clippedDataBox.min, 0,
+                    ...renderable.passData.clippedDataBox.max, 0,
                     0, 0, 0, 0,
                     this.calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
@@ -1063,12 +1044,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     this.globalPassInfo.colourScale,
                 ])
             ]
-        )
+        );
 
-        device.queue.submit([commandEncoder.finish()]);
-        // console.log(renderable.passData);
-        await webGPU.waitForDone();
-        webGPU.deleteTexture(copiedColourTexture);
+        webGPU.submitCommandEncoder(commandEncoder);
     }
 
     // reads the texture corresponding to the best found ray depth

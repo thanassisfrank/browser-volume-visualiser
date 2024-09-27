@@ -20,8 +20,6 @@
 
 // best optimisation 
 @group(2) @binding(0) var offsetOptimisationTextureOld : texture_2d<f32>;
-// best corresponding pixel colours
-// @group(2) @binding(1) var offsetOptimisationBestCol : texture_2d<f32>;
 
 struct VertexOut {
     @builtin(position) outPosition : vec4<f32>,
@@ -84,17 +82,12 @@ fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
     return OptimisationSample(texel[0], texel[1]);
 }
 
-// fn getPrevOptimisationCol(x : f32, y : f32) -> vec3<f32> {
-//     var textureDims : vec2<u32> = textureDimensions(offsetOptimisationBestCol);
-//     var texCoords = vec2<u32>(vec2<f32>(textureDims) * 0.5 * vec2<f32>(x + 1, -y + 1));
-//     return textureLoad(offsetOptimisationBestCol, texCoords, 0).xyz;
-// }
-
 // generate a new random f32 value [0, 1]
 fn getRandF32(seed : u32) -> f32 {
     var randU32 = randomU32(globalInfo.time ^ seed);
     return f32(randU32)/exp2(32);
 }
+
 
 
 @vertex
@@ -111,6 +104,8 @@ fn vertex_main(@location(0) position: vec3<f32>) -> VertexOut
     return out;
 }
 
+
+
 @fragment
 fn fragment_main(
     fragInfo: VertexOut,
@@ -121,8 +116,6 @@ fn fragment_main(
     var passFlags : RayMarchPassFlags = getFlags(passInfo.flags);
     // get the dimensions of the dataset in data coordinates as a vec3<f32>
     var dataSize : vec3<f32> = passInfo.dataBox.max - passInfo.dataBox.min;
-    // initialise the fragment colour to the background
-    var fragCol = vec4<f32>(1, 1, 1, 0);
 
     var deviceCoords = fragInfo.clipPosition.xy / fragInfo.clipPosition.w;
 
@@ -144,14 +137,12 @@ fn fragment_main(
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
         startInside = true;
-        // return vec4<f32>(1, 0, 0, 0.5);
     } else {
         // marching from the inside
         ray.tip = cameraPos;
         ray.length = 0;
         // guess that we started outside to prevent issues with the near clipping plane
         startInside = false;
-        // return vec4<f32>(0, 0, 1, 0.5);
     }
 
     // get the best depth, offset sample so far
@@ -159,7 +150,6 @@ fn fragment_main(
     if (passInfo.framesSinceMove == 0) {
         prevOffsetSample.depth = 0;
     }
-    // var prevBestCol : vec3<f32> = getPrevOptimisationCol(deviceCoords.x, deviceCoords.y);
 
     if (passFlags.showCells) {
         var dataPos = toDataSpace(ray.tip);
@@ -171,7 +161,6 @@ fn fragment_main(
     }
 
     if (passFlags.showRayDirs) {
-        // return vec4<f32>(ray.direction, 1);
         return FragmentOut(
             vec4<f32>(ray.direction, 1), 
             vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
@@ -180,7 +169,6 @@ fn fragment_main(
     
     if (passFlags.showDeviceCoords) {
         return FragmentOut(
-            // vec4<f32>(deviceCoords, 0, 1), 
             vec4<f32>(fragInfo.outPosition.z, 0, 0, 1), 
             vec4<f32>(prevOffsetSample.offset, prevOffsetSample.depth, 0, 0)
         );

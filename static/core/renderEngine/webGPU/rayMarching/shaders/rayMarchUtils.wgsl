@@ -122,13 +122,6 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
 
 // returns the t value for progrssive offset optimisation
 fn getTVal(x : f32) -> f32 {
-    // exponential
-        // var t : f32 = exp2(-f32(passInfo.framesSinceMove)/10.0);
-
-    // linear
-    //20 was used before
-    // var t : f32 = 1 - x/300.0;
-
     // square
     var t : f32 = 1;
     if (passInfo.framesSinceMove > 400) {
@@ -352,7 +345,7 @@ fn marchRay(
             }
         }
 
-        var thisStepSize = passInfo.stepSize;//*ray.length/10;
+        var thisStepSize = passInfo.stepSize;
 
         thisStepSize *= select(1.0, offset, stepsInside == 1u);
 
@@ -438,9 +431,9 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32)
             var sampleVal = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, dataSrc);
             var normalisedSampleVal = clamp(normaliseSample(sampleVal, dataSrc), 0.0, 1.0);
 
-            // var cols = array<vec3<f32>, 3>(vec3<f32>(0, 0, 1))
             switch (passInfo.colourScale) {
                 case COL_SCALE_B_W, default {
+                    // black -> white
                     material.diffuseCol = mix(
                         vec3<f32>(0, 0, 0),
                         vec3<f32>(1, 1, 1),

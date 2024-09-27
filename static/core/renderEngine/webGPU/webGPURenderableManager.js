@@ -52,15 +52,15 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         }
     }  
 
-    this.updateSceneObject = function(dt, sceneObj) {
+    this.updateSceneObject = function(dt, sceneObj, updateObj) {
         switch (sceneObj.objectType) {
             case SceneObjectTypes.DATA:
                 // propogate the threshold to its renderables
                 for (let renderable of sceneObj.renderables) {
-                    renderable.passData.threshold = sceneObj.threshold;
+                    renderable.passData.threshold = updateObj.threshold;
                 }
                 if (sceneObj.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
-                    this.rayMarcher.updateDataObj(sceneObj);
+                    this.rayMarcher.updateDataObj(sceneObj, updateObj);
                 }
                 break;
             default:

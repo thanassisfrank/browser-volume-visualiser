@@ -52,7 +52,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // setup the canvas for drawing to
         this.ctx = this.canvas.getContext("webgpu");
         this.ctx.configure({
-            device: webGPU.device,
+            device: webGPU.getDevice(),
             format: "bgra8unorm",
             alphaMode: "opaque"
         });
@@ -116,8 +116,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         var depthTexture = webGPU.makeTexture({
             label: "render depth texture",
             size: {
-                width: this.canvas.width,
-                height: this.canvas.height,
+                width: width,
+                height: height,
                 depthOrArrayLayers: 1
             },
             dimension: "2d",
@@ -128,8 +128,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         var colorTexture = webGPU.makeTexture({
             label: "render color texture",
             size: {
-                width: this.canvas.width,
-                height: this.canvas.height,
+                width: width,
+                height: height,
                 depthOrArrayLayers: 1
             },
             dimension: "2d",
@@ -174,13 +174,13 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             }
         };
 
-        var commandEncoder = await webGPU.device.createCommandEncoder();
+        var commandEncoder = await webGPU.createCommandEncoder();
 
         const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
         
         passEncoder.end();
 
-        webGPU.device.queue.submit([commandEncoder.finish()]);
+        webGPU.submitCommandEncoder(commandEncoder);
 
         return {
             color: this.renderColorTexture,
@@ -193,8 +193,8 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.renderableManager.setupSceneObject(sceneObj);
     };
 
-    this.updateSceneObject = function(dt, sceneObj) {
-        this.renderableManager.updateSceneObject(dt, sceneObj);
+    this.updateSceneObject = function(dt, sceneObj, updateObj) {
+        this.renderableManager.updateSceneObject(dt, sceneObj, updateObj);
     }
     
     this.cleanupSceneObj = function(sceneObj) {
@@ -208,9 +208,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             return;
         }
 
-        var commandEncoder = webGPU.device.createCommandEncoder();     
-
-        await commandEncoder;
+        var commandEncoder = await webGPU.createCommandEncoder();
 
         if (renderable.renderMode == RenderableRenderModes.MESH_POINTS) {
             var thisPassDescriptor = this.pointsRenderPassDescriptor;
@@ -250,7 +248,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             renderable.renderData.buffers.objectInfo, 
             [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
-        webGPU.device.queue.submit([commandEncoder.finish()]);
+        webGPU.submitCommandEncoder(commandEncoder);
     };
 
     this.clearScreen = async function () {
@@ -284,7 +282,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         var renderables = scene.getRenderables();
         this.renderableManager.sortRenderables(renderables, camera);
 
-        // console.log(renderables);
 
         for (let renderable of renderables) {
             var outputColourAttachment = {
@@ -332,13 +329,16 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
 
     this.resizeRenderingContext = function() {
         this.ctx.configure({
-            device: webGPU.device,
+            device: webGPU.getDevice(),
             format: "bgra8unorm",
             alphaMode: "opaque",
             usage: GPUTextureUsage.COPY_DST
         });
 
-        const renderTextures = this.createRenderTextures(this.canvas.wdith, this.canvas.height);
+        webGPU.deleteTexture(this.renderDepthTexture);
+        webGPU.deleteTexture(this.renderColorTexture);
+
+        const renderTextures = this.createRenderTextures(this.canvas.width, this.canvas.height);
         this.renderDepthTexture = renderTextures.depth;
         this.renderColorTexture = renderTextures.color;
 

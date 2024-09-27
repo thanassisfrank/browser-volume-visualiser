@@ -7,7 +7,8 @@ import { Renderable, RenderableTypes, RenderableRenderModes } from "../renderEng
 export const GPUTexelByteLength = {
     "depth32float": 4,
     "r32float": 4,
-    "rg32float": 8
+    "rg32float": 8,
+    "bgra8unorm" : 4
 }
 
 // when copying texture->buffer bytesPerRow must be multiple of 256
@@ -165,6 +166,10 @@ export function WebGPUBase (verbose) {
 
     this.fetchShader = function(name) {
         return fetch(name).then(response => response.text());
+    }
+
+    this.getDevice = function() {
+        return this.device;
     }
     
 
@@ -605,24 +610,8 @@ export function WebGPUBase (verbose) {
 
     // TODO: allow copying from arbitrary origins within both images
     this.copyTextureToTexture = async function(srcTexture, dstTexture, extent) {
-        var copyExtent = extent ?? {
-            width: Math.min(srcTexture.width, dstTexture.width),
-            height: Math.min(srcTexture.height, dstTexture.height),
-            depthOrArrayLayers: Math.min(srcTexture.depthOrArrayLayers, dstTexture.depthOrArrayLayers)
-        };
-
         var commandEncoder = await this.device.createCommandEncoder();
-        commandEncoder.copyTextureToTexture(
-            {
-                texture: srcTexture,
-                origin: {}
-            },
-            {
-                texture: dstTexture,
-                origin: {}
-            },
-            copyExtent
-        )
+        this.encodeCopyTextureToTexture(commandEncoder, srcTexture, dstTexture, extent);
         this.device.queue.submit([commandEncoder.finish()]) 
     }
 
@@ -727,8 +716,12 @@ export function WebGPUBase (verbose) {
         return;
     }
     
-    // Pass management ======================================================================================
+    // Pass and command encoder management ==================================================================
 
+    this.createCommandEncoder = async function() {
+        return await this.device.createCommandEncoder(); 
+    }
+    
     // creates a pass descriptor object
     this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code, label = "") {
         // console.log(bindGroupLayouts);
@@ -835,8 +828,6 @@ export function WebGPUBase (verbose) {
             box = clampBox(box, bounds);
             box = floorBox(box);
             
-            // console.log(clampedBox);
-            // console.log(box, passObj.boundingBox)
             // will support rect outside the attachment size for V1 of webgpu
             // https://github.com/gpuweb/gpuweb/issues/373 
             passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
@@ -869,5 +860,28 @@ export function WebGPUBase (verbose) {
         return commandEncoder; 
     }
 
-    
+    // encodes a texture copy operation on the supplied command encode
+    this.encodeCopyTextureToTexture = function(commandEncoder, srcTexture, dstTexture, extent) {
+        var copyExtent = extent ?? {
+            width: Math.min(srcTexture.width, dstTexture.width),
+            height: Math.min(srcTexture.height, dstTexture.height),
+            depthOrArrayLayers: Math.min(srcTexture.depthOrArrayLayers, dstTexture.depthOrArrayLayers)
+        };
+
+        commandEncoder.copyTextureToTexture(
+            {
+                texture: srcTexture,
+                origin: {}
+            },
+            {
+                texture: dstTexture,
+                origin: {}
+            },
+            copyExtent
+        )
+    }
+
+    this.submitCommandEncoder = function(commandEncoder) {
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
 }

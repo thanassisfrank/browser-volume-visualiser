@@ -66,6 +66,13 @@ export var viewManager = {
         var surfaceColSrc = viewContainer.getElementsByClassName("view-surface-col-src-select")?.[0];
         var colScale = viewContainer.getElementsByClassName("view-surface-col-scale-select")?.[0];
 
+        var clipMinX = viewContainer.getElementsByClassName("view-clip-min-x")?.[0];
+        var clipMaxX = viewContainer.getElementsByClassName("view-clip-max-x")?.[0];
+        var clipMinY = viewContainer.getElementsByClassName("view-clip-min-y")?.[0];
+        var clipMaxY = viewContainer.getElementsByClassName("view-clip-max-y")?.[0];
+        var clipMinZ = viewContainer.getElementsByClassName("view-clip-min-z")?.[0];
+        var clipMaxZ = viewContainer.getElementsByClassName("view-clip-max-z")?.[0];
+
         // add references to these in the view
         view.elems.container = viewContainer;
         view.elems.slider = slider;
@@ -79,6 +86,10 @@ export var viewManager = {
         view.elems.isoSurfaceSrc = isoSurfaceSrc;
         view.elems.surfaceColSrc = surfaceColSrc;
         view.elems.colScale = colScale;
+        view.elems.clip = {
+            min: [clipMinX, clipMinY, clipMinZ],
+            max: [clipMaxX, clipMaxY, clipMaxZ],
+        };
 
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
@@ -109,6 +120,26 @@ export var viewManager = {
                 elem.value = ColourScales[scale];     
                 colScale.appendChild(elem);
             }
+        }
+
+        var dataExtent = view.data.extentBox;
+
+        for (let i = 0; i < view.elems.clip.min.length; i++) {
+            var elem = view.elems.clip.min[i];
+            if (!elem) continue;
+            elem.min = dataExtent.min[i];
+            elem.max = dataExtent.max[i];
+            elem.step = (dataExtent.max[i] - dataExtent.min[i])/1000;
+            elem.value = dataExtent.min[i];
+        }
+
+        for (let i = 0; i < view.elems.clip.max.length; i++) {
+            var elem = view.elems.clip.max[i];
+            if (!elem) continue;
+            elem.min = dataExtent.min[i];
+            elem.max = dataExtent.max[i];
+            elem.step = (dataExtent.max[i] - dataExtent.min[i])/1000;
+            elem.value = dataExtent.max[i];
         }
     }, 
     updateColScale: function(val, renderEngine) {
@@ -194,6 +225,24 @@ export var viewManager = {
             this.updateColScale(e.target.value, renderEngine);
         });
 
+
+        // add event listeners for changing all the clip planes
+        for (let i = 0; i < view.elems.clip.min.length; i++) {
+            var elem = view.elems.clip.min[i];
+            if (!elem) continue;
+            elem.addEventListener("input", (e) => {
+                view.clippedDataExtentBox.min[i] = e.target.value;
+            });
+        }
+
+        for (let i = 0; i < view.elems.clip.max.length; i++) {
+            var elem = view.elems.clip.max[i];
+            if (!elem) continue;
+            elem.addEventListener("input", (e) => {
+                view.clippedDataExtentBox.max[i] = e.target.value;
+            });
+        }
+
         // might want another event listener for when the frame element is moved or resized 
         // to update view.box        
     },
@@ -234,6 +283,8 @@ function View(id, camera, data, renderMode) {
     this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
     this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
 
+    this.clippedDataExtentBox = structuredClone(this.data.extentBox);
+
     this.renderMode = renderMode;
 
     this.updateDynamicTree = true;
@@ -251,8 +302,7 @@ function View(id, camera, data, renderMode) {
 
         this.updateIsoSurfaceSrc(this.isoSurfaceSrc.type, this.isoSurfaceSrc.name);
         this.updateSurfaceColSrc(this.surfaceColSrc.type, this.surfaceColSrc.name);
-        // var limits = data.getLimits(0)
-        // this.updateThreshold((limits[0] + limits[1]) * 0.5);
+
         switch (data.dataName) {
             case "Silicium":
                 // camera.setStartPosition(data.getMidPoint(), 0.7*data.getMaxLength(), 0, 0);
@@ -389,7 +439,9 @@ function View(id, camera, data, renderMode) {
             }
         }
         
-        // TODO: better method of propogating this information
+        
+
+
         this.data.threshold = this.threshold;
         this.data.isoSurfaceSrc = this.isoSurfaceSrc;
         this.data.surfaceColSrc = this.surfaceColSrc;
@@ -413,9 +465,17 @@ function View(id, camera, data, renderMode) {
             );
         }
 
+        // object which holds all the updates for the render engine
+        const updateObj = {
+            threshold: this.threshold,
+            isoSurfaceSrc: this.isoSurfaceSrc,
+            surfaceColSrc: this.surfaceColSrc,
+            clippedDataBox: this.clippedDataExtentBox,
+        };
+
         // update the renderables for the objects in the scene
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
-            renderEngine.updateSceneObject(dt, sceneObj);
+            renderEngine.updateSceneObject(dt, sceneObj, updateObj);
         }
     }
 
