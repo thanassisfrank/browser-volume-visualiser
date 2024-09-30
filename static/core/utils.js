@@ -135,6 +135,16 @@ export var hexStringToRGBArray = (hex) => {
     return col;
 }
 
+export var boxesEqual = (box1, box2) => {
+    if (!box1 || !box2) return false;
+    return box1.min[0] == box2.min[0] && 
+           box1.min[1] == box2.min[1] && 
+           box1.min[2] == box2.min[2] && 
+           box1.max[0] == box2.max[0] && 
+           box1.max[1] == box2.max[1] && 
+           box1.max[2] == box2.max[2];
+}
+
 export const DATA_TYPES = {
     "uint8": Uint8Array,
     "int32": Int32Array,

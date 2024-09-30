@@ -141,10 +141,10 @@ export var viewManager = {
         for (let i = 0; i < view.elems.clip.max.length; i++) {
             var elem = view.elems.clip.max[i];
             if (!elem) continue;
-            elem.min = dataExtent.min[i];
-            elem.max = dataExtent.max[i];
-            elem.step = (dataExtent.max[i] - dataExtent.min[i])/1000;
-            elem.value = dataExtent.max[i];
+            elem.min = -dataExtent.max[i];
+            elem.max = -dataExtent.min[i];
+            elem.step = -(dataExtent.max[i] - dataExtent.min[i])/1000;
+            elem.value = -dataExtent.max[i];
         }
 
         // initialise the volume transfer function
@@ -253,7 +253,7 @@ export var viewManager = {
             var elem = view.elems.clip.max[i];
             if (!elem) continue;
             elem.addEventListener("input", (e) => {
-                view.clippedDataExtentBox.max[i] = e.target.value;
+                view.clippedDataExtentBox.max[i] = -1 * e.target.value;
             });
         }
 

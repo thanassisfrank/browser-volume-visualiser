@@ -95,6 +95,9 @@
             #create-view-btn {
                 color:darkgreen;
             }
+            .range-rev {
+                direction: rtl
+            }
         </style>
     </head>
     <body>
@@ -193,15 +196,15 @@
                         <summary>Clip Planes</summary>
                         <input class="view-clip-min-x" type="range"><label>Min x</label>
                         <br>
-                        <input class="view-clip-max-x" type="range"><label>Max x</label>
+                        <input class="view-clip-max-x range-rev" type="range"><label>Max x</label>
                         <br>
                         <input class="view-clip-min-y" type="range"><label>Min y</label>
                         <br>
-                        <input class="view-clip-max-y" type="range"><label>Max y</label>
+                        <input class="view-clip-max-y range-rev" type="range"><label>Max y</label>
                         <br>
                         <input class="view-clip-min-z" type="range"><label>Min z</label>
                         <br>
-                        <input class="view-clip-max-z" type="range"><label>Max z</label>
+                        <input class="view-clip-max-z range-rev" type="range"><label>Max z</label>
                     </details>
                     <details>
                         <summary>Surface config</summary>

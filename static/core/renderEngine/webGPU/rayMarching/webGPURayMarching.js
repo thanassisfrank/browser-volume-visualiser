@@ -3,7 +3,7 @@
 
 import {mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { DataFormats, ResolutionModes } from "../../../data/data.js";
-import { clampBox } from "../../../utils.js";
+import { boxesEqual, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
 
@@ -704,8 +704,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         for (let renderable of dataObj.renderables) {
 
-            renderable.passData.clippedDataBox = updateObj.clippedDataBox;
-            renderable.passData.volumeTransferFunction = updateObj.volumeTransferFunction;
+            // reset offset optimisation if bounding box has changed
+            if (!boxesEqual(renderable.passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
+            renderable.passData.clippedDataBox = structuredClone(updateObj.clippedDataBox);
+            renderable.passData.volumeTransferFunction = structuredClone(updateObj.volumeTransferFunction);
             
             if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA || renderable.type == RenderableTypes.DATA) {
                 dataRenderable = renderable
