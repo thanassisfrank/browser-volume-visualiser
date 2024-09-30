@@ -1,7 +1,7 @@
 // view.js
 // handles the creation of view objects, their management and deletion
 
-import { get, show, hide, isVisible, toRads, newId, timer } from "./core/utils.js";
+import { get, show, hide, isVisible, toRads, newId, timer, hexStringToRGBArray } from "./core/utils.js";
 
 import { VecMath } from "./core/VecMath.js";
 
@@ -73,6 +73,9 @@ export var viewManager = {
         var clipMinZ = viewContainer.getElementsByClassName("view-clip-min-z")?.[0];
         var clipMaxZ = viewContainer.getElementsByClassName("view-clip-max-z")?.[0];
 
+        var volCols = viewContainer.getElementsByClassName("view-vol-col");
+        var volOps = viewContainer.getElementsByClassName("view-vol-op");
+
         // add references to these in the view
         view.elems.container = viewContainer;
         view.elems.slider = slider;
@@ -90,6 +93,8 @@ export var viewManager = {
             min: [clipMinX, clipMinY, clipMinZ],
             max: [clipMaxX, clipMaxY, clipMaxZ],
         };
+        view.elems.volCol = volCols;
+        view.elems.volOp = volOps;
 
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
@@ -140,6 +145,15 @@ export var viewManager = {
             elem.max = dataExtent.max[i];
             elem.step = (dataExtent.max[i] - dataExtent.min[i])/1000;
             elem.value = dataExtent.max[i];
+        }
+
+        // initialise the volume transfer function
+        for (let elem of view.elems.volCol) {
+            view.volumeTransferFunction.colour[elem.dataset["transferIndex"]] = hexStringToRGBArray(elem.value);
+        }
+
+        for (let elem of view.elems.volOp) {
+            view.volumeTransferFunction.opacity[elem.dataset["transferIndex"]] = elem.value;
         }
     }, 
     updateColScale: function(val, renderEngine) {
@@ -243,6 +257,19 @@ export var viewManager = {
             });
         }
 
+        for (let elem of view.elems.volCol) {
+            elem.addEventListener("change", (e) => {
+                view.volumeTransferFunction.colour[e.target.dataset["transferIndex"]] = hexStringToRGBArray(e.target.value);
+                console.log(view.volumeTransferFunction);
+            });
+        }
+        
+        for (let elem of view.elems.volOp) {
+            elem.addEventListener("change", (e) => {
+                view.volumeTransferFunction.opacity[e.target.dataset["transferIndex"]] = e.target.value;
+            });
+        }
+
         // might want another event listener for when the frame element is moved or resized 
         // to update view.box        
     },
@@ -284,6 +311,11 @@ function View(id, camera, data, renderMode) {
     this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
 
     this.clippedDataExtentBox = structuredClone(this.data.extentBox);
+
+    this.volumeTransferFunction = {
+        colour:[],
+        opacity:[]
+    };
 
     this.renderMode = renderMode;
 
@@ -471,6 +503,7 @@ function View(id, camera, data, renderMode) {
             isoSurfaceSrc: this.isoSurfaceSrc,
             surfaceColSrc: this.surfaceColSrc,
             clippedDataBox: this.clippedDataExtentBox,
+            volumeTransferFunction: this.volumeTransferFunction,
         };
 
         // update the renderables for the objects in the scene

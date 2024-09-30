@@ -127,6 +127,14 @@ export var stringifyMatrix = (mat, row) => {
     return str;
 }
 
+export var hexStringToRGBArray = (hex) => {
+    var col = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+        col[i] = parseInt(hex.substring(1 + i*2, 3 + i*2), 16)/255;
+    }
+    return col;
+}
+
 export const DATA_TYPES = {
     "uint8": Uint8Array,
     "int32": Int32Array,

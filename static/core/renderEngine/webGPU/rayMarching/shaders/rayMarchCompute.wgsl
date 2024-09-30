@@ -8,7 +8,7 @@
 struct CombinedPassInfo {
     @size(208) globalInfo : GlobalUniform,
     @size(160) objectInfo : ObjectInfo,
-    @size(180) passInfo : RayMarchPassInfo,
+    @size(240) passInfo : RayMarchPassInfo,
 };
 
 // tree nodes can be in one of 3 states:

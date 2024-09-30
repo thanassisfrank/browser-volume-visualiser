@@ -87,6 +87,16 @@ fn mix4(col0 : vec3<f32>, col1 : vec3<f32>, col2 : vec3<f32>, col3 : vec3<f32>, 
     }
 }
 
+fn mix4float(col0 : f32, col1 : f32, col2 : f32, col3 : f32, fac : f32) -> f32 {
+    if (fac < 1./3.) {
+        return mix(col0, col1, fac * 3);  
+    } else if (fac < 2./3.){
+        return mix(col1, col2, fac * 3 - 1);  
+    } else {
+        return mix(col2, col3, fac * 3 - 2);  
+    }
+}
+
 fn mix5(col0 : vec3<f32>, col1 : vec3<f32>, col2 : vec3<f32>, col3 : vec3<f32>, col4 : vec3<f32>, fac : f32) -> vec3<f32> {
     if (fac < 1./4.) {
         return mix(col0, col1, fac * 4);  

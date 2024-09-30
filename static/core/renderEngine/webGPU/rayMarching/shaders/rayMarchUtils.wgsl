@@ -20,7 +20,13 @@ struct RayMarchPassInfo {
     @size(4)  isoSurfaceSrc : u32,
     @size(4)  surfaceColSrc : u32,
     @size(4)  colourScale : u32,
+              transferFunction : array<TransferFunctionPoint,4>,
 };
+
+struct TransferFunctionPoint {
+    col: vec3<f32>,
+    opacity : f32,
+}
 
 // a set of flags for settings within the pass
 struct RayMarchPassFlags {
@@ -215,15 +221,30 @@ fn toDataSpace(pos : vec3<f32>) -> vec3<f32> {
     return (vec4<f32>(pos, 1) * transpose(passInfo.dMatInv)).xyz;
 }
 
-// implements the transfer function from sample value and gradient to emission and absorption coeff
+fn opacityToAbsorptionCoeff(opacity : f32) -> f32 {
+    return pow(opacity/64, 4);
+}
+
+// implements the transfer function from normalised sample value and gradient to emission and absorption coeff
 // emission is rgb, attenuation is a
-fn getSampleVolCol(sample : f32, grad : vec3<f32>) -> vec4<f32> {
+fn getSampleVolCol(normalSample : f32, grad : vec3<f32>) -> vec4<f32> {
+    var emission = mix4(
+        passInfo.transferFunction[0].col,
+        passInfo.transferFunction[1].col,
+        passInfo.transferFunction[2].col,
+        passInfo.transferFunction[3].col,
+        normalSample
+    );
 
-    var absorptionCoeff = select(0, 0.1, sample < 1);
-    var emission = select(vec3<f32>(0.1, 0.05, 0), vec3<f32>(0, 0.05, 0.1), sample < 0.2) * 10;
-
-    // var absorptionCoeff = select(0, 0.1, sample % 20.0 < 2);
-    // var emission = vec3<f32>(0, 0.05, 0.1) * absorptionCoeff * 100;
+    var absorptionCoeff = opacityToAbsorptionCoeff(
+        mix4float(
+            passInfo.transferFunction[0].opacity,
+            passInfo.transferFunction[1].opacity,
+            passInfo.transferFunction[2].opacity,
+            passInfo.transferFunction[3].opacity,
+            normalSample
+        )
+    );
 
     return vec4<f32>(emission, absorptionCoeff);
 }
@@ -328,8 +349,8 @@ fn marchRay(
 
                     if (passFlags.showVolume) {
                         // acumulate colour
-                        grad = getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
-                        sampleVolCol = getSampleVolCol(sampleVal, grad);
+                        grad = vec3<f32>(1.0, 0.0, 0.0);//getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+                        sampleVolCol = getSampleVolCol(normaliseSample(sampleVal, passInfo.isoSurfaceSrc), grad);
                         volCol = accumulateVolumeColourBehind(sampleVolCol, lastStepSize, volCol);
                         // check if the volume is too opaque
                         if (volCol.a < 0.005) {

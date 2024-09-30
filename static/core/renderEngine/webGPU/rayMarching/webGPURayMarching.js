@@ -705,6 +705,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         for (let renderable of dataObj.renderables) {
 
             renderable.passData.clippedDataBox = updateObj.clippedDataBox;
+            renderable.passData.volumeTransferFunction = updateObj.volumeTransferFunction;
             
             if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA || renderable.type == RenderableTypes.DATA) {
                 dataRenderable = renderable
@@ -955,7 +956,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 new Uint32Array([
                     renderable.passData.isoSurfaceSrcUint,
                     renderable.passData.surfaceColSrcUint,
-                    this.globalPassInfo.colourScale,
+                    this.globalPassInfo.colourScale, 0,
+                ]),
+                new Float32Array([
+                    ...renderable.passData.volumeTransferFunction.colour[0],
+                    renderable.passData.volumeTransferFunction.opacity[0],
+                    ...renderable.passData.volumeTransferFunction.colour[1],
+                    renderable.passData.volumeTransferFunction.opacity[1],
+                    ...renderable.passData.volumeTransferFunction.colour[2],
+                    renderable.passData.volumeTransferFunction.opacity[2],
+                    ...renderable.passData.volumeTransferFunction.colour[3],
+                    renderable.passData.volumeTransferFunction.opacity[3],
                 ])
             ]
         );
@@ -1041,7 +1052,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 new Uint32Array([
                     renderable.passData.isoSurfaceSrcUint,
                     renderable.passData.surfaceColSrcUint,
-                    this.globalPassInfo.colourScale,
+                    this.globalPassInfo.colourScale, 0,
+                ]),
+                new Float32Array([
+                    ...renderable.passData.volumeTransferFunction.colour[0],
+                    renderable.passData.volumeTransferFunction.opacity[0],
+                    ...renderable.passData.volumeTransferFunction.colour[1],
+                    renderable.passData.volumeTransferFunction.opacity[1],
+                    ...renderable.passData.volumeTransferFunction.colour[2],
+                    renderable.passData.volumeTransferFunction.opacity[2],
+                    ...renderable.passData.volumeTransferFunction.colour[3],
+                    renderable.passData.volumeTransferFunction.opacity[3],
                 ])
             ]
         );

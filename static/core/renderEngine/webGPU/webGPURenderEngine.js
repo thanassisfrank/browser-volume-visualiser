@@ -323,8 +323,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         // await webGPU.waitForDone();
         // end the frame
         this.endFrame();
-        // webGPU.deleteTexture(outputRenderAttachments.depth); 
-        // webGPU.deleteTexture(outputRenderAttachments.color); 
     }
 
     this.resizeRenderingContext = function() {
