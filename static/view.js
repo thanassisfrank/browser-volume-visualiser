@@ -260,7 +260,6 @@ export var viewManager = {
         for (let elem of view.elems.volCol) {
             elem.addEventListener("change", (e) => {
                 view.volumeTransferFunction.colour[e.target.dataset["transferIndex"]] = hexStringToRGBArray(e.target.value);
-                console.log(view.volumeTransferFunction);
             });
         }
         
@@ -306,6 +305,7 @@ function View(id, camera, data, renderMode) {
 
     // an estimate of where the viewer is actually focusing on
     this.adjustedFocusPoint = null;
+    this.timeSinceFocusAdjusted = 0;
 
     this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
     this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
@@ -482,8 +482,20 @@ function View(id, camera, data, renderMode) {
         if (this.isoSurfaceSrc.slotNum != null) activeValueSlots.push(this.isoSurfaceSrc.slotNum);
         if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
 
-        // calculate the estimated actual focus point
+        // calculate the estimated actual focus point every 100ms
         var cam = this.sceneGraph.activeCamera;
+        // console.log(this.timeSinceFocusAdjusted);
+        if ((this.timeSinceFocusAdjusted += dt) > 500) {
+            this.timeSinceFocusAdjusted = 0;
+            const depth = await renderEngine.rayMarcher.getCenterRayLength();
+            // console.log(depth);
+            if (!depth) {
+                this.adjustedFocusPoint = null;
+            } else {
+                this.adjustedFocusPoint = VecMath.vecAdd(cam.getEyePos(), VecMath.scalMult(depth, cam.getForwardVec()));
+            }
+            // console.log(this.adjustedFocusPoint);
+        }
         var focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
 
         // need to find the camera position in world space

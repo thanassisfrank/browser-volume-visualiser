@@ -1082,7 +1082,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         const texSrc = this.offsetOptimisationTextureOld;
         if (!texSrc) return;
 
-        const start = performance.now();
+        // const start = performance.now();
 
 
         // find where the center pixel is in the image
@@ -1121,7 +1121,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // debugger;
         const centerDepth = tex.readTexel(texSrcCenter.x - clipBox.min[0], texSrcCenter.y - clipBox.min[1])[1];
 
-        console.log("reading centre depth took:", performance.now() - start, "ms");
+        // console.log("reading centre depth took:", performance.now() - start, "ms");
 
         return centerDepth;
     }
