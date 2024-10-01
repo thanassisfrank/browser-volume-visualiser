@@ -4,7 +4,7 @@
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES} from "../utils.js";
 import { createDynamicTreeNodes, getCellTreeBuffers } from "./cellTree.js";
-import { createNodeSampleCornerValuesBuffer, createNodePolyCornerValuesBuffer, createMatchedDynamicCornerValues } from "./treeNodeValues.js";
+import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
@@ -120,6 +120,7 @@ var dataManager = {
         // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
             this.createUnstructuredTree(newData, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
+            newData.setCornerValType(opts.cornerValType);
         }
 
         // create dynamic tree
@@ -373,6 +374,8 @@ function Data(id) {
 
     }
 
+    this.cornerValType = null;
+
 
     this.flowSolutionNode = null;
 
@@ -575,10 +578,12 @@ function Data(id) {
         return newSlotNum;
     }
 
+    this.setCornerValType = function(type) {
+        this.cornerValType = type;
+    }
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
     this.createCornerValues = function(slotNum) {
-        this.data.values[slotNum].cornerValues = createNodeSampleCornerValuesBuffer(this, slotNum);
-        // this.data.values[slotNum].cornerValues = createNodePolyCornerValuesBuffer(this, slotNum);
+        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType);
     }
 
     // creates the dynamic corner values buffer from scratch

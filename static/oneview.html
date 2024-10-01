@@ -155,6 +155,7 @@
                 <summary>Dynamic tree</summary>
                 <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
                 <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
+                <select id="corner-val-type-select" class="dataset-opt" name="cornerValType"></select><br>
             </details>
             <details>
                 <summary>Rendering</summary>
@@ -255,6 +256,7 @@
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
             import { FrameTimeGraph } from "./frameTimeGraph.js";
             import { KDTreeSplitTypes } from "./core/data/cellTree.js";
+            import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
             import { VecMath } from "./core/VecMath.js"
 
@@ -289,6 +291,16 @@
                     elem.value = KDTreeSplitTypes[type];                
                     elem.innerText = type;
                     kdTreeOptions.appendChild(elem);
+                }
+            }
+
+            var populateCornerValOptions = () => {
+                var cornerValOptions = get("corner-val-type-select");
+                for (let type in CornerValTypes) {
+                    var elem = document.createElement("OPTION");
+                    elem.value = CornerValTypes[type];                
+                    elem.innerText = type;
+                    cornerValOptions.appendChild(elem);
                 }
             }
             
@@ -349,6 +361,7 @@
                         dataManager.setConfigSet(allDatasets);
                         populateDataOptions(dataManager);
                         populateKDTreeOptions();
+                        populateCornerValOptions();
                         return allDatasets
                     })
                     .catch((reason) => {
@@ -385,6 +398,7 @@
                             dynamicNodeCount: parseInt(opts.dynamicNodes?.value),
                             maxTreeDepth: parseInt(opts.maxDepth.value),
                             kdTreeType: parseInt(opts.kdTreeType.value),
+                            cornerValType: parseInt(opts.cornerValType.value),
                         }
                     );
 

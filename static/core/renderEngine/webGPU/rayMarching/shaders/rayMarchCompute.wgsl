@@ -337,33 +337,38 @@ fn sampleNodeCornerVals(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
     }
 
     // sample corner vals version
+    switch (passInfo.cornerValType) {
+        case CORNER_VAL_SAMPLE {
+            // lerp in z direction
+            var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
+            var zLerped = array(
+                mix(vals[0], vals[4], zFac), // 00
+                mix(vals[2], vals[6], zFac), // 01
+                mix(vals[1], vals[5], zFac), // 10
+                mix(vals[3], vals[7], zFac), // 11
+            );
+            // lerp in y direction
+            var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
+            var yLerped = array(
+                mix(zLerped[0], zLerped[1], yFac),
+                mix(zLerped[2], zLerped[3], yFac)
+            );
+            // lerp in x direction
+            var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
 
-    // lerp in z direction
-    var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
-    var zLerped = array(
-        mix(vals[0], vals[4], zFac), // 00
-        mix(vals[2], vals[6], zFac), // 01
-        mix(vals[1], vals[5], zFac), // 10
-        mix(vals[3], vals[7], zFac), // 11
-    );
-    // lerp in y direction
-    var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
-    var yLerped = array(
-        mix(zLerped[0], zLerped[1], yFac),
-        mix(zLerped[2], zLerped[3], yFac)
-    );
-    // lerp in x direction
-    var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
-
-    return mix(yLerped[0], yLerped[1], xFac);
-
-
-    // poly corner vals version
-
-    // return vals[0] + 
-    //        vals[1] * p.x + vals[2] * p.y + vals[3] * p.z + 
-    //        vals[4] * p.x * p.y + vals[5] * p.x * p.z + vals[6] * p.y * p.z + 
-    //        vals[7] * p.x * p.y * p.z;
+            return mix(yLerped[0], yLerped[1], xFac);
+        }
+        case CORNER_VAL_POLYNOMIAL {
+            return vals[0] + 
+                vals[1] * p.x + vals[2] * p.y + vals[3] * p.z + 
+                vals[4] * p.x * p.y + vals[5] * p.x * p.z + vals[6] * p.y * p.z + 
+                vals[7] * p.x * p.y * p.z;
+        }
+        case default {
+            return 0;
+        }
+    }
+   
 }
 
 

@@ -20,6 +20,7 @@ struct RayMarchPassInfo {
     @size(4)  isoSurfaceSrc : u32,
     @size(4)  surfaceColSrc : u32,
     @size(4)  colourScale : u32,
+    @size(4)  cornerValType : u32,
               transferFunction : array<TransferFunctionPoint,4>,
 };
 
@@ -93,6 +94,9 @@ const DATA_SRC_AXIS_Z  = 5;
 const COL_SCALE_B_W = 0;
 const COL_SCALE_BL_W_R = 1;
 const COL_SCALE_BL_C_G_Y_R = 2;
+
+const CORNER_VAL_SAMPLE = 1;
+const CORNER_VAL_POLYNOMIAL = 2;
 
 // placeholder value to indicate a sample is outside of the cells of the dataset
 const F32_OUTSIDE_CELLS : f32 = -exp2(32);

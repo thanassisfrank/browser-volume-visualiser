@@ -5,7 +5,13 @@ import { NODE_BYTE_LENGTH, ChildTypes, writeNodeToBuffer, readNodeFromBuffer, ge
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
 
-
+export const KDTreeSplitTypes = {
+    VERT_MEDIAN:    1,
+    VERT_AVERAGE:   2,
+    NODE_MEDIAN:    3,
+    SURF_AREA_HEUR: 4,
+    VOLUME_HEUR:    5
+}
 
 
 // calculates a score for the box
@@ -436,15 +442,6 @@ export var createDynamicTreeNodes = (dataObj, maxNodes) => {
     return dynamicNodes;
 }
 
-
-
-export const KDTreeSplitTypes = {
-    VERT_MEDIAN:    1,
-    VERT_AVERAGE:   2,
-    NODE_MEDIAN:    3,
-    SURF_AREA_HEUR: 4,
-    VOLUME_HEUR:    5
-}
 
 // generates the cell tree for fast lookups in unstructured data
 // returns two buffers:

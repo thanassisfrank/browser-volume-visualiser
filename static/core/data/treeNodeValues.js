@@ -28,6 +28,11 @@ export const writeCornerVals = (cornerValBuffer, nodePtr, cornerVals) => {
 // > sample: values at node corners
 // > poly: coefficients of polynomial within bounds f(x,y,z) = a + bx + cy + dz + exy + fxz + gyz + hxyz
 
+export const CornerValTypes = {
+    SAMPLE: 1,
+    POLYNOMIAL: 2,
+}
+
 
 
 //           z   y   x
@@ -98,7 +103,7 @@ const getSampleCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rig
 // creates an f32 buffer containg 8 values per node
 // these are the values at the vertices where the split plane intersects the node bounding box edges
 // there are not values for true leaves as these don't have a split plane
-export var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
+var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
     var start = performance.now();
     var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
@@ -266,7 +271,7 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, right
 }
 
 
-export var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
+var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
     var start = performance.now();
     var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
@@ -343,6 +348,18 @@ export var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
     console.log("generating poly corner values took:", (performance.now() - start), "ms");
 
     return nodeCornerVals;
+}
+
+
+
+export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
+    if (CornerValTypes.SAMPLE == type) {
+        return createNodeSampleCornerValuesBuffer(dataObj, slotNum);
+    } else if (CornerValTypes.POLYNOMIAL == type) {
+        return createNodePolyCornerValuesBuffer(dataObj, slotNum);
+    } else {
+        throw Error("Unrecognised corner value type");
+    }
 }
 
 // creates or modifies the dynamic corner values buffer 

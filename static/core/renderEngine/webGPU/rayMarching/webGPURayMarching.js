@@ -398,9 +398,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderable.passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};;
         renderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
 
-        renderable.passData.dataBoxMin = dataObj.extentBox.min;
-        renderable.passData.dataBoxMax = dataObj.extentBox.max;
+        // renderable.passData.dataBoxMin = dataObj.extentBox.min;
+        // renderable.passData.dataBoxMax = dataObj.extentBox.max;
         renderable.passData.dMatInv = dataObj.getdMatInv();
+        renderable.passData.cornerValType = dataObj.cornerValType;
 
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
@@ -514,8 +515,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             // faceRenderable.passData.threshold = dataObj.threshold;
             // faceRenderable.passData.limits = dataObj.getLimits(0);
             // faceRenderable.passData.dataSize = dataObj.getDataSize();
-            faceRenderable.passData.dataBoxMin = dataObj.extentBox.min;
-            faceRenderable.passData.dataBoxMax = dataObj.extentBox.max;
+            // faceRenderable.passData.dataBoxMin = dataObj.extentBox.min;
+            // faceRenderable.passData.dataBoxMax = dataObj.extentBox.max;
             faceRenderable.passData.dMatInv = dataObj.getdMatInv();
 
             faceRenderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
@@ -1056,7 +1057,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 new Uint32Array([
                     renderable.passData.isoSurfaceSrcUint,
                     renderable.passData.surfaceColSrcUint,
-                    this.globalPassInfo.colourScale, 0,
+                    this.globalPassInfo.colourScale, 
+                    renderable.passData.cornerValType,
                 ]),
                 new Float32Array([
                     ...renderable.passData.volumeTransferFunction.colour[0],
