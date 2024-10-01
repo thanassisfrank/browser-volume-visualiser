@@ -423,6 +423,16 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
     
 }
 
+// p is in dataset space
+fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
+    var result : KDTreeResult = getContainingLeafNode(p);
+    return result.depth;
+}
+
+
+
+
+
 
 // sets the pixel the the supplied colour
 fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
@@ -570,11 +580,9 @@ fn main(
         return;
     }
     if (passFlags.showNodeDepth) {
-        // random from node location in buffer
-        var dataPos : vec3<f32> = toDataSpace(ray.tip);
-        var result : KDTreeResult = getContainingLeafNode(dataPos);
+        var depth : u32 = getNodeDepthAtPoint(toDataSpace(ray.tip));
         // semi-random from node location
-        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(result.depth)), 1));
+        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(depth)), 1));
         return;
     }
     

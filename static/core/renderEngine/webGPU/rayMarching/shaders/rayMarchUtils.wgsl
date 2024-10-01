@@ -30,27 +30,28 @@ struct TransferFunctionPoint {
 
 // a set of flags for settings within the pass
 struct RayMarchPassFlags {
-    phong : bool,
-    backStep : bool,
-    showNormals : bool,
-    showVolume : bool,
-    fixedCamera : bool,
-    randStart : bool,
-    showSurface : bool,
-    showRayDirs: bool,
-    showRayLength: bool,
-    optimiseOffset: bool,
-    showOffset: bool,
-    showDeviceCoords: bool,
-    sampleNearest: bool,
-    showCells: bool,
-    showNodeVals: bool,
-    showNodeLoc: bool,
-    showNodeDepth: bool,
-    secantRoot: bool,
-    renderNodeVals: bool,
-    useBestDepth: bool,
-    showTestedCells: bool,
+    phong               : bool,
+    backStep            : bool,
+    showNormals         : bool,
+    showVolume          : bool,
+    fixedCamera         : bool,
+    randStart           : bool,
+    showSurface         : bool,
+    showRayDirs         : bool,
+    showRayLength       : bool,
+    optimiseOffset      : bool,
+    showOffset          : bool,
+    showDeviceCoords    : bool,
+    sampleNearest       : bool,
+    showCells           : bool,
+    showNodeVals        : bool,
+    showNodeLoc         : bool,
+    showNodeDepth       : bool,
+    secantRoot          : bool,
+    renderNodeVals      : bool,
+    useBestDepth        : bool,
+    showTestedCells     : bool,
+    showSurfNodeDepth   : bool,
 };
 
 // the return value of the ray-march function
@@ -122,6 +123,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 18)) != 0,
         (flagUint & (1u << 19)) != 0,
         (flagUint & (1u << 20)) != 0,
+        (flagUint & (1u << 21)) != 0,
     );
 };
 
@@ -436,8 +438,19 @@ fn normaliseSample(sample : f32, dataSrc : u32) -> f32 {
 }
 
 
-fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32) -> Material {
+fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32, passFlags : RayMarchPassFlags) -> Material {
     var material : Material;
+    // first check if the node depth is to be shown on the surface
+    if (passFlags.showSurfNodeDepth) {
+        var depth : u32 = getNodeDepthAtPoint(tipDataPos);
+        material.diffuseCol = u32ToCol(randomU32(depth));
+        material.specularCol = material.diffuseCol * 1.05;
+        material.shininess = 50;
+
+        return material;
+    }
+
+
     switch (dataSrc) {
         case DATA_SRC_NONE, default {
             if (normalFac == 1.0) {
@@ -501,7 +514,7 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
 
     if (rayMarchResult.foundSurface) {
         // set the material
-        var material : Material = getIsoSurfaceMaterial(passInfo.surfaceColSrc, tipDataPos, rayMarchResult.normalFac);
+        var material : Material = getIsoSurfaceMaterial(passInfo.surfaceColSrc, tipDataPos, rayMarchResult.normalFac, passFlags);
 
         if (passFlags.showNormals) {
             fragCol = vec4<f32>(normalize(getDataGrad(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc)), 1.0);

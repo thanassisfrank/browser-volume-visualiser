@@ -53,27 +53,28 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.passFlags = {
         // sent to gpu
-        phong: true,
-        backStep: true,
-        showNormals: false,
-        showVolume: true,
-        fixedCamera: false,
-        randStart: true,
-        showSurface: true,
-        showRayDirs: false,
-        showRayLength: false,
-        optimiseOffset: true,
-        showOffset: false,
-        showDeviceCoords: false,
-        sampleNearest: false,
-        showCells: false,
-        showNodeVals: false,
-        showNodeLoc: false,
-        showNodeDepth: false,
-        quadraticBackStep: false,
-        renderNodeVals: false,
-        useBestDepth: true,
-        showTestedCells: false,
+        phong: true,                // shade the iso-surface using the phong model
+        backStep: true,             // enable intersection estimation
+        showNormals: false,         // indicate the normals on the iso-surface
+        showVolume: true,           // render the accumulated transparent volume data
+        fixedCamera: false,         // renders dataset from a fixed viewpoint (structured only)
+        randStart: true,            // randomise the offset applied to each ray
+        showSurface: true,          // render the iso-surface
+        showRayDirs: false,         // render the direction vector of each pixel ray as an rgb value
+        showRayLength: false,       // display the total length of every ray
+        optimiseOffset: true,       // reduce the amount of randmoness in the offset over time
+        showOffset: false,          // display the ray offsets
+        showDeviceCoords: false,    // display the coordinates of each pixel as an rg value
+        sampleNearest: false,       // sample the dataset without interpolation (unused)
+        showCells: false,           // displays each cell on the dataset surface (structured only)
+        showNodeVals: false,        // display the value stored in the pruned leaves on dataset surface
+        showNodeLoc: false,         // display the index (location) of each node on the datset surface
+        showNodeDepth: false,       // show the depth of the tree pruned leaf nodes on the dataset surface
+        quadraticBackStep: false,   // estimate iso-surface intersection using
+        renderNodeVals: false,      // use the node values for rendering
+        useBestDepth: true,         // always display the current best surface depth when optimising
+        showTestedCells: false,     // shows the amount of cells that have been checked for each ray 
+        showSurfNodeDepth: false,   // shows the depth of the node on the iso-surface
 
         // not sent to gpu
         cheapMove: false,
@@ -125,6 +126,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.renderNodeVals    << 18 & 0b1 << 18;
         flags |= this.passFlags.useBestDepth      << 19 & 0b1 << 19;
         flags |= this.passFlags.showTestedCells   << 20 & 0b1 << 20;
+        flags |= this.passFlags.showSurfNodeDepth << 21 & 0b1 << 21;
         return flags;
     }
 

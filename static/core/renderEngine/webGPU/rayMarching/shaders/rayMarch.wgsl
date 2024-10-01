@@ -74,6 +74,10 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
 
 }
 
+fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
+    return 0;
+}
+
 // takes device coords (-1 to 1)
 fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
     var textureDims : vec2<u32> = textureDimensions(offsetOptimisationTextureOld);
