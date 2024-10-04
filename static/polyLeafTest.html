@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>polynomial leaf test</title>
+        <style>
+            body {margin: 0px; padding: 20px}
+            #c {width: 1000px; height: 700px}
+        </style>
+    </head>
+    <body>
+        <canvas id="c"></canvas>
+        <p id="time">0ms</p>
+        <script type="module">
+            import { buildCellKDTree, get, setupCanvasDims } from "./core/utils.js";
+            import { VecMath } from "./core/VecMath.js";
+            // import {mat3} from "https://cdn.skypack.dev/gl-matrix";
+            const epsilon = 0.01;
+            
+            var canvas = get("c");
+            setupCanvasDims(canvas);
+            var max = [canvas.width, canvas.height];
+            var ctx = canvas.getContext("2d");
+
+            // scalar data functions ===================================================================
+            
+            const perlinVerts = ((n) => {
+                var out = [];
+                for (let i = 0; i < n; i++) {
+                    out[i] = [];
+                    for (let j = 0; j < n; j++) {
+                        out[i][j] = [Math.random() * 2 * Math.PI, Math.random() * 2 * Math.PI];
+                    }
+                }
+                return out;
+            })(8);
+
+            const smoothStep = (x) =>  6*x**5 - 15*x**4 + 10*x**3;
+
+            const lerp = (a, b, x) => {
+                return a * (1-x) + b * x;
+            }
+
+            const samplePerlin = (x, y) => {
+                const xIndex = x/canvas.width * (perlinVerts[0].length-1);
+                const yIndex = y/canvas.height * (perlinVerts.length-1);
+                const xProp = xIndex - Math.floor(xIndex);
+                const yProp = yIndex - Math.floor(yIndex);
+
+
+                const cornerGrads = [
+                    [perlinVerts[Math.floor(yIndex)][Math.floor(xIndex)], perlinVerts[Math.floor(yIndex)][Math.ceil(xIndex)]],
+                    [perlinVerts[Math.ceil(yIndex)][Math.floor(xIndex)], perlinVerts[Math.ceil(yIndex)][Math.ceil(xIndex)]]
+                ];
+
+                const dotProds = [
+                    [VecMath.dot(cornerGrads[0][0], [xProp, yProp]), VecMath.dot(cornerGrads[0][1], [xProp - 1, yProp])],
+                    [VecMath.dot(cornerGrads[1][0], [xProp, yProp - 1]), VecMath.dot(cornerGrads[1][1], [xProp - 1, yProp - 1])],
+                ]
+
+                var val = lerp(
+                    lerp(dotProds[0][0], dotProds[0][1], smoothStep(xProp)),
+                    lerp(dotProds[1][0], dotProds[1][1], smoothStep(xProp)),
+                    smoothStep(yProp)
+                );
+
+                // (dotProds[0][0] * (1-xProp) * (1-yProp) + 
+                //        dotProds[0][1] * xProp * (1-yProp) + 
+                //        dotProds[1][0] * (1-xProp) * yProp + 
+                //        dotProds[1][1] * xProp * yProp);
+                
+                return (val + 1)/2;
+            }
+
+            const sampleWave = (x, y) => {
+                return 0.5 + 0.5 * Math.cos(Math.sqrt(x**2 + y**2)/20);
+            }
+
+            const drawScalarField = (f) => {
+                var imgData = new Uint8ClampedArray(4 * canvas.height * canvas.width);
+                for (let i = 0; i < canvas.width; i++) {
+                    for (let j = 0; j < canvas.height; j++) {
+                        const index = 4 * (i + j * canvas.width);
+                        const val = f(i, j);
+                        imgData[index + 0] = val * 255;
+                        imgData[index + 1] = val * 255;
+                        imgData[index + 2] = val * 255;
+                        imgData[index + 3] = 255;
+                    }
+                }
+                var newImg = new ImageData(imgData, canvas.width, canvas.height);
+                ctx.putImageData(newImg, 0, 0);
+            }
+
+
+            const scalarFunction = sampleWave;
+
+            // =========================================================================================
+            
+            
+            
+            const randomInsideBox = (box, map = x => x) => {
+                return [
+                    map(Math.random()) * (box.max[0] - box.min[0]) + box.min[0],
+                    map(Math.random()) * (box.max[1] - box.min[1]) + box.min[1],
+                ];
+            }
+            
+
+            // performs linear regression to fit cubic to a selection of the leafNode's verts
+            const getLeafPolyCornerVals = (leaf, sampleCount, f) => {
+                const pointCount = sampleCount;
+                // matrix of inputs
+                // 1 x y xy
+                var X = [];
+                // vector of outputs
+                var Y = [];
+
+                // sample inside the leaf node
+                for (let i = 0; i < pointCount; i++) {
+                    // sample at unique location
+                    const pos = randomInsideBox(leaf.box, smoothStep);
+
+                    X[i] = [1, pos[0], pos[1], pos[0] * pos[1]];
+                    Y[i] = f(pos[0], pos[1]);
+                }
+
+                if (!Y.every(v => v == 0)) {
+                    // solve the linear regression to get the coefficients matrix
+                    var pseudoInv = VecMath.pseudoInverse(X)
+
+                    if (pseudoInv) {
+                        // found linear regression
+                        return VecMath.matrixVecMult(pseudoInv, Y);
+                    }
+                }
+
+                // all Y vals = 0 or couldn't find linear reg
+                return [0, 0, 0, 0];
+                
+            }
+
+            const evaluatePolynomial = (vals, p) => {
+                return vals[0] + vals[1] * p[0] + vals[2] * p[1] + vals[3] * p[0] * p[1];
+            }
+                
+
+            // computes the polynomial fit of a node given the polynomial fit of the children
+            const getPolyCornerValsFromChildren = (node, leftNode, leftCorners, rightNode, rightCorners, sampleCount) => {
+                // sample n times within each
+                const pointCountTotal = sampleCount;
+                var X = [];
+                var Y = [];
+
+                var pos;
+                // sample inside the left child
+                for (let i = 0; i < pointCountTotal; i++) {
+                    // sample at unique location
+                    if (i < pointCountTotal/2) {
+                        // sample inside left child
+                        pos = randomInsideBox(leftNode.box);
+                        Y[i] = evaluatePolynomial(leftCorners, pos);
+                    } else {
+                        // sample inside right child
+                        pos = randomInsideBox(rightNode.box);
+                        Y[i] = evaluatePolynomial(rightCorners, pos);
+                    }
+
+                    X[i] = [1, pos[0], pos[1], pos[0] * pos[1]];
+                }
+
+                if (!Y.every(v => v == 0)) {
+                    // solve the linear regression to get the coefficients matrix
+                    var pseudoInv = VecMath.pseudoInverse(X)
+
+                    if (pseudoInv) {
+                        // found linear regression
+                        // console.log("solved");
+                        return VecMath.matrixVecMult(pseudoInv, Y);
+                    }
+                }
+
+                // all Y vals = 0 or couldn't find linear reg
+                return [0, 0, 0, 0];
+            }
+
+
+            const createNodePolyCornerValuesBuffer = (tree, f, sampleCount = 16) => {
+                // the boxes of all of the parents of the current node
+                var currBoxes = [];
+                // the next nodes to process
+                var nodes = [tree.nodes];
+                var currDepth = 0; // depth of node currently being processed
+                while (nodes.length > 0) {
+                    var currNode = nodes.pop();
+                    if (!currNode.left) {
+                        // get the corner values for this box and write to buffer
+                        tree.cornerVals.splice(4 * currNode.index, 4, ...getLeafPolyCornerVals(currNode, sampleCount, f));
+
+                        if (currNode.childType == "RIGHT") currDepth--;       
+                    } else {
+                        // this is a branch
+                        if (currDepth == currBoxes.length) {
+                            // going down, depth
+                            currBoxes.push(currNode.box);
+                            currDepth++;
+
+                            // push itself to handle going back up the tree
+                            nodes.push(currNode);
+
+                            // add its children to the next nodes
+                            nodes.push({
+                                ...currNode.left, 
+                                childType: "RIGHT",
+                                parentSplit: currNode.splitVal,
+                            });
+                            nodes.push({
+                                ...currNode.right, 
+                                childType: "LEFT",
+                                parentSplit: currNode.splitVal,
+                            });
+                        } else {
+                            // going back up
+                            // calculate the node corners from its children
+                            var splitDim = currDepth % 3;
+
+                            var thisBox = currBoxes.pop();
+
+                            var cornerVals = getPolyCornerValsFromChildren(
+                                currNode, 
+                                currNode.left, 
+                                tree.cornerVals.slice(4 * currNode.left.index, 4 * currNode.left.index + 4), 
+                                currNode.right, 
+                                tree.cornerVals.slice(4 * currNode.right.index, 4 * currNode.right.index + 4), 
+                                sampleCount
+                            )
+                            
+                            tree.cornerVals.splice(4 * currNode.index, 4, ...cornerVals);
+
+                            
+                            if (currNode.childType == "RIGHT") currDepth--;  
+                        }
+                    }
+                }
+            }
+
+
+
+
+
+            const makeTree = (d, box, f) => {
+                var out = {
+                    nodes: null,
+                    cornerVals: []
+                };
+                
+                var nodeIndex = 0;
+                // generate the tree and corner values together
+                var root = {
+                    depth: 0,
+                    splitDimension: 0,
+                    splitVal: null,
+                    left: null,
+                    right: null,
+                    index: 0, // for where to write the corner values to
+                    box: structuredClone(box)
+                };
+
+                out.nodes = root;
+
+                var nodeQueue = [root];
+
+                
+
+                while (nodeQueue.length > 0) {
+                    var currNode = nodeQueue.pop();
+                    // check if max depth has been reached
+                    if (currNode.depth > d) continue;
+                    // randomly chosen not to split
+                    if (Math.random() < 0.2 && currNode.depth > d/2) continue;
+
+                    // chose split val
+                    const range = currNode.box.max[currNode.splitDimension] - currNode.box.min[currNode.splitDimension];
+                    const mid = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
+                    currNode.splitVal = mid + (Math.random() - 0.5) * range * 0.3;
+
+                    // currNode.splitVal = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
+
+                    currNode.left = {
+                        depth: currNode.depth + 1,
+                        splitDimension: (currNode.splitDimension + 1) % 2,
+                        splitVal: null,
+                        left: null,
+                        right: null,
+                        index: ++nodeIndex, // for where to write the corner values to
+                        box: {
+                            min: [...currNode.box.min],
+                            max: [...currNode.box.max],
+                        }
+                    };
+
+                    currNode.left.box.max[currNode.splitDimension] = currNode.splitVal;
+
+                    currNode.right = {
+                        depth: currNode.depth + 1,
+                        splitDimension: (currNode.splitDimension + 1) % 2,
+                        splitVal: null,
+                        left: null,
+                        right: null,
+                        index: ++nodeIndex, // for where to write the corner values to
+                        box: {
+                            min: [...currNode.box.min],
+                            max: [...currNode.box.max],
+                        }
+                    };
+
+                    currNode.right.box.min[currNode.splitDimension] = currNode.splitVal;
+
+                    nodeQueue.push(currNode.left, currNode.right)
+                }
+
+                console.log("number of nodes:", nodeIndex + 1);
+
+                out.cornerVals = Array((nodeIndex + 1) * 4);
+
+                return out;
+            };
+
+            
+            const sampleInBox = (box, cornerVals, p) => {
+                var xFac = (p[0] - box.min[0])/(box.max[0] - box.min[0]);
+                var yFac = (p[1] - box.min[1])/(box.max[1] - box.min[1]);
+                return lerp(
+                    lerp(cornerVals[0], cornerVals[1], xFac),
+                    lerp(cornerVals[2], cornerVals[3], xFac),
+                    yFac
+                );
+            }
+            
+            const getContainingLeafNode = (tree, p) => {
+                var currNode = tree.nodes;
+                
+                while (currNode.left) {
+                    currNode = p[currNode.splitDimension] < currNode.splitVal ? currNode.left : currNode.right;
+                }
+
+                return {
+                    node: currNode,
+                    cornerVals: tree.cornerVals.slice(4*currNode.index, 4*currNode.index + 4)
+                };
+            };
+            
+            const facInRange = (x, min, max) => {
+                return (x - min)/(max - min);
+            }
+            
+            // (xmin, ymin), (xmax, ymin), (xmin, ymax), (xmax, ymax)
+            // +--->x
+            // |   0  |   |  1
+            // V    +-------+
+            // y -- |       | -- min
+            //      |       |
+            //   -- |       | -- max
+            //      +-------+ 
+            //     2  |   |  3
+            //       min max
+            
+            // extract the virtual leaf that the point is inside of and estimate its corner values
+            const getVirtualLeafOld = (tree, p) => {
+                // traverse the tree to get the containing leaf node
+                var fullLeaf = getContainingLeafNode(tree, p);
+                var virtBox = {
+                    min: [...fullLeaf.node.box.min],
+                    max: [...fullLeaf.node.box.max],
+                };
+                var virtCorn = fullLeaf.cornerVals.slice();
+
+                const points = [
+                    [p[0], fullLeaf.node.box.max[1] + epsilon], // y+
+                    [fullLeaf.node.box.max[0] + epsilon, p[1]], // x+
+                    [p[0], fullLeaf.node.box.min[1] - epsilon], // y-
+                    [fullLeaf.node.box.min[0] - epsilon, p[1]]  // x-
+                ];
+
+                // one entry for each projection point
+                const corners = [
+                    {
+                        min: {
+                            new: 0,
+                            adj: {
+                                dst: 2,
+                                curr: [2, 3]
+                            },
+                            opp: {
+                                dst: 0,
+                                curr: [0, 1]
+                            }
+                        },
+                        max: {
+                            new: 1,
+                            adj: {
+                                dst: 3,
+                                curr: [2, 3]
+                            },
+                            opp: {
+                                dst: 1,
+                                curr: [0, 1]
+                            }
+                        }
+                    },
+                    {
+                        min: {
+                            new: 0,
+                            adj: {
+                                dst: 1,
+                                curr: [1, 3]
+                            },
+                            opp: {
+                                dst: 0,
+                                curr: [0, 2]
+                            }
+                        },
+                        max: {
+                            new: 2,
+                            adj: {
+                                dst: 3,
+                                curr: [1, 3]
+                            },
+                            opp: {
+                                dst: 2,
+                                curr: [0, 2]
+                            }
+                        }
+                    },
+                    {
+                        min: {
+                            new: 2,
+                            adj: {
+                                dst: 0,
+                                curr: [0, 1]
+                            },
+                            opp: {
+                                dst: 2,
+                                curr: [2, 3]
+                            }
+                        },
+                        max: {
+                            new: 3,
+                            adj: {
+                                dst: 1,
+                                curr: [0, 1]
+                            },
+                            opp: {
+                                dst: 3,
+                                curr: [2, 3]
+                            }
+                        }
+                    },
+                    {
+                        min: {
+                            new: 1,
+                            adj: {
+                                dst: 0,
+                                curr: [0, 2]
+                            },
+                            opp: {
+                                dst: 1,
+                                curr: [1, 3]
+                            }
+                        },
+                        max: {
+                            new: 3,
+                            adj: {
+                                dst: 2,
+                                curr: [0, 2]
+                            },
+                            opp: {
+                                dst: 3,
+                                curr: [1, 3]
+                            }
+                        }
+                    }
+                ];
+
+
+                // new version with LUT
+                for (let i = 0; i < 4; i++) {
+                    const newLeaf = getContainingLeafNode(tree, points[i]);
+                    const dim = i%2;
+                    const otherDim = (i+1)%2;
+
+                    // console.log(virtCorn);
+
+                    // change the new factor based on whether this point is on the + or - face
+                    var adjNewFac, oppNewFac;
+                    if (i < 2) {
+                        // + face
+                        adjNewFac = facInRange(virtBox.max[otherDim], fullLeaf.node.box.min[otherDim], fullLeaf.node.box.max[otherDim]);
+                        oppNewFac = facInRange(virtBox.min[otherDim], fullLeaf.node.box.min[otherDim], fullLeaf.node.box.max[otherDim]);
+                    } else {
+                        adjNewFac = facInRange(virtBox.min[otherDim], fullLeaf.node.box.min[otherDim], fullLeaf.node.box.max[otherDim]);
+                        oppNewFac = facInRange(virtBox.max[otherDim], fullLeaf.node.box.min[otherDim], fullLeaf.node.box.max[otherDim]);
+
+                    }
+
+
+                    if (newLeaf.node.box.min[dim] > virtBox.min[dim]) {
+                        // adjacent
+                        virtCorn[corners[i].min.adj.dst] = lerp(
+                            lerp(
+                                virtCorn[corners[i].min.adj.curr[0]], 
+                                virtCorn[corners[i].min.adj.curr[1]], 
+                                facInRange(newLeaf.node.box.min[dim], virtBox.min[dim], virtBox.max[dim]) // (1)
+                            ),
+                            newLeaf.cornerVals[corners[i].min.new],
+                            adjNewFac      // (2)
+                        );
+
+                        // opposite
+                        virtCorn[corners[i].min.opp.dst] = lerp(
+                            lerp(
+                                virtCorn[corners[i].min.opp.curr[0]], 
+                                virtCorn[corners[i].min.opp.curr[1]], 
+                                facInRange(newLeaf.node.box.min[dim], virtBox.min[dim], virtBox.max[dim]) // (1)
+                            ),
+                            newLeaf.cornerVals[corners[i].min.new],
+                            oppNewFac   // (2)
+                        );
+
+                        // update box
+                        virtBox.min[dim] = newLeaf.node.box.min[dim];
+                    }
+
+                    if (newLeaf.node.box.max[dim] < virtBox.max[dim]) {
+                        // adjacent
+                        virtCorn[corners[i].max.adj.dst] = lerp(
+                            lerp(
+                                virtCorn[corners[i].max.adj.curr[0]], 
+                                virtCorn[corners[i].max.adj.curr[1]], 
+                                facInRange(newLeaf.node.box.max[dim], virtBox.min[dim], virtBox.max[dim]) // (1)
+                            ),
+                            newLeaf.cornerVals[corners[i].max.new],
+                            adjNewFac      // (2)
+                        );
+
+                        // opposite
+                        virtCorn[corners[i].max.opp.dst] = lerp(
+                            lerp(
+                                virtCorn[corners[i].max.opp.curr[0]], 
+                                virtCorn[corners[i].max.opp.curr[1]], 
+                                facInRange(newLeaf.node.box.max[dim], virtBox.min[dim], virtBox.max[dim]) // (1)
+                            ),
+                            newLeaf.cornerVals[corners[i].max.new],
+                            oppNewFac     // (2)
+                        );
+
+                        virtBox.max[dim] = newLeaf.node.box.max[dim];
+                    }
+                }
+
+
+
+
+
+                // project the point to the four faces of the leaf and slightly beyond
+
+                // // project in +y direction
+                // var projP1 = [p[0], leaf.box.max[1] + epsilon];
+                // var p1Leaf = getContainingLeafNode(tree, projP1).node;
+                // //check if the box is smaller in x direction
+                
+                // // the new corner is the same is each of these if blocks
+                // // (1) the same min/max value is used
+                // // (2) the other dimension is used when entering and within block
+
+                // if (p1Leaf.box.min[0] > virtBox.min[0]) {                                 // (1) (2)
+                //     // adjacent: interp 2 val from curr 2, 3 and new 0
+                //     virtCorn[2] = lerp(
+                //         lerp(
+                //             virtCorn[2], 
+                //             virtCorn[3], 
+                //             facInRange(p1Leaf.box.min[0], virtBox.min[0], virtBox.max[0]) // (1)
+                //         ),
+                //         p1Leaf.cornerVals[0],
+                //         facInRange(virtBox.max[1], leaf.box.min[1], leaf.box.max[1])      // (2)
+                //     );
+
+                //     // opposite: interp 0 val from curr 0, 1 and new 0
+                //     virtCorn[0] = lerp(
+                //         lerp(
+                //             virtCorn[0], 
+                //             virtCorn[1], 
+                //             facInRange(p1Leaf.box.min[0], virtBox.min[0], virtBox.max[0]) // (1)
+                //         ),
+                //         p1Leaf.cornerVals[0],
+                //         facInRange(virtBox.min[1], leaf.box.min[1], leaf.box.max[1])      // (2)
+                //     );
+                //     // update box
+                //     virtBox.min[0] = p1Leaf.box.min[0];
+                // }
+
+                // if (p1Leaf.box.max[0] < virtBox.max[0]) {
+                //     // adjacent: interp 3 from curr 2, 3 and new 1
+                //     virtCorn[3] = lerp(
+                //         lerp(
+                //             virtCorn[2], 
+                //             virtCorn[3], 
+                //             facInRange(p1Leaf.box.max[0], virtBox.min[0], virtBox.max[0])
+                //         ),
+                //         p1Leaf.cornerVals[1],
+                //         facInRange(virtBox.max[1], leaf.box.min[1], leaf.box.max[1])
+                //     );
+                //     // opposite: interp 1 val from curr 0, 1 and new 1
+                //     virtCorn[1] = lerp(
+                //         lerp(
+                //             virtCorn[0], 
+                //             virtCorn[1], 
+                //             facInRange(p1Leaf.box.max[0], virtBox.min[0], virtBox.max[0])
+                //         ),
+                //         p1Leaf.cornerVals[0],
+                //         facInRange(virtBox.min[1], leaf.box.min[1], leaf.box.max[1])
+                //     );
+                //     // update box
+                //     virtBox.max[0] = p1Leaf.box.max[0];
+                // }
+
+
+
+                // // project in +x direction
+                // var projP2 = [leaf.box.max[0] + epsilon, p[1]];
+                // var p2Leaf = getContainingLeafNode(tree, projP2).node;
+                // //check if the box is smaller in y direction
+                // if (p2Leaf.box.min[1] > virtBox.min[1]) {
+                //     // adjacent: interp 3 from curr 1, 3 and new 0
+                //     virtCorn[1] = lerp(
+                //         lerp(
+                //             virtCorn[1], 
+                //             virtCorn[3], 
+                //             facInRange(p2Leaf.box.min[0], virtBox.min[0], virtBox.max[0]) // (1)
+                //         ),
+                //         p1Leaf.cornerVals[0],
+                //         facInRange(virtBox.max[1], leaf.box.min[1], leaf.box.max[1])      // (2)
+                //     );
+
+                //     virtBox.min[1] = p2Leaf.box.min[1];
+                // }
+                // if (p2Leaf.box.max[1] < virtBox.max[1]) {
+                //     virtBox.max[1] = p2Leaf.box.max[1];
+                // }
+
+                // // project in -y direction
+                // var projP3 = [p[0], leaf.box.min[1] - epsilon];
+                // var p3Leaf = getContainingLeafNode(tree, projP3).node;
+                // //check if the box is smaller in x direction
+                // if (p3Leaf.box.min[0] > virtBox.min[0]) {
+                //     virtBox.min[0] = p3Leaf.box.min[0];
+                // }
+                // if (p3Leaf.box.max[0] < virtBox.max[0]) {
+                //     virtBox.max[0] = p3Leaf.box.max[0];
+                // }
+
+                // // project in -x direction
+                // var projP4 = [leaf.box.min[0] - epsilon, p[1]];
+                // var p4Leaf = getContainingLeafNode(tree, projP4).node;
+                // //check if the box is smaller in y direction
+                // if (p4Leaf.box.min[1] > virtBox.min[1]) {
+                //     virtBox.min[1] = p4Leaf.box.min[1];
+                // }
+                // if (p4Leaf.box.max[1] < virtBox.max[1]) {
+                //     virtBox.max[1] = p4Leaf.box.max[1];
+                // }
+
+
+                return {
+                    node: {box: virtBox},
+                    cornerVals: virtCorn
+                };
+            };
+    
+            
+            // sample the tree using the intersecting perpendicular virtual leaf nodes
+            const sampleTreeVirtual = (tree, p) => {
+                
+                const makeEdgePoints = (fullLeaf, fullCorners, neighbourLeaf, neighbourCorners, dim) => {
+                    var points = {
+                        val: [fullLeaf.cornerVals[fullCorners[0]]], 
+                        pos: [fullLeaf.node.box.min[dim]]
+                    };
+                    if (neighbourLeaf.node.box.min[dim] > fullLeaf.node.box.min[dim]) {
+                        points.val[1] = neighbourLeaf.cornerVals[neighbourCorners[0]];
+                        points.pos[1] = neighbourLeaf.node.box.min[dim];
+                    }
+                    if (neighbourLeaf.node.box.max[dim] < fullLeaf.node.box.max[dim]) {
+                        points.val.push(neighbourLeaf.cornerVals[neighbourCorners[1]]);
+                        points.pos.push(neighbourLeaf.node.box.max[dim]);
+                    }
+                    points.val.push(fullLeaf.cornerVals[fullCorners[1]]);
+                    points.pos.push(fullLeaf.node.box.max[dim]);
+
+                    return points;
+                }
+                
+                // function for interpolating a point along an edge with multiple points along it
+                const lerpEdgePoints = (points, pos) => {
+                    var val = 0;
+
+                    for (let i = 0; i < points.val.length - 1; i++) {
+                        if (pos >= points.pos[i] && pos <= points.pos[i + 1]) {
+                            // is inside this range, lerp here
+                            val = lerp(
+                                points.val[i], 
+                                points.val[i + 1], 
+                                facInRange(pos, points.pos[i], points.pos[i + 1])
+                            );
+                            break;
+                        }
+                    }
+                    // for (let i = 0; i < points.length - 1; i++) {
+                    //     if (pos >= points[i].pos && pos <= points[i + 1].pos) {
+                    //         // is inside this range, lerp here
+                    //         val = lerp(
+                    //             points[i].val, 
+                    //             points[i + 1].val, 
+                    //             facInRange(pos, points[i].pos, points[i + 1].pos)
+                    //         );
+                    //         break;
+                    //     }
+                    // }
+
+                    return val;
+                };
+                
+                const updateVirtCorners = (
+                    fullLeaf, virtCorners, virtBox, 
+                    plusNeighbourLeaf, plusPoints,
+                    minusNeighbourLeaf, minusPoints,
+                    minCorners, maxCorners, dim
+                ) => {
+                    if (virtBox.min[dim] > fullLeaf.node.box.min[dim]) {
+                        if (virtBox.min[dim] == plusNeighbourLeaf.node.box.min[dim]) {
+                            // is set by plus neighbour
+                            // replace 1 with new 0
+                            virtCorners[minCorners[0]] = plusNeighbourLeaf.cornerVals[minCorners[1]];
+                            // interpolate new 0 along x- side
+                            virtCorners[minCorners[1]] = lerpEdgePoints(minusPoints, virtBox.min[dim]);
+                        } else {
+                            // is set by x- neighbour
+                            // replace 0 with new 1
+                            virtCorners[minCorners[1]] = minusNeighbourLeaf.cornerVals[minCorners[0]];
+                            // interpolate new 1
+                            virtCorners[minCorners[0]] = lerpEdgePoints(plusPoints, virtBox.min[dim]);
+                        }
+                    }
+
+                    if (virtBox.max[dim] < fullLeaf.node.box.max[dim]) {
+                        if (virtBox.max[dim] == plusNeighbourLeaf.node.box.max[dim]) {
+                            // set by x+ neighbour
+                            virtCorners[maxCorners[0]] = plusNeighbourLeaf.cornerVals[maxCorners[1]];
+                            // interpolate new 2 along x- side
+                            virtCorners[maxCorners[1]] = lerpEdgePoints(minusPoints, virtBox.max[dim]);
+                        } else {
+                            // set by x- neighbour
+                            virtCorners[maxCorners[1]] = minusNeighbourLeaf.cornerVals[maxCorners[0]];
+                            virtCorners[maxCorners[0]] = lerpEdgePoints(plusPoints, virtBox.max[dim]);
+                        }
+                    }
+
+                    return virtCorners;
+                }
+                
+                var fullLeaf = getContainingLeafNode(tree, p);
+
+                // do the x aligned virtual box first ==================================================================
+                var xVirtBox = {
+                    min: [...fullLeaf.node.box.min],
+                    max: [...fullLeaf.node.box.max],
+                };
+                var xVirtCorn = fullLeaf.cornerVals.slice();
+
+                // look at the neighbours on the + and - x sides
+                var xPlusLeaf = getContainingLeafNode(tree, [fullLeaf.node.box.max[0] + epsilon, p[1]]);
+                var xMinusLeaf = getContainingLeafNode(tree, [fullLeaf.node.box.min[0] - epsilon, p[1]]);
+
+                // create the points arrays
+                var xPlusPoints = makeEdgePoints(fullLeaf, [1, 3], xPlusLeaf, [0, 2], 1);
+                var xMinusPoints = makeEdgePoints(fullLeaf, [0, 2], xMinusLeaf, [1, 3], 1);
+
+                // form the virtual x box
+                xVirtBox.min[1] = Math.max(
+                    fullLeaf.node.box.min[1],
+                    xPlusLeaf.node.box.min[1], 
+                    xMinusLeaf.node.box.min[1]
+                );
+
+                xVirtBox.max[1] = Math.min(
+                    fullLeaf.node.box.max[1],
+                    xPlusLeaf.node.box.max[1], 
+                    xMinusLeaf.node.box.max[1]
+                );
+
+                updateVirtCorners(fullLeaf, xVirtCorn, xVirtBox, xPlusLeaf, xPlusPoints, xMinusLeaf, xMinusPoints, [1, 0], [3, 2], 1);
+
+                // interpolate within the virtual x box
+                var xSampled = sampleInBox(xVirtBox, xVirtCorn, p);
+
+                // y aligned box ======================================================================================
+                var yVirtBox = {
+                    min: [...fullLeaf.node.box.min],
+                    max: [...fullLeaf.node.box.max],
+                };
+                var yVirtCorn = fullLeaf.cornerVals.slice();
+
+                // look at the neighbours on the + and - x sides
+                var yPlusLeaf = getContainingLeafNode(tree, [p[0], fullLeaf.node.box.max[1] + epsilon]);
+                var yMinusLeaf = getContainingLeafNode(tree, [p[0], fullLeaf.node.box.min[1] - epsilon]);
+
+                // create the points array for the x+ side of the box
+                var yPlusPoints = makeEdgePoints(fullLeaf, [2, 3], yPlusLeaf, [0, 1], 0);
+                var yMinusPoints = makeEdgePoints(fullLeaf, [0, 1], yMinusLeaf, [2, 3], 0);
+
+                yVirtBox.min[0] = Math.max(
+                    fullLeaf.node.box.min[0],
+                    yPlusLeaf.node.box.min[0], 
+                    yMinusLeaf.node.box.min[0]
+                );
+
+                yVirtBox.max[0] = Math.min(
+                    fullLeaf.node.box.max[0],
+                    yPlusLeaf.node.box.max[0], 
+                    yMinusLeaf.node.box.max[0]
+                );
+
+                updateVirtCorners(fullLeaf, yVirtCorn, yVirtBox, yPlusLeaf, yPlusPoints, yMinusLeaf, yMinusPoints, [2, 0], [3, 1], 0);
+
+                const ySampled = sampleInBox(yVirtBox, yVirtCorn, p);
+                
+
+                // combine the samples from the virtual leaves ===========================================================================
+
+                const xFac = facInRange(p[0], fullLeaf.node.box.min[0], fullLeaf.node.box.max[0]);
+                const xVirtFac = Math.max(xFac, 1-xFac);
+                // const xVirtFacMapped = 1024**xVirtFac - 1;
+                const xVirtFacMapped = Math.max(0, Math.min((-1/(xVirtFac-1) - 1) * 10, 2**16));
+                
+                const yFac = facInRange(p[1], fullLeaf.node.box.min[1], fullLeaf.node.box.max[1]);
+                const yVirtFac = Math.max(yFac, 1-yFac);
+                // const yVirtFacMapped = 1024**yVirtFac - 1;
+                const yVirtFacMapped = Math.max(0, Math.min((-1/(yVirtFac-1) - 1) * 10, 2**16));
+
+                return (xSampled * xVirtFacMapped + ySampled * yVirtFacMapped )/(yVirtFacMapped + xVirtFacMapped);
+
+
+
+
+
+                // const fullLeafSize = [fullLeaf.node.box.max[0] - fullLeaf.node.box.min[0], fullLeaf.node.box.max[1] - fullLeaf.node.box.min[1]];
+                // const fullAspect = (fullLeafSize[0])/(fullLeafSize[1]);
+                
+                // const xVirtFac = Math.max(
+                //     1 - (p[0] - fullLeaf.node.box.min[0])/(fullLeafSize[1] * 2), 
+                //     1 - (fullLeaf.node.box.max[0] - p[0])/(fullLeafSize[1] * 2)
+                // );
+                // const xVirtFacMapped = Math.max(0, Math.min(-1/(xVirtFac-1) - 1, 2**16));
+                
+                // const yFac = facInRange(p[1], fullLeaf.node.box.min[1], fullLeaf.node.box.max[1]) 
+                // const yVirtFac = Math.max(
+                //     1 - (p[1] - fullLeaf.node.box.min[1])/(fullLeafSize[0] * 2), 
+                //     1 - (fullLeaf.node.box.max[1] - p[1])/(fullLeafSize[0] * 2)
+                // );
+                // const yVirtFacMapped = Math.max(0, Math.min(-1/(yVirtFac-1) - 1, 2**16));
+
+
+                // // combine the virtual x and y values
+                // return Math.max(xVirtFac, yVirtFac);
+                // if (xVirtFac > yVirtFac) {
+                //     return 0;//xSampled;
+                // } else {
+                //     return 1;//ySampled;
+                // }
+                // return (xSampled * xVirtFacMapped + ySampled * yVirtFacMapped )/(yVirtFacMapped + xVirtFacMapped);
+            }
+            
+            
+            
+            // drawing functions ==================================================================================          
+            
+            
+            const drawTree = (tree, col) => {
+                var nodeQueue = [tree];
+                while(nodeQueue.length > 0) {
+                    var currNode = nodeQueue.pop();
+                    if (!currNode.left) {
+                        drawBox(currNode.box, col);
+                    } else {
+                        nodeQueue.push(currNode.left, currNode.right);
+                    }
+                }
+            };
+            
+            const drawBox = (box, col) => {
+                ctx.strokeStyle = col;
+                ctx.strokeRect(
+                    box.min[0],
+                    box.min[1],
+                    box.max[0] - box.min[0],
+                    box.max[1] - box.min[1]
+                );
+            }
+
+            
+            const drawTreePolyCornerVals= (tree, mode) => {
+                var imgData = new Uint8ClampedArray(4 * canvas.height * canvas.width);
+                for (let i = 0; i < canvas.width; i++) {
+                    for (let j = 0; j < canvas.height; j++) {
+                        const index = 4 * (i + j * canvas.width);
+                        var val;
+                        if (mode == "virtualOld") {
+                            const leaf = getVirtualLeafOld(tree, [i, j]);
+                            val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
+                        } else if (mode == "virtual") {
+                            val = sampleTreeVirtual(tree, [i, j]);
+                        } else {
+                            const leaf = getContainingLeafNode(tree, [i, j]);
+                            val = evaluatePolynomial(leaf.cornerVals, [i, j]);
+                        }
+                        imgData[index + 0] = val * 255;
+                        imgData[index + 1] = val * 255;
+                        imgData[index + 2] = val * 255;
+                        imgData[index + 3] = 255;
+                    }
+                }
+                var newImg = new ImageData(imgData, canvas.width, canvas.height);
+                ctx.putImageData(newImg, 0, 0);
+            };
+            // drawScalarField(samplePerlin);
+            
+            
+            
+            const tree = makeTree(10, {min: [0, 0], max:[canvas.width, canvas.height]}, scalarFunction);
+            createNodePolyCornerValuesBuffer(tree, scalarFunction, 30);
+            
+            console.log(tree);
+            drawTree(tree.nodes, "#000000");
+            
+            
+            
+            canvas.addEventListener("mousemove", (e) => {
+                // console.log("treee");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawTree(tree.nodes, "#000000");
+                var canvasRect = canvas.getBoundingClientRect();
+                var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
+
+                var fullLeaf = getContainingLeafNode(tree, mouseCoords);
+                drawBox(fullLeaf.node.box, "#ff0000");
+                
+                var virtualLeaf = getVirtualLeafOld(tree, mouseCoords);
+                var xVirtualleafBox = structuredClone(virtualLeaf.node.box);
+                xVirtualleafBox.min[0] = fullLeaf.node.box.min[0];
+                xVirtualleafBox.max[0] = fullLeaf.node.box.max[0];
+                var yVirtualleafBox = structuredClone(virtualLeaf.node.box);
+                yVirtualleafBox.min[1] = fullLeaf.node.box.min[1];
+                yVirtualleafBox.max[1] = fullLeaf.node.box.max[1];
+
+                drawBox(xVirtualleafBox, "#333333");
+                drawBox(yVirtualleafBox, "#333333");
+
+                drawBox(virtualLeaf.node.box, "#0000ff");
+            })
+
+            document.body.addEventListener("keypress", (e) => {
+                const start = performance.now();
+                switch (e.key) {
+                    case "0":
+                        drawScalarField(scalarFunction);
+                        console.log("drawn data");
+                        break;
+                    case "1":
+                        // draw the scalar field by linearly interpolating the corner values
+                        drawTreePolyCornerVals(tree);
+                        console.log("drawn basic tree polynomials");
+                        break;
+                    case "2":
+                        // draw the scalar field by using the virtual leaf nodes old method
+                        drawTreePolyCornerVals(tree, "virtualOld");
+                        console.log("drawn corner vals with old virtual leaf method");
+                        break;
+                }
+                console.log(Math.round(performance.now() - start).toString() + "ms");
+            })
+        </script>
+    </body>
+</html>

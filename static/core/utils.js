@@ -145,6 +145,10 @@ export var boxesEqual = (box1, box2) => {
            box1.max[2] == box2.max[2];
 }
 
+export var smoothStep = (x) => {
+    return (6*x**2 - 15*x**1 + 10)*x**3
+}
+
 export const DATA_TYPES = {
     "uint8": Uint8Array,
     "int32": Int32Array,

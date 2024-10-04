@@ -1,6 +1,7 @@
 // treeNodeValues.js
 // contains functions to manage values associated with cell tree nodes for partial resolution rendering
 
+import { smoothStep } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
 import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox } from "./cellTreeUtils.js";
@@ -183,8 +184,8 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
 }
 
 // performs linear regression to fit cubic to a selection of the leafNode's verts
-const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
-    const pointCount = 14;
+const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox, sampleCount) => {
+    const pointCount = sampleCount;
     // matrix of inputs
     // 1 x y z xy xz yz xyz
     var X = [];
@@ -197,7 +198,7 @@ const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
     for (let i = 0; i < pointCount; i++) {
         // sample at unique location
 
-        let point = sampleLeafRandom(dataObj, slotNum, leafNode, leafBox);
+        let point = sampleLeafRandom(dataObj, slotNum, leafNode, leafBox, smoothStep);
 
 
         X[i] = [
@@ -240,7 +241,7 @@ const evaluatePolynomial = (vals, p) => {
     
 
 // computes the polynomial fit of a node given the polynomial fit of the children
-const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currNode) => {
+const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currNode, sampleCount) => {
     var leftCorners = readCornerVals(cornerValBuffer, currNode.leftPtr);
     var rightCorners = readCornerVals(cornerValBuffer, currNode.rightPtr);
     var thisCorners = new Float32Array(8);
@@ -260,7 +261,7 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currN
     const rightBox = structuredClone(currBox);
     rightBox.min[splitDim] = currNode.splitVal;
     // sample n times within each
-    const pointCountTotal = 14;
+    const pointCountTotal = sampleCount;
     var X = [];
     var Y = [];
 
@@ -270,11 +271,11 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currN
         // sample at unique location
         if (i < pointCountTotal/2) {
             // sample inside left child
-            pos = randomInsideBox(leftBox);
+            pos = randomInsideBox(leftBox, smoothStep);
             Y[i] = evaluatePolynomial(leftCorners, pos);
         } else {
             // sample inside right child
-            pos = randomInsideBox(rightBox);
+            pos = randomInsideBox(rightBox, smoothStep);
             Y[i] = evaluatePolynomial(rightCorners, pos);
         }
 
@@ -309,6 +310,8 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currN
 
 
 var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
+
+    const sampleCount = 16;
     var start = performance.now();
     var treeNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
@@ -336,7 +339,7 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
         var currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // get the corner values for this box and write to buffer
-            writeCornerVals(nodeCornerVals, currNode.thisPtr, getLeafPolyCornerVals(dataObj, slotNum, currNode, getThisBox(currNode)));
+            writeCornerVals(nodeCornerVals, currNode.thisPtr, getLeafPolyCornerVals(dataObj, slotNum, currNode, getThisBox(currNode), sampleCount));
 
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -373,7 +376,8 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
                     nodeCornerVals,
                     thisBox,
                     splitDim,
-                    currNode
+                    currNode,
+                    Math.round(sampleCount * 2)
                 )
                 
                 writeCornerVals(nodeCornerVals, currNode.thisPtr, cornerVals);

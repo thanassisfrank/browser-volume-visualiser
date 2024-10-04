@@ -563,7 +563,7 @@ export function CellTree() {
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
-        // make a root node with the whols dataset
+        // make a root node with the whole dataset
         var root = this.createNode(0, 0, this.points);
 
         if (cellsTree) {
@@ -797,9 +797,15 @@ export function CellTree() {
             // find the pivot 
             parentNode.splitVal = 0.5 * (parentNode.box.min[currentDimension] + parentNode.box.max[currentDimension]);
 
-            var leftBox = structuredClone(parentNode.box);
+            var leftBox = {
+                min: [...parentNode.box.min],
+                max: [...parentNode.box.max],
+            };
             leftBox.max[currentDimension] = parentNode.splitVal;
-            var rightBox = structuredClone(parentNode.box);
+            var rightBox = {
+                min: [...parentNode.box.min],
+                max: [...parentNode.box.max],
+            };
             rightBox.min[currentDimension] = parentNode.splitVal;
 
     

@@ -272,17 +272,18 @@ export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
     return vec4.dot(cell.values, cell.factors);
 }
 
-export const randomInsideBox = (box) => {
+//
+export const randomInsideBox = (box, map = x => x) => {
     return [
-        Math.random() * (box.max[0] - box.min[0]) + box.min[0],
-        Math.random() * (box.max[1] - box.min[1]) + box.min[1],
-        Math.random() * (box.max[2] - box.min[2]) + box.min[2],
+        map(Math.random()) * (box.max[0] - box.min[0]) + box.min[0],
+        map(Math.random()) * (box.max[1] - box.min[1]) + box.min[1],
+        map(Math.random()) * (box.max[2] - box.min[2]) + box.min[2],
     ];
 }
 
 // returns a random point inside the given leaf node
-export const sampleLeafRandom = (dataObj, slotNum, leafNode, leafBox) => {
-    var position = randomInsideBox(leafBox);
+export const sampleLeafRandom = (dataObj, slotNum, leafNode, leafBox, map) => {
+    var position = randomInsideBox(leafBox, map);
 
     return {
         position: position,
