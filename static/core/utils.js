@@ -1030,7 +1030,7 @@ export function buildCellKDTree(points, dimensions, depth, cellConnectivity, cel
     }
 
     var nodeQueue = [];
-    // make a root node with the whols dataset
+    // make a root node with the whole dataset
     var root = {
         depth: 0,
         splitDimension: 0,

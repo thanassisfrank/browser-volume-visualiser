@@ -55,7 +55,12 @@ export const VecMath = {
 		// return [newX, newY, newZ];
 	},
 	dot: function(vec, vec1) {
-		return vec[0] * vec1[0] + vec[1] * vec1[1] + vec[2] * vec1[2];
+		if (vec.length != vec1.length) return;
+		var total = 0;
+		for (let i = 0; i < vec.length; i++) {
+			total += vec[i] * vec1[i];
+		}
+		return total;
 	},
 	cross: function(vec1, vec2) {
 		const newX = vec1[1]*vec2[2] - vec1[2]*vec2[1];
