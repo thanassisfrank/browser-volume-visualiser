@@ -3,7 +3,7 @@
 
 import { VecMath } from "../VecMath.js";
 
-import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom } from "./cellTreeUtils.js";
+import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox } from "./cellTreeUtils.js";
 
 // Node values are 1 value per node and are written into the tree nodes buffer
 // Corner values are 8 values per node and are written into their own buffer
@@ -184,7 +184,7 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
 
 // performs linear regression to fit cubic to a selection of the leafNode's verts
 const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
-    const pointCount = 12;
+    const pointCount = 14;
     // matrix of inputs
     // 1 x y z xy xz yz xyz
     var X = [];
@@ -195,32 +195,6 @@ const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
 
     // sample inside the leaf node
     for (let i = 0; i < pointCount; i++) {
-
-        // sample a unique random point within the leaf node
-
-        // chose random vertex
-        // let unique = true;
-        // let point;
-        // do {
-        //     unique = true;
-        //     point = getRandVertInLeafNode(dataObj, slotNum, leafNode);
-        //     for (let j = 0; j < i; j++) {
-        //         if (point.position[0] == X[j][1] && point.position[1] == X[j][2] && point.position[2] == X[j][3]) {
-        //             unique = false;
-        //             break;
-        //         }
-
-        //         // if (
-        //         //     point.position[0] == X[j][1] && point.position[1] == X[j][2] ||
-        //         //     point.position[0] == X[j][1] && point.position[2] == X[j][3] ||
-        //         //     point.position[1] == X[j][2] && point.position[2] == X[j][3]
-        //         // ) {
-        //         //     unique = false;
-        //         //     break;
-        //         // }
-        //     }
-        // } while (!unique);
-
         // sample at unique location
 
         let point = sampleLeafRandom(dataObj, slotNum, leafNode, leafBox);
@@ -256,18 +230,81 @@ const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
     
 }
 
+const evaluatePolynomial = (vals, p) => {
+    return vals[0] + 
+        vals[1] * p[0] + vals[2] * p[1] + vals[3] * p[2] + 
+        vals[4] * p[0] * p[1] + vals[5] * p[0] * p[2] + vals[6] * p[1] * p[2] + 
+        vals[7] * p[0] * p[1] * p[2];
+}
+
     
 
-// averages the polynomial fit found for this node's children
-const getPolyCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rightPtr) => {
-    var leftCorners = readCornerVals(cornerValBuffer, leftPtr);
-    var rightCorners = readCornerVals(cornerValBuffer, rightPtr);
+// computes the polynomial fit of a node given the polynomial fit of the children
+const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currNode) => {
+    var leftCorners = readCornerVals(cornerValBuffer, currNode.leftPtr);
+    var rightCorners = readCornerVals(cornerValBuffer, currNode.rightPtr);
     var thisCorners = new Float32Array(8);
-    for (let i = 0; i < 8; i++) {
-        thisCorners[i] = 0.5*(leftCorners[i] + rightCorners[i]);
+
+
+    // simple averaging approach, doesn't work well as the children are only fitted within their own volumes
+    // for (let i = 0; i < 8; i++) {
+    //     thisCorners[i] = 0.5*(leftCorners[i] + rightCorners[i]);
+    // }
+    // return thisCorners;
+
+
+    // resample and fit approach
+    // get the bounding boxes of the two children nodes
+    const leftBox = structuredClone(currBox);
+    leftBox.max[splitDim] = currNode.splitVal;
+    const rightBox = structuredClone(currBox);
+    rightBox.min[splitDim] = currNode.splitVal;
+    // sample n times within each
+    const pointCountTotal = 14;
+    var X = [];
+    var Y = [];
+
+    var pos;
+    // sample inside the left child
+    for (let i = 0; i < pointCountTotal; i++) {
+        // sample at unique location
+        if (i < pointCountTotal/2) {
+            // sample inside left child
+            pos = randomInsideBox(leftBox);
+            Y[i] = evaluatePolynomial(leftCorners, pos);
+        } else {
+            // sample inside right child
+            pos = randomInsideBox(rightBox);
+            Y[i] = evaluatePolynomial(rightCorners, pos);
+        }
+
+        X[i] = [
+            1, 
+            pos[0], 
+            pos[1],
+            pos[2],
+            pos[0] * pos[1],
+            pos[0] * pos[2],
+            pos[1] * pos[2],
+            pos[0] * pos[1] * pos[2]
+        ];
+
+        
     }
 
-    return thisCorners;
+    if (!Y.every(v => v == 0)) {
+        // solve the linear regression to get the coefficients matrix
+        var pseudoInv = VecMath.pseudoInverse(X)
+
+        if (pseudoInv) {
+            // found linear regression
+            // console.log("solved");
+            return VecMath.matrixVecMult(pseudoInv, Y);
+        }
+    }
+
+    // all Y vals = 0 or couldn't find linear reg
+    return [0, 0, 0, 0, 0, 0, 0, 0];
 }
 
 
@@ -330,16 +367,18 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
                 // calculate the node corners from its children
                 var splitDim = currDepth % 3;
 
+                var thisBox = currBoxes.pop();
+
                 var cornerVals = getPolyCornerValsFromChildren(
                     nodeCornerVals,
+                    thisBox,
                     splitDim,
-                    currNode.leftPtr,
-                    currNode.rightPtr,
+                    currNode
                 )
                 
                 writeCornerVals(nodeCornerVals, currNode.thisPtr, cornerVals);
 
-                currBoxes.pop();
+                
                 if (currNode.childType == ChildTypes.RIGHT) currDepth--;  
             }
         }

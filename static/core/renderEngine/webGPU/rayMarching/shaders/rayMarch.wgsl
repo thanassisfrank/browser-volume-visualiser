@@ -140,7 +140,7 @@ fn fragment_main(
         // marching from the outside
         ray.tip = fragInfo.worldPosition.xyz;
         ray.length = length(raySegment);
-        startInside = true;
+        startInside = false;
     } else {
         // marching from the inside
         ray.tip = cameraPos;

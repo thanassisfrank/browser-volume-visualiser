@@ -174,7 +174,8 @@ export var viewManager = {
         const shiftFac = 0.5;
         view.elems.frame.addEventListener("mousedown", (e) => {
             if (view.elems.frame.requestPointerLock) {
-                view.elems.frame.requestPointerLock();
+                view.elems.frame.requestPointerLock()
+                    .catch(e => console.log("couldn't lock pointer"));
             }
             if (e.ctrlKey) {
                 // pan
