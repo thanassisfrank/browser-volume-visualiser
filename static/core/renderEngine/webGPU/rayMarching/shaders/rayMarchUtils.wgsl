@@ -419,26 +419,29 @@ fn marchRay(
 
 
 fn normaliseSample(sample : f32, dataSrc : u32) -> f32 {
+    var val : f32;
     switch (dataSrc) {
         case DATA_SRC_VALUE_A {
-            return (sample - passInfo.dataLowLimit)/(passInfo.dataHighLimit - passInfo.dataLowLimit);
+            val = (sample - passInfo.dataLowLimit)/(passInfo.dataHighLimit - passInfo.dataLowLimit);
         }
         case DATA_SRC_VALUE_B {
-            return (sample - passInfo.dataBLowLimit)/(passInfo.dataBHighLimit - passInfo.dataBLowLimit);
+            val = (sample - passInfo.dataBLowLimit)/(passInfo.dataBHighLimit - passInfo.dataBLowLimit);
         }
         case DATA_SRC_AXIS_X {
-            return (sample - passInfo.dataBox.min.x)/(passInfo.dataBox.max.x - passInfo.dataBox.min.x);
+            val = (sample - passInfo.dataBox.min.x)/(passInfo.dataBox.max.x - passInfo.dataBox.min.x);
         }
         case DATA_SRC_AXIS_Y {
-            return (sample - passInfo.dataBox.min.y)/(passInfo.dataBox.max.y - passInfo.dataBox.min.y);
+            val = (sample - passInfo.dataBox.min.y)/(passInfo.dataBox.max.y - passInfo.dataBox.min.y);
         }
         case DATA_SRC_AXIS_Z {
-            return (sample - passInfo.dataBox.min.z)/(passInfo.dataBox.max.z - passInfo.dataBox.min.z);
+            val = (sample - passInfo.dataBox.min.z)/(passInfo.dataBox.max.z - passInfo.dataBox.min.z);
         }
         case default {
-            return sample;
+            val = sample;
         }
     }
+
+    return clamp(val, 0.0, 1.0);
 }
 
 

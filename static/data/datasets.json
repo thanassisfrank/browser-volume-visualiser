@@ -57,7 +57,20 @@
 				"maxTreeDepth": 20,
 				"treeNodeCount": 2096641,
 				"nodesPath": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_treeNodes.raw",
-				"cellsPath": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_treeCells.raw"
+				"cellsPath": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_treeCells.raw",
+				"cornerValues": [
+					{
+						"dataArray": "Default",
+						"type": "SAMPLE",
+						"path": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_Default_SAMPLE_cornerVals.raw"
+					},
+					{
+						"dataArray": "Default",
+						"type": "POLYNOMIAL",
+						"samples": 16,
+						"path": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_Default_POLYNOMIAL_cornerVals.raw"
+					}
+				]
 			}
 		]
 	},
@@ -115,7 +128,24 @@
 			0,
 			70
 		],
-		"dataType": "float32"
+		"dataType": "float32",
+		"availableUnstructuredTrees": [
+			{
+				"kdTreeType": "NODE_MEDIAN",
+				"leafCells": 64,
+				"maxTreeDepth": 20,
+				"treeNodeCount": 2097149,
+				"nodesPath": "data/tacc_turbulence_256x256x256_float32_NODE_MEDIAN_64_20_treeNodes.raw",
+				"cellsPath": "data/tacc_turbulence_256x256x256_float32_NODE_MEDIAN_64_20_treeCells.raw",
+				"cornerValues": [
+					{
+						"dataArray": "Default",
+						"type": "SAMPLE",
+						"path": "data/tacc_turbulence_256x256x256_float32_NODE_MEDIAN_64_20_Default_SAMPLE_cornerVals.raw"
+					}
+				]
+			}
+		]
 	},
 	"heptane": {
 		"name": "Heptane",

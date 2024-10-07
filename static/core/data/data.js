@@ -4,7 +4,7 @@
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES} from "../utils.js";
 import { createDynamicTreeNodes, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
-import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues } from "./treeNodeValues.js";
+import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
@@ -134,6 +134,10 @@ var dataManager = {
                     .then(resp => resp.arrayBuffer())
                     .then(buff => new Uint32Array(buff));
                 newData.data.treeNodeCount = preGenTree.treeNodeCount;
+
+                // store in the data object for future reference
+                // used when generating
+                newData.preGeneratedInfo = preGenTree;
                 found = true;
                 break;
             }
@@ -397,6 +401,9 @@ function Data(id) {
 
     }
 
+    // information about the data files that have been pre-generated and are available to be laoded from the server
+    this.preGeneratedInfo = {};
+
     this.cornerValType = null;
 
 
@@ -593,7 +600,7 @@ function Data(id) {
 
         // if this is dynamic, load corner values too
         if (ResolutionModes.DYNAMIC == this.resolutionMode) {
-            this.createCornerValues(newSlotNum);
+            await this.createCornerValues(newSlotNum)
             this.createDynamicCornerValues(newSlotNum);
         }
 
@@ -605,8 +612,23 @@ function Data(id) {
         this.cornerValType = type;
     }
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
-    this.createCornerValues = function(slotNum) {
-        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType);
+    this.createCornerValues = async function(slotNum) {
+        // first, check if the corner values are available on the server
+        console.log(this.data.values[slotNum].name, this.cornerValType, this.preGeneratedInfo.cornerValues);
+        for (let preGenCornerVal of this.preGeneratedInfo.cornerValues ?? []) {
+            if (preGenCornerVal.dataArray != this.data.values[slotNum].name) continue;
+            if (CornerValTypes[preGenCornerVal.type] != this.cornerValType) continue;
+            // this matches what has been requested, load these files
+            console.log("loading pre generated corner vals");
+            this.data.values[slotNum].cornerValues = await fetch(preGenCornerVal.path)
+                .then(resp => resp.arrayBuffer())
+                .then(buff => new Float32Array(buff));
+
+            return;
+        }
+    
+        console.log("generating tree");
+        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
     }
 
     // creates the dynamic corner values buffer from scratch
