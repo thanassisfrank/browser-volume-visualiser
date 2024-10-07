@@ -49,7 +49,17 @@
 			0,
 			255
 		],
-		"dataType": "uint8"
+		"dataType": "uint8",
+		"availableUnstructuredTrees": [
+			{
+				"kdTreeType": "NODE_MEDIAN",
+				"leafCells": 64,
+				"maxTreeDepth": 20,
+				"treeNodeCount": 2096641,
+				"nodesPath": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_treeNodes.raw",
+				"cellsPath": "data/engine_256x256x128_uint8_NODE_MEDIAN_64_20_treeCells.raw"
+			}
+		]
 	},
 	"silicium": {
 		"name": "Silicium",

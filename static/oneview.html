@@ -242,7 +242,8 @@
                             </tr>
                         </table>
                     </details>
-                    <label class="view-close view-info clickable">Close</label>
+                    <!-- Temporarily removed to prevent system lockup with large datasets -->
+                    <!-- <label class="view-close view-info clickable">Close</label> -->
                 </div>
             </div>
         </div>
@@ -250,7 +251,7 @@
         <script type="module">
             import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, removeAllChildren} from "./core/utils.js";
 
-            import { dataManager, ResolutionModes } from "./core/data/data.js";
+            import { dataManager, ResolutionModes, DataFormats } from "./core/data/data.js";
             import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
             import { viewManager } from "./view.js";
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
@@ -423,6 +424,83 @@
 
                 // shortcuts
                 const shortcuts = {
+                    " ": {
+                        description: "Print the camera position and threshold val",
+                        f: function(e) {
+                            camera.printVals();
+                            console.log("threshold", Object.values(viewManager.views)[0].threshold);
+                        }
+                    },
+                    "b": {
+                        description: "Save generated unstructured tree",
+                        f: function(e) {
+                            var currView = Object.values(viewManager.views)[0];
+                            if (!currView) {
+                                console.warn("no view loaded");
+                                return;
+                            }
+
+                            if (currView.data.dataFormat != DataFormats.UNSTRUCTURED) {
+                                console.warn("dataset not unstructured");
+                                return;
+                            }
+
+                            const dataObj = currView.data;
+                            // console.log(currView.data.data.treeNodes);
+                            // console.log(currView.data.data.treeCells);
+                            console.log(dataObj.data.treeNodeCount);
+
+                            var kdTreeTypeStr;
+                            for (let type in KDTreeSplitTypes) {
+                                if (KDTreeSplitTypes[type] != dataObj.opts.kdTreeType) continue;
+                                kdTreeTypeStr = type;
+                                break;
+                            }
+
+                            // download the buffers
+                            const filePrefix = [
+                                dataObj.config.path.split("/")[1].split(".")[0],
+                                kdTreeTypeStr,
+                                dataObj.opts.leafCells,
+                                dataObj.opts.maxTreeDepth
+                            ].join("_");
+
+                            const treeNodesName = filePrefix + "_treeNodes.raw";
+                            const treeCellsName = filePrefix + "_treeCells.raw";
+
+                            var dlElem = document.createElement('a');
+
+                            dlElem.download = treeNodesName;
+                            var blobNodes = new Blob([dataObj.data.treeNodes], {type: "octet/stream"});
+                            dlElem.href = window.URL.createObjectURL(blobNodes);
+                            dlElem.click();
+
+                            dlElem.download = treeCellsName;
+                            var blobCells = new Blob([dataObj.data.treeCells], {type: "octet/stream"});
+                            dlElem.href = window.URL.createObjectURL(blobCells);
+                            dlElem.click();
+
+                            dlElem.remove();
+
+                            // print the required json entry
+                            var jsonEntry = {
+                                "kdTreeType": kdTreeTypeStr,
+                                "leafCells": dataObj.opts.leafCells,
+                                "maxTreeDepth": dataObj.opts.maxTreeDepth,
+                                "treeNodeCount": dataObj.data.treeNodeCount,
+                                "nodesPath": "data/" + treeNodesName,
+                                "cellsPath": "data/" + treeCellsName
+                            };
+                            console.log(JSON.stringify(jsonEntry, undefined, 4));
+                        }
+                    },
+                    "c": {
+                        description: "Copy frametime samples to clipboard",
+                        f: function(e) {
+                            frameTimeGraph.copySamples();
+                            console.log("Samples copied");
+                        }
+                    },
                     "d": {
                         description: "Get the current ray length texture from the ray marcher",
                         f: function(e) {
@@ -445,21 +523,6 @@
                             });
                         }
                     },
-                    "h": {
-                        description: "Help",
-                        f: function(e) {
-                            for (let key in shortcuts) {
-                                if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
-                            }
-                        }
-                    },
-                    " ": {
-                        description: "Print the camera position and threshold val",
-                        f: function(e) {
-                            camera.printVals();
-                            console.log("threshold", Object.values(viewManager.views)[0].threshold);
-                        }
-                    },
                     "f": {
                         description: "Print average frametime",
                         f: function(e) {
@@ -468,21 +531,37 @@
                             alert(avg + "ms");
                         }
                     },
+                    "g": {
+                        description: "Display GPU memory usage",
+                        f: function(e) {
+                            console.log(renderEngine.getWebGPU().getResourcesString());
+                        }
+                    },
+                    "h": {
+                        description: "Help",
+                        f: function(e) {
+                            for (let key in shortcuts) {
+                                if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
+                            }
+                        }
+                    },
                     "l": {
                         description: "Print last frametime sample",
                         f: function(e) {
                             console.log(frameTimeGraph.lastSamples[0]);
                         }
                     },
-                    "s": {
-                        description: "Save image on main canvas",
+                    "m": {
+                        description: "Toggle camera auto-move",
                         f: function(e) {
-                            const image = canvas.toDataURL('image/png');
-                            var dlElem = document.createElement('a');
-                            dlElem.download = 'canvas_image.png';
-                            dlElem.href = image;
-                            dlElem.click();
-                            dlElem.remove();
+                            cameraFollowPath = !cameraFollowPath;
+                        }
+                    },
+                    "o": {
+                        description: "Reset offset optimisation",
+                        f: function(e) {
+                            renderEngine.canvasResized = true;
+                            renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
                         }
                     },
                     "p": {
@@ -498,6 +577,23 @@
                             camera.moveToStart();
                         }
                     },
+                    "s": {
+                        description: "Save image on main canvas",
+                        f: function(e) {
+                            const image = canvas.toDataURL('image/png');
+                            var dlElem = document.createElement('a');
+                            dlElem.download = 'canvas_image.png';
+                            dlElem.href = image;
+                            dlElem.click();
+                            dlElem.remove();
+                        }
+                    },
+                    "u": {
+                        description: "Update view",
+                        f: function(e) {
+                            Object.values(viewManager.views)?.[0].update(0, renderEngine);
+                        }
+                    },
                     "v": {
                         description: "Toggle visiblity of overlay elements",
                         f: function(e) {
@@ -508,38 +604,6 @@
                                     show(elem);
                                 }
                             }
-                        }
-                    },
-                    "m": {
-                        description: "Toggle camera auto-move",
-                        f: function(e) {
-                            cameraFollowPath = !cameraFollowPath;
-                        }
-                    },
-                    "u": {
-                        description: "Update view",
-                        f: function(e) {
-                            Object.values(viewManager.views)?.[0].update(0, renderEngine);
-                        }
-                    },
-                    "o": {
-                        description: "Reset offset optimisation",
-                        f: function(e) {
-                            renderEngine.canvasResized = true;
-                            renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
-                        }
-                    },
-                    "g": {
-                        description: "Display GPU memory usage",
-                        f: function(e) {
-                            console.log(renderEngine.getWebGPU().getResourcesString());
-                        }
-                    },
-                    "c": {
-                        description: "Copy frametime samples to clipboard",
-                        f: function(e) {
-                            frameTimeGraph.copySamples();
-                            console.log("Samples copied");
                         }
                     },
                     "Alt": {

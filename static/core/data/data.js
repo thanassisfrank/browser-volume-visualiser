@@ -3,7 +3,7 @@
 
 import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { newId, DATA_TYPES} from "../utils.js";
-import { createDynamicTreeNodes, getCellTreeBuffers } from "./cellTree.js";
+import { createDynamicTreeNodes, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
@@ -85,7 +85,9 @@ var dataManager = {
         const id = newId(this.datas);
         var newData = new Data(id);
         newData.dataName = config.name;
+        newData.opts = opts;
         console.log(config);
+        console.log(opts);
         
         // first, create the dataset from the config
         try {
@@ -119,7 +121,27 @@ var dataManager = {
 
         // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
-            this.createUnstructuredTree(newData, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
+            // check if the tree as-specified already exists on the server
+            var found = false;
+            for (let preGenTree of config.availableUnstructuredTrees ?? []) {
+                if (KDTreeSplitTypes[preGenTree.kdTreeType] != opts.kdTreeType) continue;
+                if (preGenTree.maxTreeDepth != opts.maxTreeDepth) continue;
+                if (preGenTree.leafCells != opts.leafCells) continue;
+                // this matches what has been requested, load these files
+                console.log("loading pre generated tree");
+                newData.data.treeNodes = await fetch(preGenTree.nodesPath).then(resp => resp.arrayBuffer());
+                newData.data.treeCells = await fetch(preGenTree.cellsPath)
+                    .then(resp => resp.arrayBuffer())
+                    .then(buff => new Uint32Array(buff));
+                newData.data.treeNodeCount = preGenTree.treeNodeCount;
+                found = true;
+                break;
+            }
+            if (!found) {
+                console.log("generating tree");
+                this.createUnstructuredTree(newData, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
+            }
+
             newData.setCornerValType(opts.cornerValType);
         }
 
@@ -333,6 +355,7 @@ function Data(id) {
     this.id = id;
     this.users = 0;
     this.config;
+    this.opts;
 
     // what kind of data file this contains
     this.dataFormat = DataFormats.EMPTY;
