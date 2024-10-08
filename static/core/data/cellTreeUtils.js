@@ -1,6 +1,7 @@
 // cellTreeUtils.js
 
 import { mat4, vec4 } from "https://cdn.skypack.dev/gl-matrix";
+import { VecMath } from "../VecMath.js";
 
 export const NODE_BYTE_LENGTH = 5 * 4;
 
@@ -212,11 +213,59 @@ var pointInTetBounds = (queryPoint, cell) => {
     return pointInAABB(queryPoint, {min: minVec, max: maxVec});
 }
 
+// searches through all points specified in the leaf node to find the closest to the sample point
+export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) => {
+    let point = [0, 0, 0];
+    let dist = 0;
+
+    let bestPoint = [0, 0, 0];
+    let bestDist = Number.POSITIVE_INFINITY;
+    let val = 0;
+
+    let checked = [];
+
+    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
+    for (let i = 0; i < leafNode.cellCount; i++) {
+        // go through and check all the contained cells
+        var cellID = dataObj.data.treeCells[cellsPtr + i];
+
+        // figure out if cell is inside using barycentric coords
+        var pointsOffset = dataObj.data.cellOffsets[cellID];
+        // read all the point positions and check each
+        for (let j = 0; j < 4; j++) {
+            var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+
+            if (checked.includes(thisPointIndex)) continue;
+            checked.push(thisPointIndex);
+
+            point = [
+                dataObj.data.positions[3 * thisPointIndex + 0],
+                dataObj.data.positions[3 * thisPointIndex + 1],
+                dataObj.data.positions[3 * thisPointIndex + 2]
+            ];
+            dist = VecMath.magnitude(VecMath.vecMinus(point, queryPoint));
+            if (dist < bestDist) {
+                bestPoint = [...point];
+                bestDist = dist;
+                val = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + j]]
+            }
+        }   
+    }
+
+    return {
+        position: bestPoint,
+        value: val
+    };
+}
+
 
 export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
     var cell = {
         points : [
-            [], [], [], [],
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0],
         ],
         values : [0, 0, 0, 0],
         factors : [0, 0, 0, 0]
@@ -261,13 +310,14 @@ export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
     return cell;
 }
 
-// samples a given leaf at the given position
+// samples a given leaf at the given position by interpolating within mesh
 export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
     // true leaf, sample the cells within
     var cell = getContainingCell(dataObj, slotNum, queryPoint, leafNode);
     // interpolate value
-    if (vec4.length(cell.factors) == 0) {
-        return 0;
+    if (cell.factors.every(x => 0 == x)) {
+        // if not inside any cell, return null
+        return null;
     };
     return vec4.dot(cell.values, cell.factors);
 }
@@ -287,7 +337,7 @@ export const sampleLeafRandom = (dataObj, slotNum, leafNode, leafBox, map) => {
 
     return {
         position: position,
-        value: sampleLeaf(dataObj, slotNum, leafNode, position)
+        value: sampleLeaf(dataObj, slotNum, leafNode, position) ?? getClosestVertexInLeaf(dataObj, slotNum, position, leafNode).value
     };
 }
 

@@ -277,7 +277,7 @@ var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlo
             dynamicNodes, 
             freePtrs[2*i] * NODE_BYTE_LENGTH, 
             null, 
-            0,//leftNode.cellCount,
+            leftNode.cellCount,
             thisNode.thisPtr, 
             leftNode.leftPtr, 
             0
@@ -290,7 +290,7 @@ var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlo
             dynamicNodes, 
             freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
             null, 
-            0,//rightNode.cellCount,
+            rightNode.cellCount,
             thisNode.thisPtr, 
             rightNode.leftPtr, 
             0

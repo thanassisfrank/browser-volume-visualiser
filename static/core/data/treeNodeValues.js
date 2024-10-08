@@ -4,7 +4,7 @@
 import { smoothStep } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
-import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox } from "./cellTreeUtils.js";
+import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox, getClosestVertexInLeaf } from "./cellTreeUtils.js";
 
 // Node values are 1 value per node and are written into the tree nodes buffer
 // Corner values are 8 values per node and are written into their own buffer
@@ -49,14 +49,34 @@ export const CornerValTypes = {
 const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
     var cornerVals = new Float32Array(8);
 
-    cornerVals[0] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.min);
-    cornerVals[1] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
-    cornerVals[2] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
-    cornerVals[3] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
-    cornerVals[4] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
-    cornerVals[5] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
-    cornerVals[6] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
-    cornerVals[7] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.max);
+    const points = [
+        leafBox.min,
+        [leafBox.max[0], leafBox.min[1], leafBox.min[2]],
+        [leafBox.min[0], leafBox.max[1], leafBox.min[2]],
+        [leafBox.max[0], leafBox.max[1], leafBox.min[2]],
+        [leafBox.min[0], leafBox.min[1], leafBox.max[2]],
+        [leafBox.max[0], leafBox.min[1], leafBox.max[2]],
+        [leafBox.min[0], leafBox.max[1], leafBox.max[2]],
+        leafBox.max,
+    ];
+    let val;
+    for (let i = 0; i < points.length; i++) {
+        // val = sampleLeaf(dataObj, slotNum, leafNode, points[i]);
+        // if (null == val) {
+        //     val = getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
+        // }
+        // cornerVals[i] = val;
+        cornerVals[i] = sampleLeaf(dataObj, slotNum, leafNode, points[i]) ?? getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
+    }
+
+    // cornerVals[1] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
+    // cornerVals[2] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
+    // cornerVals[3] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
+    // cornerVals[4] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
+    // cornerVals[5] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
+    // cornerVals[6] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
+    // cornerVals[7] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.max);
+
     
 
     return cornerVals;
