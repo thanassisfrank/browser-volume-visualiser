@@ -34,12 +34,12 @@ export var readNodeFromBuffer = (buffer, byteOffset) => {
     var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
     return {
         thisPtr: byteOffset/NODE_BYTE_LENGTH,
-        splitVal:  f32View.slice(0, 1)[0],
-        cellCount: u32View.slice(1, 2)[0],
-        parentPtr: u32View.slice(2, 3)[0],
-        leftPtr:   u32View.slice(3, 4)[0],
-        rightPtr:  u32View.slice(4, 5)[0],
-    }
+        splitVal:  f32View[0],//.slice(0, 1)[0],
+        cellCount: u32View[1],//.slice(1, 2)[0],
+        parentPtr: u32View[2],//.slice(2, 3)[0],
+        leftPtr:   u32View[3],//.slice(3, 4)[0],
+        rightPtr:  u32View[4],//.slice(4, 5)[0],
+    };
 }
 
 // goes through each node, depth first

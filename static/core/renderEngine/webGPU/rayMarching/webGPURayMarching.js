@@ -709,8 +709,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
             // reset offset optimisation if bounding box has changed
             if (!boxesEqual(renderable.passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
-            renderable.passData.clippedDataBox = structuredClone(updateObj.clippedDataBox);
-            renderable.passData.volumeTransferFunction = structuredClone(updateObj.volumeTransferFunction);
+            renderable.passData.clippedDataBox = {
+                min: [...updateObj.clippedDataBox.min],
+                max: [...updateObj.clippedDataBox.max],
+            };
+
+            renderable.passData.volumeTransferFunction = {
+                colour: [...updateObj.volumeTransferFunction.colour],
+                opacity: [...updateObj.volumeTransferFunction.opacity]
+            };
             
             if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA || renderable.type == RenderableTypes.DATA) {
                 dataRenderable = renderable

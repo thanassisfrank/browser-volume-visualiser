@@ -1,7 +1,8 @@
 static/data/magnetic_reconnection_512x512x512_float32.raw
 static/data/pancreas_240x512x512_int16.raw
 static/data/hcci_oh_560x560x560_float32.raw
-static/data/engine_256x256x128_uint8_NODE_MEDIAN_*
-static/data/tacc_turbulence_256x256x256_float32_NODE_MEDIAN_*
+static/data/*_treeCells.raw
+static/data/*_treeNodes.raw
+static/data/*_cornerVals.raw
 old/
 .vscode
