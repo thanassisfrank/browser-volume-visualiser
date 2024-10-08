@@ -124,22 +124,32 @@ var dataManager = {
             // check if the tree as-specified already exists on the server
             var found = false;
             for (let preGenTree of config.availableUnstructuredTrees ?? []) {
+                if (found) break;
                 if (KDTreeSplitTypes[preGenTree.kdTreeType] != opts.kdTreeType) continue;
                 if (preGenTree.maxTreeDepth != opts.maxTreeDepth) continue;
                 if (preGenTree.leafCells != opts.leafCells) continue;
+                
                 // this matches what has been requested, load these files
-                console.log("loading pre generated tree");
-                newData.data.treeNodes = await fetch(preGenTree.nodesPath).then(resp => resp.arrayBuffer());
-                newData.data.treeCells = await fetch(preGenTree.cellsPath)
-                    .then(resp => resp.arrayBuffer())
-                    .then(buff => new Uint32Array(buff));
+                found = true;
+                console.log("loading pre generated tree...");
+                try {
+                    const nodesResp = await fetch(preGenTree.nodesPath);
+                    if (!nodesResp.ok) throw Error("File not found");
+                    newData.data.treeNodes = await nodesResp.arrayBuffer();
+                                            
+                    const cellsResp = await fetch(preGenTree.cellsPath);
+                    if (!cellsResp.ok) throw Error("File not found");
+                    const cellsBuff = await cellsResp.arrayBuffer();
+                    newData.data.treeCells = new Uint32Array(cellsBuff);
+                } catch (e) {
+                    console.warn("unable to load pre-genenerated tree");
+                    found = false;
+                }
                 newData.data.treeNodeCount = preGenTree.treeNodeCount;
 
                 // store in the data object for future reference
                 // used when generating
                 newData.preGeneratedInfo = preGenTree;
-                found = true;
-                break;
             }
             if (!found) {
                 console.log("generating tree");
@@ -614,19 +624,28 @@ function Data(id) {
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
     this.createCornerValues = async function(slotNum) {
         // first, check if the corner values are available on the server
-        console.log(this.data.values[slotNum].name, this.cornerValType, this.preGeneratedInfo.cornerValues);
+        // console.log(this.data.values[slotNum].name, this.cornerValType, this.preGeneratedInfo.cornerValues);
+        var found = false;
+
         for (let preGenCornerVal of this.preGeneratedInfo.cornerValues ?? []) {
+            if (found) break;
             if (preGenCornerVal.dataArray != this.data.values[slotNum].name) continue;
             if (CornerValTypes[preGenCornerVal.type] != this.cornerValType) continue;
             // this matches what has been requested, load these files
             console.log("loading pre generated corner vals");
-            this.data.values[slotNum].cornerValues = await fetch(preGenCornerVal.path)
-                .then(resp => resp.arrayBuffer())
-                .then(buff => new Float32Array(buff));
+            found = true;
+            try {
+                const resp = await fetch(preGenCornerVal.path);
+                if (!resp.ok) throw Error("File not found");
+                const buff = await resp.arrayBuffer();
+                this.data.values[slotNum].cornerValues = new Float32Array(buff);
+            } catch (e) {
+                console.warn("unable to load pre-generated corner val, generating instead...");
+                found = false;
+            }
 
-            return;
         }
-    
+        if (found) return;
         console.log("generating tree");
         this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
     }
