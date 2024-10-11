@@ -103,6 +103,23 @@
 			16.5,
 			16.5,
 			48.5
+		],
+		"availableUnstructuredTrees": [
+			{
+				"kdTreeType": "VERT_MEDIAN",
+				"leafCells": 64,
+				"maxTreeDepth": 20,
+				"treeNodeCount": 126617,
+				"nodesPath": "data/silicium_98x34x34_uint8_VERT_MEDIAN_64_20_treeNodes.raw",
+				"cellsPath": "data/silicium_98x34x34_uint8_VERT_MEDIAN_64_20_treeCells.raw",
+				"cornerValues": [
+					{
+						"dataArray": "Default",
+						"type": "SAMPLE",
+						"path": "data/silicium_98x34x34_uint8_VERT_MEDIAN_64_20_Default_SAMPLE_cornerVals.raw"
+					}
+				]
+			}
 		]
 	},
 	"turbulence": {
