@@ -14,9 +14,6 @@
             summary {
                 font-weight: bold;
             }
-            .hidden {
-                display: none
-            }
             #c{
                 position: absolute;
                 margin: 0px;
@@ -168,7 +165,7 @@
             <label id="create-view-btn" class="clickable">Create new</label>
         </div>
 
-        <div id="dataset-config-container" class="bottom-bar hidden">
+        <div id="dataset-config-container" class="bottom-bar" hidden>
             <p>Dataset pre-load config</p>
             
             <label id="load-dataset-btn" class="clickable">Load dataset</label>
@@ -181,72 +178,78 @@
         <div id="view-container-container"></div>
 
         <!-- The prototypical view-container that will be cloned for each view-->
-        <div id="view-container-proto" class="view-container hidden">
-            <div class="view-frame">
-                <div class="bottom-bar view-bottom-bar" onmousedown="event.stopPropagation()">
-                    <p class="view-dataset-name view-info"></p>
-                    <p class="view-dataset-size view-info"></p>
-                    <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
-                    <!-- <br> -->
-                    <details>
-                        <summary>Data source</summary>
-                        <select class="view-iso-surface-src-select"></select><label>Iso-surface src</label>
-                        <br>
-                        <select class="view-surface-col-src-select"></select><label>Surface col src</label>
-                    </details>
-                    <details>
-                        <summary>Clip Planes</summary>
-                        <input class="view-clip-min-x" type="range"><label>Min x</label>
-                        <br>
-                        <input class="view-clip-max-x range-rev" type="range"><label>Max x</label>
-                        <br>
-                        <input class="view-clip-min-y" type="range"><label>Min y</label>
-                        <br>
-                        <input class="view-clip-max-y range-rev" type="range"><label>Max y</label>
-                        <br>
-                        <input class="view-clip-min-z" type="range"><label>Min z</label>
-                        <br>
-                        <input class="view-clip-max-z range-rev" type="range"><label>Max z</label>
-                    </details>
-                    <details>
-                        <summary>Surface config</summary>
-                        <select class="view-surface-col-scale-select"></select><label>Colour scale</label>
-                        <br>
-                        <input type="checkbox"><label>Colour iso-surface</label>
-                        <br>
-                        <input type="checkbox"><label>Colour bounding box</label>
-                        <br>
-                        <input type="checkbox"><label>Colour geometry</label>
-                        <div style="text-align: center;">
-                            <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
+        <template id="view-container-template">
+            <div class="view-container">
+                <div class="view-frame">
+                    <div class="bottom-bar view-bottom-bar" onmousedown="event.stopPropagation()">
+                        <p class="view-dataset-name view-info"></p>
+                        <p class="view-dataset-size view-info"></p>
+                        <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
+                        <!-- <br> -->
+                        <details>
+                            <summary>Data source</summary>
+                            <select class="view-iso-surface-src-select"></select><label>Iso-surface src</label>
                             <br>
-                            <input type="range" class="view-threshold">
-                        </span>
-                        <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
-                    </details>
-                    <details>
-                        <summary>Volume config</summary>
-                        <label>Volume transfer function</label><br>
-                        <table>
-                            <tr>
-                                <td><input type="color" class="view-vol-col" data-transfer-index="0"></td>
-                                <td><input type="color" class="view-vol-col" data-transfer-index="1"></td>
-                                <td><input type="color" class="view-vol-col" data-transfer-index="2"></td>
-                                <td><input type="color" class="view-vol-col" data-transfer-index="3"></td>
-                            </tr>
-                            <tr>
-                                <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="0"></td>
-                                <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="1"></td>
-                                <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="2"></td>
-                                <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="3"></td>
-                            </tr>
-                        </table>
-                    </details>
-                    <!-- Temporarily removed to prevent system lockup with large datasets -->
-                    <!-- <label class="view-close view-info clickable">Close</label> -->
+                            <select class="view-surface-col-src-select"></select><label>Surface col src</label>
+                        </details>
+                        <details>
+                            <summary>Clip Planes</summary>
+                            <input class="view-clip-min-x" type="range"><label>Min x</label>
+                            <br>
+                            <input class="view-clip-max-x range-rev" type="range"><label>Max x</label>
+                            <br>
+                            <input class="view-clip-min-y" type="range"><label>Min y</label>
+                            <br>
+                            <input class="view-clip-max-y range-rev" type="range"><label>Max y</label>
+                            <br>
+                            <input class="view-clip-min-z" type="range"><label>Min z</label>
+                            <br>
+                            <input class="view-clip-max-z range-rev" type="range"><label>Max z</label>
+                        </details>
+                        <details>
+                            <summary>Surface config</summary>
+                            <select class="view-surface-col-scale-select"></select><label>Colour scale</label>
+                            <br>
+                            <input type="checkbox"><label>Colour iso-surface</label>
+                            <br>
+                            <input type="checkbox"><label>Colour bounding box</label>
+                            <br>
+                            <input type="checkbox"><label>Colour geometry</label>
+                            <div style="text-align: center;">
+                                <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
+                                <br>
+                                <input type="range" class="view-threshold">
+                            </span>
+                            <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
+                        </details>
+                        <details>
+                            <summary>Volume config</summary>
+                            <label>Volume transfer function</label><br>
+                            <table>
+                                <tr>
+                                    <td><input type="color" class="view-vol-col" data-transfer-index="0"></td>
+                                    <td><input type="color" class="view-vol-col" data-transfer-index="1"></td>
+                                    <td><input type="color" class="view-vol-col" data-transfer-index="2"></td>
+                                    <td><input type="color" class="view-vol-col" data-transfer-index="3"></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="0"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="1"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="2"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="3"></td>
+                                </tr>
+                            </table>
+                        </details>
+                        <details>
+                            <summary>Geometry</summary>
+
+                        </details>
+                        <!-- Temporarily removed to prevent system lockup with large datasets -->
+                        <!-- <label class="view-close view-info clickable">Close</label> -->
+                    </div>
                 </div>
             </div>
-        </div>
+        </template>
 
         <script type="module">
             import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, removeAllChildren} from "./core/utils.js";

@@ -50,31 +50,29 @@ export var viewManager = {
     },
     createViewDOM: function(id, view) {
         // clone the proto node
-        var viewContainer = get("view-container-proto").cloneNode(true);
-        viewContainer.id = id;
+        var viewContainer = get("view-container-template").content.cloneNode(true);
+        console.log(viewContainer.children[0]);
+        viewContainer.children[0].id = id;
 
         // look through the DOM to find the functional elements
-        var slider =       viewContainer.getElementsByClassName("view-threshold")?.[0];
-        var frame =        viewContainer.getElementsByClassName("view-frame")?.[0];
-        var closeBtn =     viewContainer.getElementsByClassName("view-close")?.[0];
-        var dataName =     viewContainer.getElementsByClassName("view-dataset-name")?.[0];
-        var dataSize =     viewContainer.getElementsByClassName("view-dataset-size")?.[0];
-        var threshVal =    viewContainer.getElementsByClassName("view-threshold-value")?.[0];
-        var densityGraph = viewContainer.getElementsByClassName("view-value-density")?.[0];
-        // var nodeScores =   viewContainer.getElementsByClassName("view-node-scores")?.[0];
-        var isoSurfaceSrc = viewContainer.getElementsByClassName("view-iso-surface-src-select")?.[0];
-        var surfaceColSrc = viewContainer.getElementsByClassName("view-surface-col-src-select")?.[0];
-        var colScale = viewContainer.getElementsByClassName("view-surface-col-scale-select")?.[0];
-
-        var clipMinX = viewContainer.getElementsByClassName("view-clip-min-x")?.[0];
-        var clipMaxX = viewContainer.getElementsByClassName("view-clip-max-x")?.[0];
-        var clipMinY = viewContainer.getElementsByClassName("view-clip-min-y")?.[0];
-        var clipMaxY = viewContainer.getElementsByClassName("view-clip-max-y")?.[0];
-        var clipMinZ = viewContainer.getElementsByClassName("view-clip-min-z")?.[0];
-        var clipMaxZ = viewContainer.getElementsByClassName("view-clip-max-z")?.[0];
-
-        var volCols = viewContainer.getElementsByClassName("view-vol-col");
-        var volOps = viewContainer.getElementsByClassName("view-vol-op");
+        var slider =        viewContainer.querySelector(".view-threshold");
+        var frame =         viewContainer.querySelector(".view-frame");
+        var closeBtn =      viewContainer.querySelector(".view-close");
+        var dataName =      viewContainer.querySelector(".view-dataset-name");
+        var dataSize =      viewContainer.querySelector(".view-dataset-size");
+        var threshVal =     viewContainer.querySelector(".view-threshold-value");
+        var densityGraph =  viewContainer.querySelector(".view-value-density");
+        var isoSurfaceSrc = viewContainer.querySelector(".view-iso-surface-src-select");
+        var surfaceColSrc = viewContainer.querySelector(".view-surface-col-src-select");
+        var colScale =      viewContainer.querySelector(".view-surface-col-scale-select");
+        var clipMinX =      viewContainer.querySelector(".view-clip-min-x");
+        var clipMaxX =      viewContainer.querySelector(".view-clip-max-x");
+        var clipMinY =      viewContainer.querySelector(".view-clip-min-y");
+        var clipMaxY =      viewContainer.querySelector(".view-clip-max-y");
+        var clipMinZ =      viewContainer.querySelector(".view-clip-min-z");
+        var clipMaxZ =      viewContainer.querySelector(".view-clip-max-z");
+        var volCols =       viewContainer.querySelectorAll(".view-vol-col");
+        var volOps =        viewContainer.querySelectorAll(".view-vol-op");
 
         // add references to these in the view
         view.elems.container = viewContainer;

@@ -13,13 +13,11 @@ export var isVisible = (elem) => {
 }
 
 export var hide = (elem) => {
-    elem.classList.add("hidden");
-    // elem.style.display = "none";
+    elem.hidden = true;
 }
 
 export var show = (elem) => {
-    elem.classList.remove("hidden");
-    // elem.style.display = "block";
+    elem.hidden = false;
 }
 
 export var getCtx = (canvas, type) => {
