@@ -78,11 +78,9 @@
 
             const scalarFunction = sampleWave;
 
-            // =========================================================================================
-            
-            
-            
-            
+
+            // Drawing ================================================================================
+                
             const drawScalarField = (f) => {
                 var imgData = new Uint8ClampedArray(4 * canvas.height * canvas.width);
                 for (let i = 0; i < canvas.width; i++) {
@@ -99,7 +97,57 @@
                 ctx.putImageData(newImg, 0, 0);
             }
 
-            const tree = ((d, box, f) => {
+            const drawTree = (tree, col) => {
+                var nodeQueue = [tree];
+                while(nodeQueue.length > 0) {
+                    var currNode = nodeQueue.pop();
+                    if (!currNode.left) {
+                        drawBox(currNode.box, col);
+                    } else {
+                        nodeQueue.push(currNode.left, currNode.right);
+                    }
+                }
+            };
+            
+            const drawBox = (box, col) => {
+                ctx.strokeStyle = col;
+                ctx.strokeRect(
+                    box.min[0],
+                    box.min[1],
+                    box.max[0] - box.min[0],
+                    box.max[1] - box.min[1]
+                );
+            }
+
+            const drawTreeCornerVals= (tree, mode) => {
+                var imgData = new Uint8ClampedArray(4 * canvas.height * canvas.width);
+                for (let i = 0; i < canvas.width; i++) {
+                    for (let j = 0; j < canvas.height; j++) {
+                        const index = 4 * (i + j * canvas.width);
+                        var val;
+                        if (mode == "virtualOld") {
+                            const leaf = getVirtualLeafOld(tree, [i, j]);
+                            val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
+                        } else if (mode == "virtual") {
+                            val = sampleTreeVirtual(tree, [i, j]);
+                        } else {
+                            const leaf = getContainingLeafNode(tree, [i, j]);
+                            val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
+                        }
+                        imgData[index + 0] = val * 255;
+                        imgData[index + 1] = val * 255;
+                        imgData[index + 2] = val * 255;
+                        imgData[index + 3] = 255;
+                    }
+                }
+                var newImg = new ImageData(imgData, canvas.width, canvas.height);
+                ctx.putImageData(newImg, 0, 0);
+            };
+   
+            
+            // tree creation/searching ======================================
+            
+            const createTree = (d, box, f) => {
                 var out = {
                     nodes: null,
                     cornerVals: []
@@ -180,30 +228,8 @@
                 console.log("number of nodes:", nodeIndex + 1);
 
                 return out;
-            })(10, {min: [0, 0], max:[canvas.width, canvas.height]}, scalarFunction);
-
-            const drawTree = (tree, col) => {
-                var nodeQueue = [tree];
-                while(nodeQueue.length > 0) {
-                    var currNode = nodeQueue.pop();
-                    if (!currNode.left) {
-                        drawBox(currNode.box, col);
-                    } else {
-                        nodeQueue.push(currNode.left, currNode.right);
-                    }
-                }
             };
             
-            const drawBox = (box, col) => {
-                ctx.strokeStyle = col;
-                ctx.strokeRect(
-                    box.min[0],
-                    box.min[1],
-                    box.max[0] - box.min[0],
-                    box.max[1] - box.min[1]
-                );
-            }
-
             const sampleInBox = (box, cornerVals, p) => {
                 var xFac = (p[0] - box.min[0])/(box.max[0] - box.min[0]);
                 var yFac = (p[1] - box.min[1])/(box.max[1] - box.min[1]);
@@ -757,33 +783,142 @@
                 // return (xSampled * xVirtFacMapped + ySampled * yVirtFacMapped )/(yVirtFacMapped + xVirtFacMapped);
             }
             
-            const drawTreeCornerVals= (tree, mode) => {
-                var imgData = new Uint8ClampedArray(4 * canvas.height * canvas.width);
-                for (let i = 0; i < canvas.width; i++) {
-                    for (let j = 0; j < canvas.height; j++) {
-                        const index = 4 * (i + j * canvas.width);
-                        var val;
-                        if (mode == "virtualOld") {
-                            const leaf = getVirtualLeafOld(tree, [i, j]);
-                            val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
-                        } else if (mode == "virtual") {
-                            val = sampleTreeVirtual(tree, [i, j]);
+            const sampleTreeVirtualNew = (tree, p) => {
+                var corners = [
+                    // each entry is for a different dimension
+                    {
+                        // each of these is for a face in the direction: min, max point
+                        plus: {min:1, max:3},
+                        minus: {min:0, max:2},
+                    },
+                    {
+                        plus: {min:2, max:3},
+                        minus: {min:0, max:1},
+                    }
+                ]
+
+                
+                var interpolateOnFace = (pos, leafLineSeg, NeighLineSeg) => {
+
+                }
+                // get full leaf
+                var fullLeaf = getContainingLeafNode(tree, p);
+
+                const neighbourPoints = [
+                    [
+                        [fullLeaf.node.box.max[0] + epsilon, p[1]],
+                        [fullLeaf.node.box.min[0] - epsilon, p[1]]
+                    ],
+                    [
+                        [p[0], fullLeaf.node.box.max[1] + epsilon],
+                        [p[0], fullLeaf.node.box.min[1] - epsilon]
+                    ]
+                ]
+
+                for (let i = 0; i < neighbourPoints.length; i++) {
+                    var virtBox = {
+                        min: [...fullLeaf.node.box.min],
+                        max: [...fullLeaf.node.box.max],
+                    };
+                    var virtCorn = new Float32Array(8);
+
+                    var plusLeaf = getContainingLeafNode(tree, neighbourPoints[i][0]);
+                    var minusLeaf = getContainingLeafNode(tree, neighbourPoints[i][1]);
+
+                    for (let j = 0; j < dimensions; j++) {
+                        // j iterates through all orthogonal dimensions
+                        if (j == i) continue;
+
+                        // set the min of the box in this orthogonal dimensions
+                        
+                        var interpNeighbour, interpNeighFace, interpLeafFace;
+    
+                        // do step 1, setting min bound and pulling in point
+                        if (plusLeaf.node.box.min[j] >= fullLeaf.node.box.min[j] && plusLeaf.node.box.min[j] >= minusLeaf.node.box.min[j]) {
+                            // plus neighbour is limiting case
+                            interpNeighbour = minusLeaf;
+                            // set min bound
+                            virtBox.min[j] = plusLeaf.node.box.min[j];
+                            // set corner
+                            virtCorn[corners[i].plus.min] = plusLeaf.cornerVals[corners[i].minus.min];
+                            // track needed neighbour face and full leaf face
+                            interpNeighFace = corners[i].minus;
+                            interpLeafFace = corners[i].plus;
+                        } else if (minusLeaf.node.box.min[j] >= plusLeaf.node.box.min[j] && minusLeaf.node.box.min[j] >= fullLeaf.node.box.min[j]) {
+                            // minus neighbour is limiting case
+                            interpNeighbour = plusLeaf;
+                            // set min bound
+                            virtBox.min[j] = minusLeaf.node.box.min[j];
+                            // set corner
+                            virtCorn[corners[i].minus.min] = plusLeaf.cornerVals[corners[i].plus.min];
+                            // track faces for interpolation
+                            interpNeighFace = corners[i].plus;
+                            interpLeafFace = corners[i].minus;
                         } else {
-                            const leaf = getContainingLeafNode(tree, [i, j]);
-                            val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
+                            // full leaf is limiting case
+                            interpNeighbour = null;
+                            // set min bound
+                            virtBox.min[j] = fullLeaf.node.box.min[j];
+                            // set corners
+                            virtCorn[corners[i].plus.min] = fullLeaf.cornerVals[corners[i].plus.min];
+                            virtCorn[corners[i].minus.min] = fullLeaf.cornerVals[corners[i].minus.min];
                         }
-                        imgData[index + 0] = val * 255;
-                        imgData[index + 1] = val * 255;
-                        imgData[index + 2] = val * 255;
-                        imgData[index + 3] = 255;
+                        
+                        // do step 2, interpolate opposite point
+                        if (interpNeighbour) {
+                            var interpCase = (interpNeighbour.node.box.max[j] < fullLeaf.node.box.max[j]) << 3 | 
+                                             (interpNeighbour.node.box.min[j] < fullLeaf.node.box.min[j]) << 2 | 
+                                             (interpNeighbour.node.box.max[j] < virtBox.min[j]) << 1 | 
+                                             (interpNeighbour.node.box.min[j] < virtBox.min[j]);
+
+                            // 1) k=15
+                            // 2) k=11
+                            // 3) k=13
+                            // 4) k=9
+                            // 5) k=1
+                            // 6) k=8
+                            // 7) k=0
+                            // 8) k=5 (default)
+
+                            var fac, minVal, maxVal;
+                            
+                            
+                            switch (interpCase) {
+                                case 15: // 1
+                                case 11: // 2
+                                    minVal = interpNeighbour.cornerVals[interpNeighFace.max];
+                                    maxVal = fullLeaf.cornerVals[interpLeafFace.max];
+                                    fac = facInRange(virtBox.min[j], interpNeighbour.node.box.max[j], fullLeaf.node.box.max[j]);
+                                    break;
+                                case 13: // 3
+                                    minVal = fullLeaf.cornerVals[interpLeafFace.min];
+                                    maxVal = interpNeighbour.cornerVals[interpNeighFace.max];
+                                    fac = facInRange(virtBox.min[j], fullLeaf.node.box.min[j], interpNeighbour.node.box.max[j]);
+                                    break;
+                                case 9: // 4
+                                    fac = facInRange(virtBox.min[j], interpNeighbour.node.box.min[j], interpNeighbour.node.box.max[j]);
+                                    break;
+                                case 1: // 5
+                                    fac = facInRange(virtBox.min[j], interpNeighbour.node.box.min[j], fullLeaf.node.box.max[j]);
+                                    break;
+                                case 8: // 6
+                                case 0: // 7
+                                    fac = facInRange(virtBox.min[j], fullLeaf.node.box.min[j], interpNeighbour.node.box.min[j]);
+                                    break;
+                                default:
+                                case 5: // 8
+                                    fac = facInRange(virtBox.min[j],fullLeaf.node.box.min[j], fullLeaf.node.box.max[j]);
+                                    break;
+                                
+                            }
+                        }
                     }
                 }
-                var newImg = new ImageData(imgData, canvas.width, canvas.height);
-                ctx.putImageData(newImg, 0, 0);
-            };
-            // drawScalarField(samplePerlin);
+            }
             
-            console.log(tree);
+            
+         
+            const tree = createTree(10, {min: [0, 0], max:[canvas.width, canvas.height]}, scalarFunction);
             drawTree(tree.nodes, "#000000");
             
             
@@ -825,11 +960,6 @@
                         console.log("drawn basic tree corners");
                         break;
                     case "2":
-                        // draw the scalar field by using the virtual leaf nodes old method
-                        drawTreeCornerVals(tree, "virtualOld");
-                        console.log("drawn corner vals with old virtual leaf method");
-                        break;
-                    case "3":
                         // draw the scalar field by using the virtual leaf nodes
                         drawTreeCornerVals(tree, "virtual");
                         console.log("drawn corner vals with intersection virtual leaf method");

@@ -1,0 +1,72 @@
+cases for neighbour leaves:
+neighbour on left, containing leaf on right
+
+1)                2)               3)                 4)                 5)              6)             7)                 8)
+                                                                         --.                             --.               --.
+    x--               x--              .--                .--              | x--             .--           | .--             | x--
+    |                 |                |                  |                | |           --. |             | |               | |  
+    |                 |            --x |              --X |                | |           --x |           --x |               | |  
+    o                 o              | o                | o                | o               o               o               | o  
+--x |             --x |              | |              --x |              --x |               |               |               | |  
+  | |             --. |              | |                  |                  |               |               |               | |  
+  | .--               .--            | x--                .--                .--             x--             x--             | x--
+--.                                --.                                                                                     --.
+
+   Nmax<Lmax Nmin<Lmin Nmax<p Nmin<p
+1)     x         x         x      x
+2)     x                   x      x
+3)     x         x                x
+4)     x                          x
+5)                                x
+6)     x                          
+7)                                
+8)               x                x
+
+Don't have any that split the cases into 4-4
+
+if Nmax < Lmax:
+    (1 2 3 4 6)
+    if Nmin < Lmin:
+        (1 3)
+        if Nmax < p:
+            (1)
+        else:
+            (3)
+    else:
+        (2 4 6)
+        if Nmax < p:
+            (2)
+        else:
+            (4 6)
+            if Nmin < p:
+                (4)
+            else:
+                (6)
+else:
+    (5 7 8)
+    if Nmin < Lmin:
+        (8)
+    else:
+        (5 7)
+        if Nmin < p
+            (5)
+        else:
+            (7)
+
+
+Alternatively, since each can be uniquely identified, can use as the bits of an identifying 4 bit number for this case
+> more branches in the average case but will maintain coherency across threads
+> since there is a 1111 and a 0000 case, we can't re-order to pack more efficiently
+
+k = (Nmax < Lmax) << 3 | (Nmin < Lmin) << 2 | (Nmax<p) << 1 | (Nmin < p);
+
+1) k=15
+2) k=11
+3) k=13
+4) k=9
+5) k=1
+6) k=8
+7) k=0
+8) k=5 (default)
+
+
