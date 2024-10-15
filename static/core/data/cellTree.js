@@ -13,6 +13,76 @@ export const KDTreeSplitTypes = {
     VOLUME_HEUR:    5
 }
 
+// finds the sizes of the buffers required for each leaf to store its part of the mesh
+// logs this to the console
+export const logLeafMeshBufferSizes = (dataObj) => {
+    const bufferBytes = {
+        // 4B per vert
+        values: [],
+        // positions is 12B per vert
+
+        // 4B per cell
+        offsets: [],
+        // connectivity is 16B per cell as the mesh is tetrahedral for now
+    };
+
+    const treeNodes = dataObj.data.treeNodes;
+    // iterate through all leaves
+    var nodes = [readNodeFromBuffer(treeNodes, 0)];
+    while (nodes.length > 0) {
+        const currNode = nodes.pop();
+        if (currNode.rightPtr == 0) {
+            // this is a leaf node, work out its buffer sizes
+            bufferBytes.offsets.push(4 * currNode.cellCount);
+
+            // iterate through all cells and get unique vertex count
+            const uniqueVerts = new Set();
+
+            var cellsPtr = currNode.leftPtr; // go to where cells are stored
+            for (let i = 0; i < currNode.cellCount; i++) {
+                // go through and check all the contained cells
+                var cellID = dataObj.data.treeCells[cellsPtr + i];
+
+                // figure out if cell is inside using barycentric coords
+                var pointsOffset = dataObj.data.cellOffsets[cellID];
+                // read all the point positions and check each
+                for (let j = 0; j < 4; j++) {
+                    var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+
+                    if (uniqueVerts.has(thisPointIndex)) continue;
+                    uniqueVerts.add(thisPointIndex);
+                }  
+            }
+
+            bufferBytes.values.push(4 * uniqueVerts.size);
+
+        } else {
+            // add its children to the next nodes
+            nodes.push(readNodeFromBuffer(treeNodes, currNode.rightPtr * NODE_BYTE_LENGTH));
+            nodes.push(readNodeFromBuffer(treeNodes, currNode.leftPtr * NODE_BYTE_LENGTH));
+        }
+    }
+
+    bufferBytes.values.sort((a, b) => a - b);
+    bufferBytes.offsets.sort((a, b) => a - b);
+
+    var str = ""
+
+    for (let name of ["values", "offsets"]) {
+        const minVal = bufferBytes[name][0];
+        const maxVal = bufferBytes[name].at(-1);
+        console.log("min " + name + " size " + minVal.toString() + "B");
+        console.log("max " + name + " size " + maxVal.toString() + "B");
+    }
+    str += "values\toffsets\n";
+
+    str += bufferBytes.values.map((e, i) => e.toString() + "\t" + bufferBytes.offsets[i].toString()).join("\n");
+
+    navigator.clipboard.writeText(str);
+
+    console.log("samples copied to clipboard!")
+}
+
 
 // calculates a score for the box
 // high score -> too big -> split
@@ -148,6 +218,7 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
     for (let i = scores.length - 1; i >= Math.max(0, scores.length * (1 - searchProp)); i--) {
         if (splitList.length >= maxCount) break;
         currNode = scores[i];
+        if (currNode.score < 0) break;
         currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
         // can't be split if its a true leaf
         if (currFullNode.rightPtr == 0) continue;
@@ -157,12 +228,16 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
         lowestSplitIndex = i;
     }
 
+    
+
     // create merge list
     // only go up to the lowest split index to prevent nodes included in both
+    let highestMergeIndex = 0;
     for (let i = 0; i < Math.min(lowestSplitIndex, scores.length * searchProp); i++) {
         // check if we have enough
         if (mergeList.length >= maxCount) break;
         currNode = scores[i];
+        if (currNode.score > 0) break;
         // can't be merged if sibling not a leaf
         if (!currNode.bothSiblingsLeaves) continue;
         // check if sibling is in split list
@@ -171,10 +246,13 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
         // check if sibling is already in merge list
         if (!mergeList.every(x => x.parentPtr != currNode.parentPtr)) continue;
 
-
         // passed all checks
         mergeList.push(currNode);
+        highestMergeIndex = i;
     }
+
+    // console.log("lowest split index:", lowestSplitIndex);
+    // console.log("highest merge index:", highestMergeIndex);
 
     return {
         merge: mergeList,

@@ -171,6 +171,7 @@ var dataManager = {
         this.datas[id] = newData;
         return newData;
     },
+
     downsampleStructured: function(dataObj, scale) {
         var fullDataSize = dataObj.getDataSize(); // the size in data points
         var dataSize = [
@@ -317,7 +318,6 @@ var dataManager = {
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
         dataObj.data.treeNodeCount = treeBuffers.nodeCount;
-
     },
 
 

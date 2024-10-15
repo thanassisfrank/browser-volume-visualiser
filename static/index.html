@@ -259,7 +259,7 @@
             import { viewManager } from "./view.js";
             import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
             import { FrameTimeGraph } from "./frameTimeGraph.js";
-            import { KDTreeSplitTypes } from "./core/data/cellTree.js";
+            import { KDTreeSplitTypes, logLeafMeshBufferSizes } from "./core/data/cellTree.js";
             import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
             import { VecMath } from "./core/VecMath.js"
@@ -608,6 +608,15 @@
                             for (let key in shortcuts) {
                                 if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
                             }
+                        }
+                    },
+                    "i": {
+                        description: "Inspect unstructured mesh buffer sizes",
+                        f: function(e) {
+                            // investigate the sizes of the mesh buffers if they were split into the leaves
+                            var currView = Object.values(viewManager.views)[0];
+                            if (!currView) return;
+                            logLeafMeshBufferSizes(currView.data);
                         }
                     },
                     "l": {

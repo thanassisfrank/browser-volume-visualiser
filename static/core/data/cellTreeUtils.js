@@ -222,7 +222,7 @@ export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) =
     let bestDist = Number.POSITIVE_INFINITY;
     let val = 0;
 
-    let checked = [];
+    const checked = new Set();
 
     var cellsPtr = leafNode.leftPtr; // go to where cells are stored
     for (let i = 0; i < leafNode.cellCount; i++) {
@@ -235,8 +235,8 @@ export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) =
         for (let j = 0; j < 4; j++) {
             var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
 
-            if (checked.includes(thisPointIndex)) continue;
-            checked.push(thisPointIndex);
+            if (checked.has(thisPointIndex)) continue;
+            checked.add(thisPointIndex);
 
             point = [
                 dataObj.data.positions[3 * thisPointIndex + 0],
