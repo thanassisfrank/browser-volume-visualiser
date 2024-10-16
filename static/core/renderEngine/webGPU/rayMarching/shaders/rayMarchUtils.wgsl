@@ -53,6 +53,7 @@ struct RayMarchPassFlags {
     useBestDepth        : bool,
     showTestedCells     : bool,
     showSurfNodeDepth   : bool,
+    showSurfLeafCells   : bool,
 };
 
 // the return value of the ray-march function
@@ -128,6 +129,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 19)) != 0,
         (flagUint & (1u << 20)) != 0,
         (flagUint & (1u << 21)) != 0,
+        (flagUint & (1u << 22)) != 0,
     );
 };
 
@@ -451,6 +453,23 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32,
     if (passFlags.showSurfNodeDepth) {
         var depth : u32 = getNodeDepthAtPoint(tipDataPos);
         material.diffuseCol = u32ToCol(randomU32(depth));
+        material.specularCol = material.diffuseCol * 1.05;
+        material.shininess = 50;
+
+        return material;
+    }
+
+    if (passFlags.showSurfLeafCells) {
+        var cellCount : u32 = getNodeCellCountAtPoint(tipDataPos);
+        let threshold : u32 = 64;
+        
+        if (cellCount > threshold) {
+            material.diffuseCol = vec3<f32>(1, 0, 0);
+        } else if (0u == cellCount) {
+            material.diffuseCol = vec3<f32>(0, 0, 1);
+        } else {
+            material.diffuseCol = vec3<f32>(f32(cellCount/threshold));
+        }
         material.specularCol = material.diffuseCol * 1.05;
         material.shininess = 50;
 

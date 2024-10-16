@@ -434,6 +434,11 @@ fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
     return result.depth;
 }
 
+fn getNodeCellCountAtPoint(p : vec3<f32>) -> u32 {
+    var result : KDTreeResult = getContainingLeafNode(p);
+    return result.node.cellCount;
+}
+
 
 
 

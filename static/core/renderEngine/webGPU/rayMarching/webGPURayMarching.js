@@ -75,6 +75,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         useBestDepth: true,         // always display the current best surface depth when optimising
         showTestedCells: false,     // shows the amount of cells that have been checked for each ray 
         showSurfNodeDepth: false,   // shows the depth of the node on the iso-surface
+        showSurfLeafCells: false,   // shows the number of cells in the leaf nodes on the iso-surface
 
         // not sent to gpu
         cheapMove: false,
@@ -127,6 +128,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.useBestDepth      << 19 & 0b1 << 19;
         flags |= this.passFlags.showTestedCells   << 20 & 0b1 << 20;
         flags |= this.passFlags.showSurfNodeDepth << 21 & 0b1 << 21;
+        flags |= this.passFlags.showSurfLeafCells << 22 & 0b1 << 22;
         return flags;
     }
 
