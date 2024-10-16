@@ -463,12 +463,12 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32,
         var cellCount : u32 = getNodeCellCountAtPoint(tipDataPos);
         let threshold : u32 = 64;
         
-        if (cellCount > threshold) {
-            material.diffuseCol = vec3<f32>(1, 0, 0);
-        } else if (0u == cellCount) {
+        if (0u == cellCount) {
             material.diffuseCol = vec3<f32>(0, 0, 1);
+        } else if (cellCount > threshold) {
+            material.diffuseCol = vec3<f32>(1, 0, 0);
         } else {
-            material.diffuseCol = vec3<f32>(f32(cellCount/threshold));
+            material.diffuseCol = vec3<f32>(f32(cellCount)/f32(threshold));
         }
         material.specularCol = material.diffuseCol * 1.05;
         material.shininess = 50;

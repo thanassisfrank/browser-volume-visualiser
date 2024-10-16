@@ -24,7 +24,10 @@ export const logLeafMeshBufferSizes = (dataObj) => {
         // 4B per cell
         offsets: [],
         // connectivity is 16B per cell as the mesh is tetrahedral for now
+
     };
+
+    const leafInfo = [];
 
     const treeNodes = dataObj.data.treeNodes;
     // iterate through all leaves
@@ -35,8 +38,25 @@ export const logLeafMeshBufferSizes = (dataObj) => {
         const currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // this is a leaf node, work out its buffer sizes
-            bufferBytes.offsets.push({
-                size: 4 * currNode.cellCount,
+            // iterate through all cells and get unique vertex count
+            const uniqueVerts = new Set();
+            var cellsPtr = currNode.leftPtr; // go to where cells are stored
+            for (let i = 0; i < currNode.cellCount; i++) {
+                // go through and check all the contained cells
+                var cellID = dataObj.data.treeCells[cellsPtr + i];
+                // figure out if cell is inside using barycentric coords
+                var pointsOffset = dataObj.data.cellOffsets[cellID];
+                // read all the point positions and check each
+                for (let j = 0; j < 4; j++) {
+                    var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                    if (uniqueVerts.has(thisPointIndex)) continue;
+                    uniqueVerts.add(thisPointIndex);
+                }  
+            }
+
+            leafInfo.push({
+                cells: currNode.cellCount,
+                verts: uniqueVerts.size,
                 depth: currNode.depth
             });
         } else {
@@ -52,19 +72,22 @@ export const logLeafMeshBufferSizes = (dataObj) => {
         }
     }
 
-    bufferBytes.offsets.sort((a, b) => a.size - b.size);
+    // bufferBytes.offsets.sort((a, b) => a.size - b.size);
 
     var str = ""
 
-    for (let name of ["offsets"]) {
-        const minVal = bufferBytes[name][0].size;
-        const maxVal = bufferBytes[name].at(-1).size;
-        console.log("min " + name + " size " + minVal.toString() + "B");
-        console.log("max " + name + " size " + maxVal.toString() + "B");
-    }
-    str += "offsets\tdepth\n";
+    // for (let name of ["offsets"]) {
+    //     const minVal = bufferBytes[name][0].size;
+    //     const maxVal = bufferBytes[name].at(-1).size;
+    //     console.log("min " + name + " size " + minVal.toString() + "B");
+    //     console.log("max " + name + " size " + maxVal.toString() + "B");
+    // }
 
-    str += bufferBytes.offsets.map((e, i) => e.size.toString() + "\t" + e.depth.toString()).join("\n");
+    str += "cells\tverts\tdepth\n";
+
+    str += leafInfo.map((e, i) => 
+        e.cells.toString() + "\t" + e.verts.toString() + "\t" + e.depth.toString()
+    ).join("\n");
 
     navigator.clipboard.writeText(str);
 
@@ -817,6 +840,9 @@ export function CellTree() {
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
+
+        var maxCellCount = 0;
+        var maxLeafDepth = 0;
         // make a root node with the whole dataset
         var root = {...this.createNode(), box: Object.assign({}, this.extentBox)};
 
@@ -835,6 +861,8 @@ export function CellTree() {
             // or stop if the # cells is already low enough
             if (currentDepth > maxDepth || parentNode.cells.length <= maxLeafCells) {
                 // console.log(parentNode.points.length);
+                maxCellCount = Math.max(maxCellCount, parentNode.cells.length);
+                maxLeafDepth = Math.max(maxLeafDepth, parentNode.depth);
                 cellsCountSum += parentNode.cells.length;
                 leavesCount++;
                 continue;
@@ -888,6 +916,8 @@ export function CellTree() {
         }
 
         console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+        console.log("max cells in leaves:", maxCellCount);
+        console.log("max tree depth:", maxLeafDepth);
     
         // return the tree object
         this.tree = root;
