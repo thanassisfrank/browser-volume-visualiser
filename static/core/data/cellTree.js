@@ -28,55 +28,43 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 
     const treeNodes = dataObj.data.treeNodes;
     // iterate through all leaves
-    var nodes = [readNodeFromBuffer(treeNodes, 0)];
+    var rootNode = readNodeFromBuffer(treeNodes, 0);
+    rootNode.depth = 0;
+    var nodes = [rootNode];
     while (nodes.length > 0) {
         const currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // this is a leaf node, work out its buffer sizes
-            bufferBytes.offsets.push(4 * currNode.cellCount);
-
-            // iterate through all cells and get unique vertex count
-            const uniqueVerts = new Set();
-
-            var cellsPtr = currNode.leftPtr; // go to where cells are stored
-            for (let i = 0; i < currNode.cellCount; i++) {
-                // go through and check all the contained cells
-                var cellID = dataObj.data.treeCells[cellsPtr + i];
-
-                // figure out if cell is inside using barycentric coords
-                var pointsOffset = dataObj.data.cellOffsets[cellID];
-                // read all the point positions and check each
-                for (let j = 0; j < 4; j++) {
-                    var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
-
-                    if (uniqueVerts.has(thisPointIndex)) continue;
-                    uniqueVerts.add(thisPointIndex);
-                }  
-            }
-
-            bufferBytes.values.push(4 * uniqueVerts.size);
-
+            bufferBytes.offsets.push({
+                size: 4 * currNode.cellCount,
+                depth: currNode.depth
+            });
         } else {
             // add its children to the next nodes
-            nodes.push(readNodeFromBuffer(treeNodes, currNode.rightPtr * NODE_BYTE_LENGTH));
-            nodes.push(readNodeFromBuffer(treeNodes, currNode.leftPtr * NODE_BYTE_LENGTH));
+            var leftNode = readNodeFromBuffer(treeNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
+            var rightNode = readNodeFromBuffer(treeNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
+
+            leftNode.depth = currNode.depth + 1;
+            rightNode.depth = currNode.depth + 1;
+
+            nodes.push(leftNode);
+            nodes.push(rightNode);
         }
     }
 
-    bufferBytes.values.sort((a, b) => a - b);
-    bufferBytes.offsets.sort((a, b) => a - b);
+    bufferBytes.offsets.sort((a, b) => a.size - b.size);
 
     var str = ""
 
-    for (let name of ["values", "offsets"]) {
-        const minVal = bufferBytes[name][0];
-        const maxVal = bufferBytes[name].at(-1);
+    for (let name of ["offsets"]) {
+        const minVal = bufferBytes[name][0].size;
+        const maxVal = bufferBytes[name].at(-1).size;
         console.log("min " + name + " size " + minVal.toString() + "B");
         console.log("max " + name + " size " + maxVal.toString() + "B");
     }
-    str += "values\toffsets\n";
+    str += "offsets\tdepth\n";
 
-    str += bufferBytes.values.map((e, i) => e.toString() + "\t" + bufferBytes.offsets[i].toString()).join("\n");
+    str += bufferBytes.offsets.map((e, i) => e.size.toString() + "\t" + e.depth.toString()).join("\n");
 
     navigator.clipboard.writeText(str);
 
