@@ -970,7 +970,6 @@
                     }
                 }
 
-                // interpolate the sampled edge points using wachspress barycentric coordinates
                 // the distances from the central point to the corners
                 const lengths = [
                     fullLeaf.node.box.max[0] - p[0] + epsilon,
@@ -978,21 +977,40 @@
                     p[0] - fullLeaf.node.box.min[0] + epsilon,
                     p[1] - fullLeaf.node.box.min[1] + epsilon,
                 ];
-                // the areas of the triangles formed by centre point, point at i and point at i+1
-                const areas = [
-                    0.5 * lengths[0] * lengths[1],
-                    0.5 * lengths[1] * lengths[2],
-                    0.5 * lengths[2] * lengths[3],
-                    0.5 * lengths[3] * lengths[0],
-                ];
-                // the weights are the area formed by the point and the two adjacent point
-                // over the product of the 
+
+                // simpler method
                 const weights = [
-                    (areas[0] + areas[3])/(areas[0]*areas[3]),
-                    (areas[1] + areas[0])/(areas[1]*areas[0]),
-                    (areas[2] + areas[1])/(areas[2]*areas[1]),
-                    (areas[3] + areas[2])/(areas[3]*areas[2]),
+                    1/lengths[0],
+                    1/lengths[1],
+                    1/lengths[2],
+                    1/lengths[3],
                 ];
+                // const weights = [
+                //     lengths[2]/(lengths[0] + lengths[2]),
+                //     lengths[3]/(lengths[1] + lengths[3]),
+                //     lengths[0]/(lengths[0] + lengths[2]),
+                //     lengths[1]/(lengths[1] + lengths[3]),
+                // ];
+                
+                // interpolate the sampled edge points using wachspress barycentric coordinates
+
+                // // the areas of the triangles formed by centre point, point at i and point at i+1
+                // const areas = [
+                //     0.5 * lengths[0] * lengths[1],
+                //     0.5 * lengths[1] * lengths[2],
+                //     0.5 * lengths[2] * lengths[3],
+                //     0.5 * lengths[3] * lengths[0],
+                // ];
+                // // the weights are the area formed by the point and the two adjacent point
+                // // over the product of the 
+                // const weights = [
+                //     (areas[0] + areas[3])/(areas[0]*areas[3]),
+                //     (areas[1] + areas[0])/(areas[1]*areas[0]),
+                //     (areas[2] + areas[1])/(areas[2]*areas[1]),
+                //     (areas[3] + areas[2])/(areas[3]*areas[2]),
+                // ];
+
+
                 const weightSum = weights.reduce((acc, curr) => acc + curr, 0);
 
                 // debugger;
@@ -1026,12 +1044,24 @@
                 ];
                 // the weights are the area formed by the point and the two adjacent point
                 // over the product of the 
+                // const weights = [
+                //     (areas[0] + areas[3])/(areas[0]*areas[3]),
+                //     (areas[1] + areas[0])/(areas[1]*areas[0]),
+                //     (areas[2] + areas[1])/(areas[2]*areas[1]),
+                //     (areas[3] + areas[2])/(areas[3]*areas[2]),
+                // ];
                 const weights = [
-                    (areas[0] + areas[3])/(areas[0]*areas[3]),
-                    (areas[1] + areas[0])/(areas[1]*areas[0]),
-                    (areas[2] + areas[1])/(areas[2]*areas[1]),
-                    (areas[3] + areas[2])/(areas[3]*areas[2]),
+                    1/lengths[0],
+                    1/lengths[1],
+                    1/lengths[2],
+                    1/lengths[3],
                 ];
+                // const weights = [
+                //     lengths[2]/(lengths[0] + lengths[2]),
+                //     lengths[3]/(lengths[1] + lengths[3]),
+                //     lengths[0]/(lengths[0] + lengths[2]),
+                //     lengths[1]/(lengths[1] + lengths[3]),
+                // ];
                 const weightSum = weights.reduce((acc, curr) => acc + curr, 0);
 
                 return {
