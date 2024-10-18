@@ -127,6 +127,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.useBestDepth      << 19 & 0b1 << 19;
         flags |= this.passFlags.showTestedCells   << 20 & 0b1 << 20;
         flags |= this.passFlags.showSurfNodeDepth << 21 & 0b1 << 21;
+        flags |= this.passFlags.contCornerVals    << 22 & 0b1 << 22;
         return flags;
     }
 
