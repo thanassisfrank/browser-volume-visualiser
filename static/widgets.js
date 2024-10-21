@@ -1,10 +1,13 @@
-// frameTimeGraph.js
-// defines a prototype to handle drawing a frametime graph
+// widgets.js
+// defines a set of prototypes for creating different widgets
+// each is drawn to their own canvas which they manage
 
 import { setupCanvasDims } from "./core/utils.js";
+import { mat4 } from "./core/gl-matrix.js"
 
-export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlreadySetup = false) {
-    if (!canvasAlreadySetup) setupCanvasDims(canvas);
+
+
+export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1]) {
     this.canvas = canvas;
     this.noLines = noLines;
     // the ms at the top of the plot
@@ -16,6 +19,7 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlready
     this.bgCol = [0, 0, 0, 0];
     this.sampleCol = [200, 200, 200, 255];
     this.init = function () {
+        setupCanvasDims(this.canvas, scale);
         this.ctx = canvas.getContext("2d", {willReadFrequently: true});
         this.ctx.fillStyle = "rgba(" + this.bgCol[0] + "," + this.bgCol[1] + "," + this.bgCol[2] + "," + this.bgCol[3] + ")";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -82,4 +86,18 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, canvasAlready
     }
 
     this.init();
+}
+
+export function AxesWidget(canvas, scale) {
+    this.canvas = canvas;
+    this.ctx;
+    // initialise the canvas
+    this.init = function() {
+        setupCanvasDims(this.canvas, scale);
+        this.ctx = this.canvas.getContext("2d");
+    }
+    // update the axes display
+    this.update = function(viewMat) {
+        // use mat4 to calculate the positions of the vectors of the widget
+    }
 }

@@ -1,7 +1,6 @@
 // webGPURayMarching.js
 // implements the ray marching algorithm with webgpu
 
-import {mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { DataFormats, ResolutionModes } from "../../../data/data.js";
 import { boxesEqual, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";

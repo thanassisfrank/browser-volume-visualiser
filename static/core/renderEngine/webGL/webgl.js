@@ -2,8 +2,6 @@
 // implements a 3d engine using the webgl api
 
 import {getCtx, timer, toRads} from "../../utils.js";
-import {mat4} from 'https://cdn.skypack.dev/gl-matrix';
-import {VecMath} from "../../VecMath.js";
 export {setupRenderer, renderFrame, createBuffers, updateBuffers, deleteBuffers, clearScreen, renderView};
 
 var gl;

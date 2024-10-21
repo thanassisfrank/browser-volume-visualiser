@@ -11,7 +11,7 @@ import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
-import { FrameTimeGraph } from "./frameTimeGraph.js";
+import { FrameTimeGraph } from "./widgets.js";
 import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 
@@ -394,7 +394,7 @@ function View(id, camera, data, renderMode) {
             this.elems.densityGraph.width = binCount;
             this.elems.densityGraph.height = 20;
             var {counts, max} = this.data.getValueCounts(slotNum, binCount);
-            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, true);
+            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, [2, 1]);
             for (let val of counts) {
                 densityPlotter.update(Math.log10(val));
             }
