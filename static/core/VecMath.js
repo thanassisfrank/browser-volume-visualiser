@@ -28,11 +28,12 @@ export const VecMath = {
 		return [vec[0]*vec1[0], vec[1]*vec1[1], vec[2]*vec1[2]]
 	},
 	scalMult: function(scal, vec) {
-		const newX = vec[0] * scal;
-		const newY = vec[1] * scal;
-		const newZ = vec[2] * scal;
+		return vec.map(x => x * scal);
+	// 	const newX = vec[0] * scal;
+	// 	const newY = vec[1] * scal;
+	// 	const newZ = vec[2] * scal;
 		
-		return [newX, newY, newZ];
+	// 	return [newX, newY, newZ];
 	},
 	// multiply a matrix and column vector
 	matrixVecMult: function(matrix, vec) {
@@ -117,7 +118,7 @@ export const VecMath = {
 		};
 	},
 	magnitude: function(vec) {
-		return Math.sqrt(Math.pow(vec[0], 2) + Math.pow(vec[1], 2) + Math.pow(vec[2], 2));
+		return Math.sqrt(vec.reduce((acc, e) => acc + e**2, 0));
 	},
 	normalise: function(vec) {
 		return this.scalMult(1/this.magnitude(vec) || 0, vec)

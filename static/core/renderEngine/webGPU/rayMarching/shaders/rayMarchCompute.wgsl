@@ -340,7 +340,7 @@ fn sampleNodeCornerVals(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
     switch (passInfo.cornerValType) {
         case CORNER_VAL_SAMPLE {
             // lerp in z direction
-            var zFac = (p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z);
+            var zFac : f32 = clamp((p.z - leafBox.min.z)/(leafBox.max.z - leafBox.min.z), 0, 1);
             var zLerped = array(
                 mix(vals[0], vals[4], zFac), // 00
                 mix(vals[2], vals[6], zFac), // 01
@@ -348,13 +348,13 @@ fn sampleNodeCornerVals(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
                 mix(vals[3], vals[7], zFac), // 11
             );
             // lerp in y direction
-            var yFac = (p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y);
+            var yFac : f32 = clamp((p.y - leafBox.min.y)/(leafBox.max.y - leafBox.min.y), 0, 1);
             var yLerped = array(
                 mix(zLerped[0], zLerped[1], yFac),
                 mix(zLerped[2], zLerped[3], yFac)
             );
             // lerp in x direction
-            var xFac = (p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x);
+            var xFac : f32 = clamp((p.x - leafBox.min.x)/(leafBox.max.x - leafBox.min.x), 0, 1);
 
             return mix(yLerped[0], yLerped[1], xFac);
         }
@@ -369,6 +369,69 @@ fn sampleNodeCornerVals(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
         }
     }
    
+}
+
+
+fn sampleNodeVirtual(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
+    // epsilon
+    const eps = 0.01;
+    // points on the faces of the leaf node
+    let points = array<vec3<f32>, 6>(
+        vec3<f32>(leafBox.max.x + eps, p.y                , p.z                ),
+        vec3<f32>(leafBox.min.x - eps, p.y                , p.z                ),
+        vec3<f32>(p.x,                 leafBox.max.y + eps, p.z                ),
+        vec3<f32>(p.x,                 leafBox.min.y - eps, p.z                ),
+        vec3<f32>(p.x,                 p.y                , leafBox.max.z + eps),
+        vec3<f32>(p.x,                 p.y                , leafBox.min.z - eps),
+    );
+
+    let checkDims = array<array<u32, 2>, 6>(
+        array<u32, 2>(1, 2),
+        array<u32, 2>(1, 2),
+        array<u32, 2>(0, 2),
+        array<u32, 2>(0, 2),
+        array<u32, 2>(0, 1),
+        array<u32, 2>(0, 1),
+    );
+
+    // compute the mean value (MV) Berycentric weights 
+    // since the octohedron is orthodiagonal, this reduces to
+    // the inverse of the distance to each vertex
+    let weights = array<f32, 6>(
+        1/(leafBox.max.x + eps - p.x),
+        1/(p.x - leafBox.min.x - eps),
+        1/(leafBox.max.y + eps - p.y),
+        1/(p.y - leafBox.min.y - eps),
+        1/(leafBox.max.z + eps - p.z),
+        1/(p.z - leafBox.min.z - eps),
+    );
+
+    // sum the weights
+    let weightSum : f32 = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];
+    
+
+    var sampledValue : f32 = 0;
+
+    var neighbour : KDTreeResult;
+    // for each neighbour, check if it is needed
+    for (var i = 0u; i < 6u; i++) {
+        // get the neighbouring cell in this direction
+        neighbour = getContainingLeafNode(points[i]);
+        // check if the neighbouring node overlaps this one
+        if (
+            neighbour.box.min[checkDims[i][0]] > leafBox.min[checkDims[i][0]] || 
+            neighbour.box.max[checkDims[i][0]] < leafBox.max[checkDims[i][0]] ||
+            neighbour.box.min[checkDims[i][1]] > leafBox.min[checkDims[i][1]] || 
+            neighbour.box.max[checkDims[i][1]] < leafBox.max[checkDims[i][1]]
+        ) {
+            // this neighbour is active sample inside
+            sampledValue += weights[i] * sampleNodeCornerVals(points[i], neighbour.box, dataSrc);
+        } else {
+            // sample 
+            sampledValue += weights[i] * sampleNodeCornerVals(points[i], leafBox, dataSrc);
+        }
+    }
+    return sampledValue/weightSum;
 }
 
 
@@ -420,7 +483,11 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
     } else if (passFlags.renderNodeVals) {
         // pruned leaf, sample the node as a cell from its corner values
         sampleVal = currLeafNode.splitVal;
+    } else if (passFlags.contCornerVals) {
+        // interpolate the corner values using continuity correction
+        sampleVal = sampleNodeVirtual(queryPoint, currLeafBox, dataSrc);
     } else {
+        // interpolate inside of the containing leaf node
         sampleVal = sampleNodeCornerVals(queryPoint, currLeafBox, dataSrc);
     }
 

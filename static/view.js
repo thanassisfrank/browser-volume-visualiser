@@ -11,7 +11,7 @@ import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
 
-import { FrameTimeGraph } from "./frameTimeGraph.js";
+import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 
@@ -73,6 +73,7 @@ export var viewManager = {
         var clipMaxZ =      viewContainer.querySelector(".view-clip-max-z");
         var volCols =       viewContainer.querySelectorAll(".view-vol-col");
         var volOps =        viewContainer.querySelectorAll(".view-vol-op");
+        var axesWidget =    viewContainer.querySelector(".view-axes-widget");
 
         // add references to these in the view
         view.elems.container = viewContainer;
@@ -93,6 +94,7 @@ export var viewManager = {
         };
         view.elems.volCol = volCols;
         view.elems.volOp = volOps;
+        view.elems.axesWidget = axesWidget;
 
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
@@ -324,6 +326,8 @@ function View(id, camera, data, renderMode) {
     this.elems = {}
     this.box = {};
 
+    this.axesWidget;
+
 
 
     this.init = function(renderEngine) {
@@ -371,6 +375,9 @@ function View(id, camera, data, renderMode) {
         // updateDynamicTreeBuffers(this.data, 30, this.sceneGraph.activeCamera.getEyePos());
         console.log(this.sceneGraph.activeCamera.getEyePos());
         this.update(0, renderEngine);
+
+        this.axesWidget = new AxesWidget(this.elems.axesWidget);
+        this.axesWidget.init();
         
     }     
     this.updateThreshold = async function(val) {
@@ -394,7 +401,7 @@ function View(id, camera, data, renderMode) {
             this.elems.densityGraph.width = binCount;
             this.elems.densityGraph.height = 20;
             var {counts, max} = this.data.getValueCounts(slotNum, binCount);
-            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, true);
+            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, [2, 1]);
             for (let val of counts) {
                 densityPlotter.update(Math.log10(val));
             }
@@ -470,6 +477,7 @@ function View(id, camera, data, renderMode) {
             }
         }
         
+        this.axesWidget?.update(this.camera.getViewMat());
         
 
 

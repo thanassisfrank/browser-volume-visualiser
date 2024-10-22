@@ -34,10 +34,10 @@ export var removeAllChildren = (elem) => {
     }
 }
 
-export var setupCanvasDims = (canvas) => {
+export var setupCanvasDims = (canvas, scale = [1, 1]) => {
     let style = getComputedStyle(canvas)
-    canvas.width = parseInt(style.getPropertyValue("width"));
-    canvas.height = parseInt(style.getPropertyValue("height"));
+    canvas.width = Math.round(parseInt(style.getPropertyValue("width"))/scale[0]);
+    canvas.height = Math.round(parseInt(style.getPropertyValue("height"))/scale[1]);
     // console.log(canvas.width, canvas.height)
     return [canvas.width, canvas.height];
 }

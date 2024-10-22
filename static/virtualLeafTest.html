@@ -4,7 +4,7 @@
         <title>virtual leaf test</title>
         <style>
             body {margin: 0px; padding: 20px}
-            #c {width: 1000px; height: 700px}
+            #c {width: 700px; height: 700px}
         </style>
     </head>
     <body>
@@ -13,7 +13,6 @@
         <script type="module">
             import { buildCellKDTree, get, setupCanvasDims } from "./core/utils.js";
             import { VecMath } from "./core/VecMath.js";
-            // import {mat3} from "https://cdn.skypack.dev/gl-matrix";
             const epsilon = 0.01;
             
             var canvas = get("c");
@@ -130,7 +129,12 @@
                             val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
                         } else if (mode == "virtual") {
                             val = sampleTreeVirtual(tree, [i, j]);
-                        } else {
+                        } else if ("median" == mode) {
+                            val = sampleTreeVirtualNodeMedian(tree, [i, j]);
+                        } else if ("nearest" == mode) {
+                            const leaf = getContainingLeafNode(tree, [i, j]);
+                            val = sampleInBoxNearest(leaf.node.box, leaf.cornerVals, [i, j]);
+                        } else{
                             const leaf = getContainingLeafNode(tree, [i, j]);
                             val = sampleInBox(leaf.node.box, leaf.cornerVals, [i, j]);
                         }
@@ -189,11 +193,11 @@
                     if (Math.random() < 0.2 && currNode.depth > d/2) continue;
 
                     // chose split val
-                    const range = currNode.box.max[currNode.splitDimension] - currNode.box.min[currNode.splitDimension];
-                    const mid = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
-                    currNode.splitVal = mid + (Math.random() - 0.5) * range * 0.3;
+                    // const range = currNode.box.max[currNode.splitDimension] - currNode.box.min[currNode.splitDimension];
+                    // const mid = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
+                    // currNode.splitVal = mid + (Math.random() - 0.5) * range * 0.3;
 
-                    // currNode.splitVal = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
+                    currNode.splitVal = 0.5 * (currNode.box.max[currNode.splitDimension] + currNode.box.min[currNode.splitDimension]);
 
                     currNode.left = {
                         depth: currNode.depth + 1,
@@ -231,8 +235,18 @@
             };
             
             const sampleInBox = (box, cornerVals, p) => {
-                var xFac = (p[0] - box.min[0])/(box.max[0] - box.min[0]);
-                var yFac = (p[1] - box.min[1])/(box.max[1] - box.min[1]);
+                var xFac = Math.min(1, Math.max(0, (p[0] - box.min[0])/(box.max[0] - box.min[0])));
+                var yFac = Math.min(1, Math.max(0, (p[1] - box.min[1])/(box.max[1] - box.min[1])));
+                return lerp(
+                    lerp(cornerVals[0], cornerVals[1], xFac),
+                    lerp(cornerVals[2], cornerVals[3], xFac),
+                    yFac
+                );
+            }
+            
+            const sampleInBoxNearest = (box, cornerVals, p) => {
+                var xFac = Math.round((p[0] - box.min[0])/(box.max[0] - box.min[0]));
+                var yFac = Math.round((p[1] - box.min[1])/(box.max[1] - box.min[1]));
                 return lerp(
                     lerp(cornerVals[0], cornerVals[1], xFac),
                     lerp(cornerVals[2], cornerVals[3], xFac),
@@ -916,9 +930,147 @@
                 }
             }
             
-            
+            // virtual leaf sampling that works correctly on the subset of trees
+            // in which nodes are split in their geometric centre at each level
+
+            // > this algorithm works with the idea of active neighbours which occurs if
+            //   a neighbour has a hanging vertex on the edge of the sampled leaf node
+            // > Because of the splitting method, if a neighbour is active then it is also
+            //   guaranteed to not overhang and be active to neighbouring leaves
+            const sampleTreeVirtualNodeMedian = (tree, p) => {
+                // get leaf
+                var fullLeaf = getContainingLeafNode(tree, p);
+
+                const neighbourPoints = [
+                    [fullLeaf.node.box.max[0] + epsilon, p[1]],
+                    [p[0], fullLeaf.node.box.max[1] + epsilon],
+                    [fullLeaf.node.box.min[0] - epsilon, p[1]],
+                    [p[0], fullLeaf.node.box.min[1] - epsilon],
+                ];
+                const perpDim = [1, 0, 1, 0];
+
+                const posEdge = [true, true, false, false];
+
+                let edgeSamples = [];
+
+                // for each neighbour, check if it is needed
+                for (let i = 0; i < 4; i++) {
+                    var neighLeaf = getContainingLeafNode(tree, neighbourPoints[i]);
+                    if (
+                        neighLeaf.node.box.min[perpDim[i]] > fullLeaf.node.box.min[perpDim[i]] || 
+                        neighLeaf.node.box.max[perpDim[i]] < fullLeaf.node.box.max[perpDim[i]]
+                        // true
+                    ) {
+                        // this neighbour is active
+                        edgeSamples[i] = sampleInBox(neighLeaf.node.box, neighLeaf.cornerVals, neighbourPoints[i]);
+                    } else {
+                        // can clamp to box in sampling function
+                        edgeSamples[i] = sampleInBox(fullLeaf.node.box, fullLeaf.cornerVals, neighbourPoints[i]);
+                    }
+                }
+
+                // the distances from the central point to the corners
+                const lengths = [
+                    fullLeaf.node.box.max[0] - p[0] + epsilon,
+                    fullLeaf.node.box.max[1] - p[1] + epsilon,
+                    p[0] - fullLeaf.node.box.min[0] + epsilon,
+                    p[1] - fullLeaf.node.box.min[1] + epsilon,
+                ];
+
+                // simpler method
+                const weights = [
+                    1/lengths[0],
+                    1/lengths[1],
+                    1/lengths[2],
+                    1/lengths[3],
+                ];
+                // const weights = [
+                //     lengths[2]/(lengths[0] + lengths[2]),
+                //     lengths[3]/(lengths[1] + lengths[3]),
+                //     lengths[0]/(lengths[0] + lengths[2]),
+                //     lengths[1]/(lengths[1] + lengths[3]),
+                // ];
+                
+                // interpolate the sampled edge points using wachspress barycentric coordinates
+
+                // // the areas of the triangles formed by centre point, point at i and point at i+1
+                // const areas = [
+                //     0.5 * lengths[0] * lengths[1],
+                //     0.5 * lengths[1] * lengths[2],
+                //     0.5 * lengths[2] * lengths[3],
+                //     0.5 * lengths[3] * lengths[0],
+                // ];
+                // // the weights are the area formed by the point and the two adjacent point
+                // // over the product of the 
+                // const weights = [
+                //     (areas[0] + areas[3])/(areas[0]*areas[3]),
+                //     (areas[1] + areas[0])/(areas[1]*areas[0]),
+                //     (areas[2] + areas[1])/(areas[2]*areas[1]),
+                //     (areas[3] + areas[2])/(areas[3]*areas[2]),
+                // ];
+
+
+                const weightSum = weights.reduce((acc, curr) => acc + curr, 0);
+
+                // debugger;
+
+                return edgeSamples.reduce((acc, curr, i) => acc + curr*weights[i]/weightSum, 0);
+            }
          
-            const tree = createTree(10, {min: [0, 0], max:[canvas.width, canvas.height]}, scalarFunction);
+            const getVirtualNodeMedianInfo = (tree, p) => {
+                var fullLeaf = getContainingLeafNode(tree, p);
+                const points = [
+                    [fullLeaf.node.box.max[0] + epsilon, p[1]],
+                    [p[0], fullLeaf.node.box.max[1] + epsilon],
+                    [fullLeaf.node.box.min[0] - epsilon, p[1]],
+                    [p[0], fullLeaf.node.box.min[1] - epsilon],
+                ];
+
+                const neighbours = points.map(v => getContainingLeafNode(tree, v));
+
+                const lengths = [
+                    fullLeaf.node.box.max[0] - p[0] + epsilon,
+                    fullLeaf.node.box.max[1] - p[1] + epsilon,
+                    p[0] - fullLeaf.node.box.min[0] + epsilon,
+                    p[1] - fullLeaf.node.box.min[1] + epsilon,
+                ];
+                // the areas of the triangles formed by centre point, point at i and point at i+1
+                const areas = [
+                    0.5 * lengths[0] * lengths[1],
+                    0.5 * lengths[1] * lengths[2],
+                    0.5 * lengths[2] * lengths[3],
+                    0.5 * lengths[3] * lengths[0],
+                ];
+                // the weights are the area formed by the point and the two adjacent point
+                // over the product of the 
+                // const weights = [
+                //     (areas[0] + areas[3])/(areas[0]*areas[3]),
+                //     (areas[1] + areas[0])/(areas[1]*areas[0]),
+                //     (areas[2] + areas[1])/(areas[2]*areas[1]),
+                //     (areas[3] + areas[2])/(areas[3]*areas[2]),
+                // ];
+                const weights = [
+                    1/lengths[0],
+                    1/lengths[1],
+                    1/lengths[2],
+                    1/lengths[3],
+                ];
+                // const weights = [
+                //     lengths[2]/(lengths[0] + lengths[2]),
+                //     lengths[3]/(lengths[1] + lengths[3]),
+                //     lengths[0]/(lengths[0] + lengths[2]),
+                //     lengths[1]/(lengths[1] + lengths[3]),
+                // ];
+                const weightSum = weights.reduce((acc, curr) => acc + curr, 0);
+
+                return {
+                    neighbours: neighbours,
+                    points: points,
+                    baryCoords: weights.map(w => w/weightSum)
+                }
+            }
+            
+            const tree = createTree(11, {min: [0, 0], max:[canvas.width, canvas.height]}, scalarFunction);
             drawTree(tree.nodes, "#000000");
             
             
@@ -926,25 +1078,49 @@
             canvas.addEventListener("mousemove", (e) => {
                 // console.log("treee");
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawTree(tree.nodes, "#000000");
+                drawTree(tree.nodes, "#aaaaaa");
                 var canvasRect = canvas.getBoundingClientRect();
                 var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
 
                 var fullLeaf = getContainingLeafNode(tree, mouseCoords);
                 drawBox(fullLeaf.node.box, "#ff0000");
-                
-                var virtualLeaf = getVirtualLeafOld(tree, mouseCoords);
-                var xVirtualleafBox = structuredClone(virtualLeaf.node.box);
-                xVirtualleafBox.min[0] = fullLeaf.node.box.min[0];
-                xVirtualleafBox.max[0] = fullLeaf.node.box.max[0];
-                var yVirtualleafBox = structuredClone(virtualLeaf.node.box);
-                yVirtualleafBox.min[1] = fullLeaf.node.box.min[1];
-                yVirtualleafBox.max[1] = fullLeaf.node.box.max[1];
 
-                drawBox(xVirtualleafBox, "#333333");
-                drawBox(yVirtualleafBox, "#333333");
+                const info = getVirtualNodeMedianInfo(tree, mouseCoords);
+                for (let i = 0; i < 4; i++) {
+                    const col = "rgb(0, 0, " + Math.round(255*info.baryCoords[i]).toString()+")";
+                    // console.log(col);
+                    drawBox(info.neighbours[i].node.box, col);
+                }
+                // console.log(info.baryCoords);
+                const samplePoints = info.points;
 
-                drawBox(virtualLeaf.node.box, "#0000ff");
+
+                ctx.beginPath();
+                ctx.strokeStyle = "#0000ff";
+                ctx.moveTo(...samplePoints[0]);
+                ctx.lineTo(...samplePoints[1]);             
+                ctx.lineTo(...samplePoints[2]);             
+                ctx.lineTo(...samplePoints[3]);             
+                ctx.lineTo(...samplePoints[0]); 
+                ctx.stroke();            
+                // var virtualLeaf = getVirtualLeafOld(tree, mouseCoords);
+                // var xVirtualleafBox = structuredClone(virtualLeaf.node.box);
+                // xVirtualleafBox.min[0] = fullLeaf.node.box.min[0];
+                // xVirtualleafBox.max[0] = fullLeaf.node.box.max[0];
+                // var yVirtualleafBox = structuredClone(virtualLeaf.node.box);
+                // yVirtualleafBox.min[1] = fullLeaf.node.box.min[1];
+                // yVirtualleafBox.max[1] = fullLeaf.node.box.max[1];
+
+                // drawBox(xVirtualleafBox, "#333333");
+                // drawBox(yVirtualleafBox, "#333333");
+
+                // drawBox(virtualLeaf.node.box, "#0000ff");
+            })
+
+            document.addEventListener("mousedown", e => {
+                var canvasRect = canvas.getBoundingClientRect();
+                var mouseCoords = [e.clientX - canvasRect.left, e.clientY - canvasRect.top];
+                console.log(sampleTreeVirtualNodeMedian(tree, mouseCoords));
             })
 
             document.body.addEventListener("keypress", (e) => {
@@ -963,6 +1139,15 @@
                         // draw the scalar field by using the virtual leaf nodes
                         drawTreeCornerVals(tree, "virtual");
                         console.log("drawn corner vals with intersection virtual leaf method");
+                        break;
+                    case "3":
+                        // draw the scalar field by using the virtual leaf nodes
+                        drawTreeCornerVals(tree, "median");
+                        console.log("drawn corner vals with new method");
+                        break;
+                    case "4":
+                        drawTreeCornerVals(tree, "nearest");
+                        console.log("nearest corner vals");
                         break;
                 }
                 console.log(Math.round(performance.now() - start).toString() + "ms");

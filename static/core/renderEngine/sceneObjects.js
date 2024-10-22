@@ -2,7 +2,7 @@
 // this file contains prototypes and functions for handling the scene and renderable management
 // a scenegraph 
 
-import {mat4, vec3} from "https://cdn.skypack.dev/gl-matrix";
+import {mat4, vec3} from "../gl-matrix.js";
 import {toRads, newId} from "../utils.js";
 import { VecMath } from "../VecMath.js";
 

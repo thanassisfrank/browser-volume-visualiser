@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import {vec3, vec4, mat4} from "https://cdn.skypack.dev/gl-matrix";
+import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
 import { createDynamicTreeNodes, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";

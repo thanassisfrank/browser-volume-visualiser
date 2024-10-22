@@ -1,6 +1,6 @@
 // cellTreeUtils.js
 
-import { mat4, vec4 } from "https://cdn.skypack.dev/gl-matrix";
+import { mat4, vec4 } from "../gl-matrix.js";
 import { VecMath } from "../VecMath.js";
 
 export const NODE_BYTE_LENGTH = 5 * 4;

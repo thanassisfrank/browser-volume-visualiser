@@ -1,9 +1,6 @@
 // webGPURender.js
 // contains the main rendering object
-// import { setupWebGPU, createFilledBuffer } from "./webGPUBase.js";
-import { clampBox, stringifyMatrix} from "../../utils.js";
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
-import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
 
 // renderable manager
 import { WebGPURenderableManager } from "./webGPURenderableManager.js";

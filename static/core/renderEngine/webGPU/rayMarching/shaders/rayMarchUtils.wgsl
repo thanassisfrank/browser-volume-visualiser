@@ -54,6 +54,7 @@ struct RayMarchPassFlags {
     showTestedCells     : bool,
     showSurfNodeDepth   : bool,
     showSurfLeafCells   : bool,
+    contCornerVals      : bool,
 };
 
 // the return value of the ray-march function
@@ -130,6 +131,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 20)) != 0,
         (flagUint & (1u << 21)) != 0,
         (flagUint & (1u << 22)) != 0,
+        (flagUint & (1u << 23)) != 0,
     );
 };
 

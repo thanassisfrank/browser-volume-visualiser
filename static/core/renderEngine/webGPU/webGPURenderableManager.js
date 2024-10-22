@@ -2,7 +2,7 @@
 // handles the creation of renderable objects for the various scene objects available
 
 import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
-import {mat4, vec4, vec3} from 'https://cdn.skypack.dev/gl-matrix';
+import {mat4, vec4, vec3} from '../../gl-matrix.js';
 import { SceneObjectTypes, SceneObjectRenderModes, defaultMaterial} from "../sceneObjects.js";
 import { DataFormats, ResolutionModes } from "../../data/data.js";
 

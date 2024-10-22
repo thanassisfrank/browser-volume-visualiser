@@ -1,7 +1,6 @@
 // webGPURayMarching.js
 // implements the ray marching algorithm with webgpu
 
-import {mat4} from "https://cdn.skypack.dev/gl-matrix";
 import { DataFormats, ResolutionModes } from "../../../data/data.js";
 import { boxesEqual, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
@@ -76,6 +75,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         showTestedCells: false,     // shows the amount of cells that have been checked for each ray 
         showSurfNodeDepth: false,   // shows the depth of the node on the iso-surface
         showSurfLeafCells: false,   // shows the number of cells in the leaf nodes on the iso-surface
+        contCornerVals: false,
 
         // not sent to gpu
         cheapMove: false,
@@ -129,6 +129,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showTestedCells   << 20 & 0b1 << 20;
         flags |= this.passFlags.showSurfNodeDepth << 21 & 0b1 << 21;
         flags |= this.passFlags.showSurfLeafCells << 22 & 0b1 << 22;
+        flags |= this.passFlags.contCornerVals    << 23 & 0b1 << 23;
         return flags;
     }
 
