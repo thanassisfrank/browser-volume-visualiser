@@ -4,7 +4,7 @@ import { dataManager, ResolutionModes, DataFormats } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
 import { viewManager } from "./view.js";
 import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-import { FrameTimeGraph } from "./widgets.js";
+import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
@@ -71,7 +71,6 @@ async function main() {
     var canvas = get("c");
     
     var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
-
 
     var renderEnginePromise = createRenderEngine(canvas)
         .then((renderEngine) => renderEngine.setup())
@@ -464,10 +463,9 @@ async function main() {
         const dt = thisFrameStart - lastFrameStart;
         lastFrameStart = thisFrameStart;
 
-        
-        // update the objects
+        // update widgets
         frameTimeGraph.update(dt);
-        // does stuff like propagating threshold value, fetching required data
+        // update the scene
         viewManager.update(dt, renderEngine, cameraFollowPath);
 
         

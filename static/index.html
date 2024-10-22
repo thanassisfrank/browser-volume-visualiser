@@ -183,8 +183,14 @@
             <div class="view-container">
                 <div class="view-frame">
                     <div class="bottom-bar view-bottom-bar" onmousedown="event.stopPropagation()">
-                        <p class="view-dataset-name view-info"></p>
-                        <p class="view-dataset-size view-info"></p>
+                        <div style="display:inline-block">
+                            <p class="view-dataset-name view-info"></p>
+                            <p class="view-dataset-size view-info"></p>
+                        </div>
+                        <div style="display:inline-block">
+                            <canvas class="view-axes-widget" style="width:30px; height:30px"></canvas>
+
+                        </div>
                         <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
                         <!-- <br> -->
                         <details>
