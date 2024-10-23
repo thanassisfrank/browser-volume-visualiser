@@ -55,7 +55,9 @@ export var getFirstOfClass = (className) => {
 export var getInputClassAsObj = (className) => {
     var out = {};
     for (let input of getClass(className)) {
-        out[input.name] = input;
+        if ("radio" != input.type || ("radio" == input.type && input.checked)) {
+            out[input.name] = input;
+        }
     }
     return out;
 }

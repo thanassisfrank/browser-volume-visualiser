@@ -506,7 +506,7 @@ function View(id, camera, data, renderMode) {
         var focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
 
         // need to find the camera position in world space
-        if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
+        if (this.data.resolutionMode & ResolutionModes.DYNAMIC_NODES && this.updateDynamicTree) {
             updateDynamicTreeBuffers(
                 this.data, 
                 0, 

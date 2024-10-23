@@ -19,9 +19,11 @@ export const DataFormats = {
     UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
 }
 
+// these act as 
 export const ResolutionModes = {
-    FULL:    0, // resolution is fixed at the maximum 
-    DYNAMIC: 1, // the resolution is variable
+    FULL:          0b00, // resolution is fixed at the maximum 
+    DYNAMIC_NODES: 0b01, // the resolution is variable
+    DYNAMIC_CELLS: 0b10, // cell and veretx data are arranged per-leaf
 }
 
 export const DataFileTypes = {
@@ -160,11 +162,20 @@ var dataManager = {
         }
 
         // create dynamic tree
-        if (opts.createDynamic) {
+        if (opts.dynamicNodes) {
             try {
                 this.createDynamicTree(newData, opts.dynamicNodeCount);
             } catch (e) {
-                console.error("Could not create a dynamic dataset:", e)
+                console.error("Could not create dataset with dynamic node set:", e)
+            }
+        }
+
+        // create dynamic cell information
+        if (opts.dynamicCells) {
+            try {
+
+            } catch (e) {
+                console.error("Could not create dataset with dynamic cells data:", e)
             }
         }
 
@@ -336,7 +347,7 @@ var dataManager = {
         dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, nodes);
         // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
 
-        dataObj.resolutionMode = ResolutionModes.DYNAMIC;
+        dataObj.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
     },
     
     addUser: function(data) {
@@ -609,7 +620,7 @@ function Data(id) {
         }
 
         // if this is dynamic, load corner values too
-        if (ResolutionModes.DYNAMIC == this.resolutionMode) {
+        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
             await this.createCornerValues(newSlotNum)
             this.createDynamicCornerValues(newSlotNum);
         }
@@ -785,7 +796,7 @@ function Data(id) {
         return this.data.values?.[slotNum]?.data;
     }
     this.getCornerValues = function(slotNum) {
-        if (ResolutionModes.DYNAMIC == this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+        if (ResolutionModes.DYNAMIC & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
         if (ResolutionModes.FULL == this.resolutionMode) return this.getFullCornerValues(slotNum);
     }
     this.getFullCornerValues = function(slotNum) {

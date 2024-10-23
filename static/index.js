@@ -1,10 +1,10 @@
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, removeAllChildren} from "./core/utils.js";
 
-import { dataManager, ResolutionModes, DataFormats } from "./core/data/data.js";
+import { dataManager, DataFormats } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
 import { viewManager } from "./view.js";
 import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-import { AxesWidget, FrameTimeGraph } from "./widgets.js";
+import { FrameTimeGraph } from "./widgets.js";
 import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
@@ -137,14 +137,19 @@ async function main() {
         var d = get("data-select");
         var opts = getInputClassAsObj("dataset-opt");
 
+        console.log(opts.resolutionMode?.value);
+
         var newData = await dataManager.getDataObj(
             d.options[d.selectedIndex].value,
             {
                 leafCells: parseInt(opts.leafCells?.value),
                 downSample: parseInt(opts?.downsample?.value ?? 1),
                 forceUnstruct: opts.createUnstructured?.checked,
-                createDynamic: opts.dynamicResolution?.checked,
-                dynamicNodeCount: parseInt(opts.dynamicNodes?.value),
+                resolutionMode: opts.resolutionMode?.value,
+                dynamicNodes: opts.dynamicNodes?.checked,
+                dynamicCells: opts.dynamicCells?.checked,
+                dynamicNodeCount: parseInt(opts.dynamicNodeCount?.value),
+                dynamicCellCount: parseInt(opts.dynamicCellCount?.value),
                 maxTreeDepth: parseInt(opts.maxDepth.value),
                 kdTreeType: parseInt(opts.kdTreeType.value),
                 cornerValType: parseInt(opts.cornerValType.value),

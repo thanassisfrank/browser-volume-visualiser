@@ -417,7 +417,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         if (dataObj.resolutionMode == ResolutionModes.FULL) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
-        } else if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
+        } else if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
             // TEMP
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data dynamic tree cells");
@@ -739,7 +739,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         passData,
                         renderable.renderData,
                         renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        dataObj.resolutionMode == ResolutionModes.DYNAMIC
+                        !!(dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES)
                     );
                     passData.isoSurfaceSrcUint = isoLoadResult.uint;
                     var valueBufferCreatedIso = isoLoadResult.created;
@@ -759,7 +759,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         passData,
                         renderable.renderData,
                         renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        dataObj.resolutionMode == ResolutionModes.DYNAMIC
+                        !!(dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES)
                     );
                     passData.surfaceColSrcUint = colLoadResult.uint;
                     var valueBufferCreatedCol = colLoadResult.created;
@@ -773,7 +773,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
                 // update unstructured data renderables
                 // update the dynamic tree nodes buffer
-                if (dataObj.resolutionMode == ResolutionModes.DYNAMIC) {
+                if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
                     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_A) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
