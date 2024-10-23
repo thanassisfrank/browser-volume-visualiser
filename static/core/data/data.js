@@ -3,7 +3,8 @@
 
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
-import { createDynamicTreeNodes, createDynamicCellData, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { createDynamicTreeNodes, createDynamicMeshData } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
@@ -170,10 +171,10 @@ var dataManager = {
             }
         }
 
-        // create dynamic cell information
-        if (opts.dynamicCells) {
+        // create dynamic mesh information
+        if (opts.dynamicMesh) {
             try {
-                this.createDynamicCellData(newData, opts.dynamicCellCount);
+                this.createDynamicMeshData(newData, opts.dynamicMeshBlockCount);
             } catch (e) {
                 console.error("Could not create dataset with dynamic cells data:", e)
             }
@@ -348,16 +349,16 @@ var dataManager = {
         }
     },
 
-    // create dynamic cell buffers that contain a varying subset of the leaves cell data
+    // create dynamic mesh buffers that contain a varying subset of the leaves cell data
     // fixed number of data slots
-    createDynamicCellData: function(dataObj, dynamicCellCount) {
+    createDynamicMeshData: function(dataObj, dynamicCellCount) {
         if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic cells, dataset not of dataFormat UNSTRUCTURED";
         
         // the total number of leaves of a binary tree of node count n is n/2
         if (dynamicCellCount >= Math.ceil(dataObj.data.treeNodeCount/2)) {
-            console.warn("Attempted to create dynamic cell data that is too large, using full cell data instead");
+            console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
         } else {
-            const dynamicCellData = createDynamicCellData(dataObj, dynamicCellCount);
+            const dynamicCellData = createDynamicMeshData(dataObj, dynamicCellCount);
 
             dataObj.data.dynamicPositions = dynamicCellData.positions;
             dataObj.data.dynamicCellOffsets = dynamicCellData.cellOffsets;

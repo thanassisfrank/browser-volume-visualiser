@@ -9,7 +9,7 @@ import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
-import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
+import { updateDynamicTreeBuffers } from "./core/data/dynamicTree.js";
 
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
