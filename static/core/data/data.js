@@ -3,7 +3,7 @@
 
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
-import { createDynamicTreeNodes, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { createDynamicTreeNodes, createDynamicCellData, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
@@ -161,7 +161,7 @@ var dataManager = {
             newData.setCornerValType(opts.cornerValType);
         }
 
-        // create dynamic tree
+        // create dynamic tree (nodes)
         if (opts.dynamicNodes) {
             try {
                 this.createDynamicTree(newData, opts.dynamicNodeCount);
@@ -173,7 +173,7 @@ var dataManager = {
         // create dynamic cell information
         if (opts.dynamicCells) {
             try {
-
+                this.createDynamicCellData(newData, opts.dynamicCellCount);
             } catch (e) {
                 console.error("Could not create dataset with dynamic cells data:", e)
             }
@@ -331,23 +331,38 @@ var dataManager = {
         dataObj.data.treeNodeCount = treeBuffers.nodeCount;
     },
 
-
+    // create the unstructured tree with a varying subset of the nodes
+    // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
         if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic tree, dataset not of dataFormat UNSTRUCTURED";
-        // dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
-        // addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
-        // dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
-        if (dynamicNodeCount > dataObj.data.treeNodeCount) {
-            console.warn("Attempted to create dynamic tree that is too large, falling back to total nodes in dataset");
+        
+        if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
+            console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
+        } else {
+            dataObj.data.dynamicNodeCount = dynamicNodeCount;
+    
+            dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, dynamicNodeCount);
+            // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+    
+            dataObj.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
         }
+    },
 
-        var nodes = Math.min(dynamicNodeCount, dataObj.data.treeNodeCount);
-        dataObj.data.dynamicNodeCount = nodes;
+    // create dynamic cell buffers that contain a varying subset of the leaves cell data
+    // fixed number of data slots
+    createDynamicCellData: function(dataObj, dynamicCellCount) {
+        if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic cells, dataset not of dataFormat UNSTRUCTURED";
+        
+        // the total number of leaves of a binary tree of node count n is n/2
+        if (dynamicCellCount >= Math.ceil(dataObj.data.treeNodeCount/2)) {
+            console.warn("Attempted to create dynamic cell data that is too large, using full cell data instead");
+        } else {
+            const dynamicCellData = createDynamicCellData(dataObj, dynamicCellCount);
 
-        dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, nodes);
-        // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
-
-        dataObj.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
+            dataObj.data.dynamicPositions = dynamicCellData.positions;
+            dataObj.data.dynamicCellOffsets = dynamicCellData.cellOffsets;
+            dataObj.data.dynamicCellConnectivity = dynamicCellData.cellConnectivity;
+        }
     },
     
     addUser: function(data) {

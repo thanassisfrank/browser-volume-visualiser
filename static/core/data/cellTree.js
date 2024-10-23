@@ -13,22 +13,9 @@ export const KDTreeSplitTypes = {
     VOLUME_HEUR:    5
 }
 
-// finds the sizes of the buffers required for each leaf to store its part of the mesh
-// logs this to the console
-export const logLeafMeshBufferSizes = (dataObj) => {
-    const bufferBytes = {
-        // 4B per vert
-        values: [],
-        // positions is 12B per vert
-
-        // 4B per cell
-        offsets: [],
-        // connectivity is 16B per cell as the mesh is tetrahedral for now
-
-    };
-
-    const leafInfo = [];
-
+// interate through all of the leaves in the data objects tree nodes buffer
+// perform callback with the information of each
+const processLeafMeshDataInfo = (dataObj, callback) => {
     const treeNodes = dataObj.data.treeNodes;
     // iterate through all leaves
     var rootNode = readNodeFromBuffer(treeNodes, 0);
@@ -54,7 +41,7 @@ export const logLeafMeshBufferSizes = (dataObj) => {
                 }  
             }
 
-            leafInfo.push({
+            callback({
                 cells: currNode.cellCount,
                 verts: uniqueVerts.size,
                 depth: currNode.depth
@@ -71,6 +58,14 @@ export const logLeafMeshBufferSizes = (dataObj) => {
             nodes.push(rightNode);
         }
     }
+}
+
+// finds the sizes of the buffers required for each leaf to store its part of the mesh
+// logs this to the console
+export const logLeafMeshBufferSizes = (dataObj) => {
+    const leafInfo = [];
+
+    processLeafMeshDataInfo(dataObj, d => leafInfo.push(d));
 
     // bufferBytes.offsets.sort((a, b) => a.size - b.size);
 
@@ -511,6 +506,23 @@ export var createDynamicTreeNodes = (dataObj, maxNodes) => {
         // console.log(readNodeFromBuffer(dynamicNodes, i * NODE_BYTE_LENGTH));
     }
     return dynamicNodes;
+}
+
+export const createDynamicCellData = (dataObj, maxLeafBlocks) => {
+    var maxCells = 0; // max number of cells found within the leaf nodes
+    var maxVerts = 0; // max number of unique verts found in the leaf nodes
+    processLeafMeshDataInfo(dataObj, l => {
+        maxCells = Math.max(maxCells, l.cells);
+        maxVerts = Math.max(maxVerts, l.verts);
+    });
+
+    console.log(maxCells, maxVerts);
+
+    return {
+        positions: new Float32Array(3 * maxVerts * maxLeafBlocks),
+        cellOffsets: new Float32Array(maxCells * maxLeafBlocks),
+        cellConnectivity: new Uint32Array(4 * maxCells * maxLeafBlocks),
+    }
 }
 
 
