@@ -203,47 +203,38 @@ var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlo
             freePtrs[2*i + 1]
         );
 
-        // console.log(readNodeFromBuffer(dynamicNodes, thisNode.thisPtr * NODE_BYTE_LENGTH));
-        
-        // fetch the left node from the full buffer and write to dynamic as pruned leaf
-        var leftNode = readNodeFromBuffer(fullNodes, thisNodeFull.leftPtr * NODE_BYTE_LENGTH);
-        writeNodeToBuffer(
-            dynamicNodes, 
-            freePtrs[2*i] * NODE_BYTE_LENGTH, 
-            null, 
-            leftNode.cellCount,
-            thisNode.thisPtr, 
-            leftNode.leftPtr, 
-            0
-        );
+        const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
+        for (let j = 0; j < 2; j++) {
+            var childNode = readNodeFromBuffer(fullNodes, childPtrs[j] * NODE_BYTE_LENGTH);
+            if (0 == childNode.rightPtr) {
+                // this new node is a true leaf, try to write its data to cache
+                console.log("new leaf");
+                // use the full pointer as the cache tag
+                // var currSlot = getLeafMeshDataSlot(dataObj, childNode.thisPtr);
+                // if (currSlot == -1) {
+                //     // the mesh data for this leaf is not currently loaded
+                //     // get the mesh data for this leaf
+                //     dataObj.getLeafMesh(childNode.thisPtr, activeValueSlots)
+                // }
+            }
+            writeNodeToBuffer(
+                dynamicNodes, 
+                freePtrs[2*i + j] * NODE_BYTE_LENGTH, 
+                null, 
+                childNode.cellCount,
+                thisNode.thisPtr, 
+                childNode.leftPtr, 
+                0, // write as zero to signify leaf in dynamic tree
+            );
 
-        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i] * NODE_BYTE_LENGTH));
-        // fetch the right node from the full buffer and write to dynamic as pruned leaf
-        var rightNode = readNodeFromBuffer(fullNodes, thisNodeFull.rightPtr * NODE_BYTE_LENGTH);
-        writeNodeToBuffer(
-            dynamicNodes, 
-            freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
-            null, 
-            rightNode.cellCount,
-            thisNode.thisPtr, 
-            rightNode.leftPtr, 
-            0
-        );
-
-        for (let slotNum of activeValueSlots) {
-            writeCornerVals(
-                dataObj.getDynamicCornerValues(slotNum),
-                freePtrs[2*i],
-                readCornerVals(dataObj.getFullCornerValues(slotNum), leftNode.thisPtr)
-            )
-            writeCornerVals(
-                dataObj.getDynamicCornerValues(slotNum),
-                freePtrs[2*i + 1],
-                readCornerVals(dataObj.getFullCornerValues(slotNum), rightNode.thisPtr)
-            )
+            for (let slotNum of activeValueSlots) {
+                writeCornerVals(
+                    dataObj.getDynamicCornerValues(slotNum),
+                    freePtrs[2*i + j],
+                    readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr)
+                )
+            }
         }
-
-        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i + 1] * NODE_BYTE_LENGTH));
     }
 }
 
@@ -402,8 +393,50 @@ export var createDynamicTreeNodes = (dataObj, maxNodes) => {
 
 
 // dynamic mesh data ======================================================================================
+// implements a fully associative cache with multiple buffers holding the data that are kept in sync
+// the tags are the pointers for each node in the full tree buffer
 
-export const createDynamicMeshData = (dataObj, maxLeafBlocks) => {
+// check the cache table for the entry with this tag
+// if not present, returns -1
+const getLeafMeshDataSlot = (dataObj, leafTag) => {
+    // check if this tag is contained in the cache block directory
+    return dataObj.dynamicMeshCache.directory.get(leafTag) ?? -1;
+}
+
+// write to the dynamic mesh data cache
+// returns the block number to which it was written
+const loadDynamicMeshData = (dataObj, newTag, leafMeshData) => {
+    // get the cache slot to write the new data into
+    // TODO: implement LRU
+    // for now: get a random block number from the cache to replace
+    const newSlot = Math.floor(Math.random()*dataObj.dynamicMeshCacheInfo.slotCount);
+
+    // invalidate the data of the leaf node that was stored at that location before
+    const replacedBlockTag = dataObj.dynamicMeshCacheInfo.blockTags[newSlot];
+    if (replacedBlockTag) dataObj.dynamicMeshCacheInfo.directory.remove(replacedBlockTag);
+
+    // update cache information
+    dataObj.dynamicMeshCacheInfo.blockTags[newSlot] = newTag;
+    dataObj.dynamicMeshCacheInfo.directory.set(newTag, newSlot);
+
+    // write the new data into this slot
+    dataObj.data.positions.set(
+        leafMeshData.positions, 
+        dataObj.dynamicMeshCacheInfo.blockSize.positions * newSlot
+    );
+    dataObj.data.cellOffsets.set(
+        leafMeshData.cellOffsets, 
+        dataObj.dynamicMeshCacheInfo.blockSize.cellOffsets * newSlot
+    );
+    dataObj.data.cellConnectivity.set(
+        leafMeshData.cellConnectivity, 
+        dataObj.dynamicMeshCacheInfo.blockSize.cellConnectivity * newSlot
+    );
+
+    return newSlot;
+}
+
+export const createDynamicMeshData = (dataObj, leafBlockCount) => {
     var maxCells = 0; // max number of cells found within the leaf nodes
     var maxVerts = 0; // max number of unique verts found in the leaf nodes
     processLeafMeshDataInfo(dataObj, l => {
@@ -413,9 +446,30 @@ export const createDynamicMeshData = (dataObj, maxLeafBlocks) => {
 
     console.log(maxCells, maxVerts);
 
-    return {
-        positions: new Float32Array(3 * maxVerts * maxLeafBlocks),
-        cellOffsets: new Float32Array(maxCells * maxLeafBlocks),
-        cellConnectivity: new Uint32Array(4 * maxCells * maxLeafBlocks),
+    const blockSize = {
+        positions: 3 * maxVerts,
+        cellOffsets: maxCells,
+        cellConnectivity: 4 * maxCells,
     }
+
+    return {
+        // information holding the state of the cache
+        cacheInfo: {
+            slotCount: leafBlockCount, // num of total slots
+            directory: new Map(), // where are the curretly loaded blocks are located in the cache
+            blockTags: new Array(leafBlockCount), // what is loaded at each slot of the cache
+            blockSize: blockSize,
+        },
+        // the data of the cache
+        positions: new Float32Array(blockSize.positions * leafBlockCount),
+        cellOffsets: new Float32Array(blockSize.cellOffsets * leafBlockCount),
+        cellConnectivity: new Uint32Array(blockSize.cellConnectivity * leafBlockCount),
+    }
+}
+
+// run when a new data array is selected
+// creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
+// dynamic mesh buffers for the mesh geometry
+export const createMatchedDynamicMeshValueArray = (dataObj, slotNum) => {
+
 }

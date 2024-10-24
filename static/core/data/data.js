@@ -358,11 +358,13 @@ var dataManager = {
         if (dynamicCellCount >= Math.ceil(dataObj.data.treeNodeCount/2)) {
             console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
         } else {
-            const dynamicCellData = createDynamicMeshData(dataObj, dynamicCellCount);
+            const dynamicMesh = createDynamicMeshData(dataObj, dynamicCellCount);
 
-            dataObj.data.dynamicPositions = dynamicCellData.positions;
-            dataObj.data.dynamicCellOffsets = dynamicCellData.cellOffsets;
-            dataObj.data.dynamicCellConnectivity = dynamicCellData.cellConnectivity;
+            dataObj.dynamicMeshCacheInfo = dynamicMesh.cacheInfo;
+
+            dataObj.data.positions = dynamicMesh.positions;
+            dataObj.data.cellOffsets = dynamicMesh.cellOffsets;
+            dataObj.data.cellConnectivity = dynamicMesh.cellConnectivity;
         }
     },
     
@@ -432,6 +434,8 @@ function Data(id) {
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
     };
+
+    this.dynamicMeshCacheInfo = {};
 
     // any additional mesh geometry that is part of the dataset but not part of the mesh
     this.geometry = {
@@ -643,6 +647,10 @@ function Data(id) {
 
 
         return newSlotNum;
+    }
+
+    // gets the data describing the geometry and values for the mesh of this leaf node
+    this.getLeafMesh = function(leafPtr, valueSlots) {
     }
 
     this.setCornerValType = function(type) {
