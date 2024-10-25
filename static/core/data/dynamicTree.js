@@ -159,7 +159,7 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
 }
 
 
-var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots, scores) => {
+var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
     // find the amount of changes we can now make
     // var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
     const changeCount = Math.min(scores.merge.length, scores.split.length);
@@ -207,17 +207,14 @@ var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots
             //         // it is loaded, update it to be a pruned leaf
             //     }
             // }
-            dataObj.dynamicNodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, {
+            var newData = {
                 "nodes": {cellCount: childNode.cellCount, parentPtr: thisNode.thisPtr, leftPtr: childNode.leftPtr, rightPtr: 0}
-            });
-
+            };
             for (let slotNum of activeValueSlots) {
-                writeCornerVals(
-                    dataObj.getDynamicCornerValues(slotNum),
-                    freePtrs[2*i + j],
-                    readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr)
-                )
+                newData["corners" + slotNum] = readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr);
             }
+
+            dataObj.dynamicNodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
         }
     }
 }
@@ -250,7 +247,6 @@ export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoord
     performance.mark("buffStart");
     updateDynamicNodeCache(
         dataObj,
-        dataObj.data.dynamicTreeNodes, 
         dataObj.data.treeNodes, 
         activeValueSlots,
         mergeSplitLists
