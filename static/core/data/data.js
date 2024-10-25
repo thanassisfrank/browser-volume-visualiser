@@ -4,7 +4,7 @@
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
 import { getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
-import { createDynamicTreeNodes, createDynamicMeshData } from "./dynamicTree.js";
+import { createDynamicNodeCache, createDynamicMeshCache } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
@@ -342,8 +342,9 @@ var dataManager = {
         } else {
             dataObj.data.dynamicNodeCount = dynamicNodeCount;
     
-            dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, dynamicNodeCount);
-            // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+            dataObj.dynamicNodeCache = createDynamicNodeCache(dataObj, dynamicNodeCount);
+            console.log(dataObj.dynamicNodeCache);
+            dataObj.data.dynamicTreeNodes = dataObj.dynamicNodeCache.getBuffers().nodes;
     
             dataObj.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
         }
@@ -351,20 +352,19 @@ var dataManager = {
 
     // create dynamic mesh buffers that contain a varying subset of the leaves cell data
     // fixed number of data slots
-    createDynamicMeshData: function(dataObj, dynamicCellCount) {
+    createDynamicMeshCache: function(dataObj, dynamicCellCount) {
         if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic cells, dataset not of dataFormat UNSTRUCTURED";
         
         // the total number of leaves of a binary tree of node count n is n/2
         if (dynamicCellCount >= Math.ceil(dataObj.data.treeNodeCount/2)) {
             console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
         } else {
-            const dynamicMesh = createDynamicMeshData(dataObj, dynamicCellCount);
+            dataObj.dynamicMeshCache = createDynamicMeshCache(dataObj, dynamicCellCount);
 
-            dataObj.dynamicMeshCacheInfo = dynamicMesh.cacheInfo;
-
-            dataObj.data.positions = dynamicMesh.positions;
-            dataObj.data.cellOffsets = dynamicMesh.cellOffsets;
-            dataObj.data.cellConnectivity = dynamicMesh.cellConnectivity;
+            const buffers = dataObj.dynamicMeshCache.getBuffers();
+            dataObj.data.positions = buffers.positions;
+            dataObj.data.cellOffsets = buffers.cellOffsets;
+            dataObj.data.cellConnectivity = buffers.cellConnectivity;
         }
     },
     

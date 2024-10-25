@@ -1,0 +1,99 @@
+// cache.js
+// implements a prototypes for handling caches
+
+// fixed-size, fully associative cache
+export function AssociativeCache(slotCount) {
+    this.buffers = {};
+    this.blockSizes = {};
+    this.slotCount = slotCount;
+    this.directory = new Map(); // tag -> slotNum
+    this.tags = new Array(slotCount); // slotNum -> tag
+
+    // functions to read/write to the buffers
+    // TODO: add different functions per buffer
+    this.readFunc = (buff, slotNum, blockSize) => {
+        buff.slice(slotNum * blockSize, (slotNum + 1) * blockSize);
+    }
+    this.writeFunc = (buff, data, slotNum, blockSize) => {
+        buff.set(data, blockSize * slotNum);
+    }
+
+    // these allow setting custom behaviour when reading/writing data to the underlying data store
+    this.setReadFunc = function(readFunc) {
+        this.readFunc = readFunc;
+    }
+
+    this.setWriteFunc = function(writeFunc) {
+        this.writeFunc = writeFunc;
+    }
+
+    // create a new 
+    this.createBuffer = function(name, prototype, blockSize) {
+        this.buffers[name] = new prototype(blockSize * this.slotCount);
+        this.blockSizes[name] = blockSize;
+    };
+
+    // synchronises the named buffer with the state of this.tags
+    this.syncBuffer = function(name, getDataFunc) {
+        if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
+        for (let i = 0; i < this.slotCount; i++) {
+            this.writeFunc(this.buffers[name], getDataFunc(this.tags[i]), i, this.blockSizes[name]);
+        }
+    };
+
+    // search for the slot containing the data with this tag
+    // if not slot contains the data for this, return -1
+    this.getTagSlotNum = function(tag) {
+        return this.directory.get(tag) ?? -1;
+    }
+
+    this.updateBlockAt = function(slot, newData={}) {
+        for (const name in newData) {
+            if (!this.buffers[name]) continue;
+            // TODO: only allow writing of data up to block size
+            this.writeFunc(this.buffers[name], newData[name], slot, this.blockSizes[name]);
+        };
+    }
+    // insert new block at given position
+    this.insertNewBlockAt = function(newSlot, newTag, newData = {}) {
+        // invalidate the data of the leaf node that was stored at that location before
+        const evictedTag = this.tags[newSlot];
+        if (evictedTag) this.directory.delete(evictedTag);
+    
+        // update cache information
+        this.tags[newSlot] = newTag;
+        this.directory.set(newTag, newSlot);
+    
+        // write the new data into this slot
+        for (const name in newData) {
+            if (!this.buffers[name]) continue;
+            // TODO: only allow writing of data up to block size
+            this.writeFunc(this.buffers[name], newData[name], newSlot, this.blockSizes[name]);
+        };
+
+        return {
+            slot: newSlot,
+            evicted: evictedTag,
+        }
+    }
+
+    // insert new block into random position
+    this.insertNewBlockRand = function(newTag, newData = {}) {
+        const newSlot = Math.floor(Math.random()*this.slotCount);
+        return this.insertNewBlockAt(newSlot, newTag, newData);        
+    }
+
+    // insert new block using LRU eviction
+    this.insertNewBlockLRU = function(newTag, newData = {}) {
+
+    }
+
+    this.readBuffSlotAt = function(name, slotNum) {
+        if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
+        return this.readFunc(this.buffers[name], slotNum, this.blockSizes[name]);
+    }
+
+    this.getBuffers = function() {
+        return this.buffers;
+    }
+}

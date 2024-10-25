@@ -18,6 +18,10 @@ export const ChildTypes = {
 //     leftPtr : u32,
 //     rightPtr : u32,
 // };
+export const nodeToArrayBuffer = () => {
+
+}
+
 export var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, parentPtr, leftPtr, rightPtr) => {
     var f32View = new Float32Array(buffer, byteOffset, 1);
     if (splitVal != null) f32View[0] = splitVal;
