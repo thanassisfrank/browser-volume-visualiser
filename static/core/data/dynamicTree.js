@@ -171,19 +171,23 @@ var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots
     var freePtrs = [];
     for (let i = 0; i < changeCount; i++) {
         // console.log("pruning", scores.low[i].parentPtr);
-        var parentNode = readNodeFromBuffer(dynamicNodes, scores.merge[i].parentPtr * NODE_BYTE_LENGTH);
+        // var parentNode = readNodeFromBuffer(dynamicNodes, scores.merge[i].parentPtr * NODE_BYTE_LENGTH);
+        parentNode = dataObj.dynamicNodeCache.readBuffSlotAt("nodes", scores.merge[i].parentPtr);
         // var parentFullPtr = readNodeFromBuffer(fullNodes, scores.merge[i]).parentPtr;
         freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
         // convert the parentNode to a pruned leaf
-        writeNodeToBuffer(
-            dynamicNodes, 
-            scores.merge[i].parentPtr * NODE_BYTE_LENGTH,
-            null,
-            null,
-            null,
-            0,
-            0,
-        );
+        // writeNodeToBuffer(
+        //     dynamicNodes, 
+        //     scores.merge[i].parentPtr * NODE_BYTE_LENGTH,
+        //     null,
+        //     null,
+        //     null,
+        //     0,
+        //     0,
+        // );
+        dataObj.dynamicNodeCache.updateBlockAt(scores.merge[i].parentPtr, {
+            "nodes": {leftPtr: 0, rightPtr: 0}
+        });
     }
 
     // console.log(freePtrs);
@@ -191,18 +195,11 @@ var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots
     // split the leaves with the lowest scores (write 2 per change)
     for (let i = 0; i < freePtrs.length/2; i++) {
         var thisNode = scores.split[i];
-        // console.log("splitting", thisNode.thisPtr);
         var thisNodeFull = readNodeFromBuffer(fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
         // update node to branch
-        writeNodeToBuffer(
-            dynamicNodes,
-            thisNode.thisPtr * NODE_BYTE_LENGTH,
-            thisNodeFull.splitVal, // important to re-write the split val
-            0,
-            null,
-            freePtrs[2*i],
-            freePtrs[2*i + 1]
-        );
+        dataObj.dynamicNodeCache.updateBlockAt(thisNode.thisPtr, {
+            "nodes": {splitVal: thisNodeFull.splitVal, cellCount: 0, leftPtr: freePtrs[2*i], rightPtr: freePtrs[2*i + 1]}
+        })
 
         const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
         for (let j = 0; j < 2; j++) {
@@ -224,15 +221,9 @@ var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots
             //         // it is loaded, update it to be a pruned leaf
             //     }
             // }
-            writeNodeToBuffer(
-                dynamicNodes, 
-                freePtrs[2*i + j] * NODE_BYTE_LENGTH, 
-                null, 
-                childNode.cellCount,
-                thisNode.thisPtr, 
-                childNode.leftPtr, 
-                0, // write as zero to signify leaf in dynamic tree
-            );
+            dataObj.dynamicNodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, {
+                "nodes": {cellCount: childNode.cellCount, parentPtr: thisNode.thisPtr, leftPtr: childNode.leftPtr, rightPtr: 0}
+            });
 
             for (let slotNum of activeValueSlots) {
                 writeCornerVals(
