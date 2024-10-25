@@ -81,6 +81,26 @@ export var forEachBreadth = (tree, alwaysFunc, leafFunc, branchFunc) => {
     }
 }
 
+// simplified traversal 
+export const traverseNodeBufferDepth = (buff, alwaysFunc, leafFunc, branchFunc) => {
+    var nodeQueue = [readNodeFromBuffer(buff, 0)];
+    while (nodeQueue.length > 0) {
+        var currNode = nodeQueue.pop();
+        alwaysFunc(currNode);
+        if (0 == currNode.rightPtr) {
+            // got to leaf
+            leafFunc(currNode);
+        } else {
+            // continue down the tree
+            branchFunc(currNode);
+            nodeQueue.push(
+                readNodeFromBuffer(buff, currNode.leftPtr * NODE_BYTE_LENGTH), 
+                readNodeFromBuffer(buff, currNode.rightPtr * NODE_BYTE_LENGTH),
+            );
+        }
+    }
+}
+
 
 // returns the box covering this node from the direct parent node's box
 // takes parent box, if its left and split dimension
