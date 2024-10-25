@@ -170,27 +170,13 @@ var updateDynamicNodeCache = (dataObj, dynamicNodes, fullNodes, activeValueSlots
     // merge the leaves with the highest scores with their siblings (delete 2 per change)
     var freePtrs = [];
     for (let i = 0; i < changeCount; i++) {
-        // console.log("pruning", scores.low[i].parentPtr);
-        // var parentNode = readNodeFromBuffer(dynamicNodes, scores.merge[i].parentPtr * NODE_BYTE_LENGTH);
-        parentNode = dataObj.dynamicNodeCache.readBuffSlotAt("nodes", scores.merge[i].parentPtr);
-        // var parentFullPtr = readNodeFromBuffer(fullNodes, scores.merge[i]).parentPtr;
+        var parentNode = dataObj.dynamicNodeCache.readBuffSlotAt("nodes", scores.merge[i].parentPtr);
         freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
         // convert the parentNode to a pruned leaf
-        // writeNodeToBuffer(
-        //     dynamicNodes, 
-        //     scores.merge[i].parentPtr * NODE_BYTE_LENGTH,
-        //     null,
-        //     null,
-        //     null,
-        //     0,
-        //     0,
-        // );
         dataObj.dynamicNodeCache.updateBlockAt(scores.merge[i].parentPtr, {
             "nodes": {leftPtr: 0, rightPtr: 0}
         });
     }
-
-    // console.log(freePtrs);
 
     // split the leaves with the lowest scores (write 2 per change)
     for (let i = 0; i < freePtrs.length/2; i++) {
@@ -289,8 +275,11 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
     // set up the cache object for the dynamic nodes
     var dynamicNodeCache = new AssociativeCache(maxNodes);
     dynamicNodeCache.createBuffer("nodes", ArrayBuffer, NODE_BYTE_LENGTH);
-    dynamicNodeCache.setReadFunc((buff, slotNum, blockSize) => readNodeFromBuffer(buff, slotNum * blockSize));
-    dynamicNodeCache.setWriteFunc((buff, data, slotNum, blockSize) => {
+    dynamicNodeCache.setReadFunc("nodes", (buff, slotNum, blockSize) => {
+        // console.log("n");
+        return readNodeFromBuffer(buff, slotNum * blockSize);
+    });
+    dynamicNodeCache.setWriteFunc("nodes", (buff, data, slotNum, blockSize) => {
         writeNodeToBuffer(
             buff, 
             slotNum * blockSize, 

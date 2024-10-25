@@ -11,20 +11,25 @@ export function AssociativeCache(slotCount) {
 
     // functions to read/write to the buffers
     // TODO: add different functions per buffer
-    this.readFunc = (buff, slotNum, blockSize) => {
-        buff.slice(slotNum * blockSize, (slotNum + 1) * blockSize);
+    this.readFuncs = {
+        default: (buff, slotNum, blockSize) => {
+            buff.slice(slotNum * blockSize, (slotNum + 1) * blockSize);
+        }
     }
-    this.writeFunc = (buff, data, slotNum, blockSize) => {
-        buff.set(data, blockSize * slotNum);
+    this.writeFuncs = {
+        default: (buff, data, slotNum, blockSize) => {
+            buff.set(data, blockSize * slotNum);
+        }
     }
 
     // these allow setting custom behaviour when reading/writing data to the underlying data store
-    this.setReadFunc = function(readFunc) {
-        this.readFunc = readFunc;
+    // can be specified per buffer
+    this.setReadFunc = function(name, readFunc) {
+        this.readFuncs[name] = readFunc;
     }
 
-    this.setWriteFunc = function(writeFunc) {
-        this.writeFunc = writeFunc;
+    this.setWriteFunc = function(name, writeFunc) {
+        this.writeFuncs[name] = writeFunc;
     }
 
     // create a new 
@@ -37,7 +42,9 @@ export function AssociativeCache(slotCount) {
     this.syncBuffer = function(name, getDataFunc) {
         if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
         for (let i = 0; i < this.slotCount; i++) {
-            this.writeFunc(this.buffers[name], getDataFunc(this.tags[i]), i, this.blockSizes[name]);
+            (this.writeFuncs[name] ?? this.writeFuncs.default)(
+                this.buffers[name], getDataFunc(this.tags[i]), i, this.blockSizes[name]
+            );
         }
     };
 
@@ -51,7 +58,9 @@ export function AssociativeCache(slotCount) {
         for (const name in newData) {
             if (!this.buffers[name]) continue;
             // TODO: only allow writing of data up to block size
-            this.writeFunc(this.buffers[name], newData[name], slot, this.blockSizes[name]);
+            (this.writeFuncs[name] ?? this.writeFuncs.default)(
+                this.buffers[name], newData[name], slot, this.blockSizes[name]
+            );
         };
     }
     // insert new block at given position
@@ -68,7 +77,9 @@ export function AssociativeCache(slotCount) {
         for (const name in newData) {
             if (!this.buffers[name]) continue;
             // TODO: only allow writing of data up to block size
-            this.writeFunc(this.buffers[name], newData[name], newSlot, this.blockSizes[name]);
+            (this.writeFuncs[name] ?? this.writeFuncs.default)(
+                this.buffers[name], newData[name], newSlot, this.blockSizes[name]
+            );
         };
 
         return {
@@ -90,7 +101,9 @@ export function AssociativeCache(slotCount) {
 
     this.readBuffSlotAt = function(name, slotNum) {
         if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
-        return this.readFunc(this.buffers[name], slotNum, this.blockSizes[name]);
+        return (this.readFuncs[name] ?? this.readFuncs.default)(
+            this.buffers[name], slotNum, this.blockSizes[name]
+        );
     }
 
     this.getBuffers = function() {
