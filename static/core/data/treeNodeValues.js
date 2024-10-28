@@ -442,6 +442,7 @@ export var createMatchedDynamicCornerValues = (dataObj, slotNum) => {
         dataObj.dynamicNodeCache.createBuffer(buffName, Float32Array, 8);
     }
 
+    // make sure that the corner buffer is synchronised to the currently loaded nodes
     dataObj.dynamicNodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
     
     return dataObj.dynamicNodeCache.getBuffers()[buffName];

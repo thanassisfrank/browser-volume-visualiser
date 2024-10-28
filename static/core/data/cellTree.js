@@ -1,6 +1,6 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
-import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo } from "./cellTreeUtils.js";
+import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer } from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
     VERT_MEDIAN:    1,
@@ -37,6 +37,73 @@ export const logLeafMeshBufferSizes = (dataObj) => {
     navigator.clipboard.writeText(str);
 
     console.log("samples copied to clipboard!")
+}
+
+export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
+    var leafPositions = new Float32Array(blockSizes.positions * leafCount);
+    var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
+    var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
+
+    var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
+
+    var fullToLeafIndexMap = new Map();
+
+    var currLeafIndex = 0;
+    // iterate through nodes, check for leaf
+    for (let i = 0; i < dataObj.data.treeNodeCount; i++) {
+        let currNode = readNodeFromBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH);
+        if (0 != currNode.rightPtr) continue;
+
+        // this is a leaf node, generate the mesh segments for it
+        let currOffsetIndex = 0;
+        let currConnectivityIndex = 0;
+        let currVertIndex = 0;
+        // iterate through the cells in this leaf
+        const uniqueVerts = new Map();
+        var cellsPtr = currNode.leftPtr; // go to where cells are stored
+        for (let i = 0; i < currNode.cellCount; i++) {
+            // go through and check all the contained cells
+            var cellID = dataObj.data.treeCells[cellsPtr + i];
+            var pointsOffset = dataObj.data.cellOffsets[cellID];
+            // add a new entry into cell offsets (4 more than last as all tets)
+            leafCellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
+
+            // iterate through cell connectivity pointers
+            for (let j = 0; j < 4; j++) {
+                let thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                let thisPointBlockIndex;
+                // check if the offset points to a vert already pulled in
+                if (uniqueVerts.has(thisPointIndex)) {
+                    // get the local block-level position
+                    thisPointBlockIndex = uniqueVerts.get(thisPointIndex);
+                } else {
+                    // its position is the next free space
+                    thisPointBlockIndex = currVertIndex;
+                    // add to list of verts in this leaf
+                    leafVerts[currLeafIndex * blockSizes.positions/3 + currVertIndex] = thisPointIndex;
+                    // pull in vert into next free vert slot
+                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 0] = dataObj.data.positions[3 * thisPointIndex + 0];
+                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 1] = dataObj.data.positions[3 * thisPointIndex + 1];
+                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
+                    // add to unique verts list
+                    uniqueVerts.set(thisPointIndex, currVertIndex++);
+                }
+                // add connectivity entry for vert position within the block
+                leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
+            }  
+        }
+
+        // update index map to allow full node index -> leaf node index
+        fullToLeafIndexMap.set(i, currLeafIndex++);
+    }
+
+    return {
+        positions: leafPositions,
+        cellOffsets: leafCellOffsets,
+        cellConnectivity: leafCellConnectivity,
+        leafVerts: leafVerts,
+        indexMap: fullToLeafIndexMap
+    }
 }
 
 // generates the cell tree for fast lookups in unstructured data
