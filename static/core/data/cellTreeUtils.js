@@ -2,6 +2,7 @@
 
 import { mat4, vec4 } from "../gl-matrix.js";
 import { VecMath } from "../VecMath.js";
+import { ResolutionModes } from "./data.js";
 
 export const NODE_BYTE_LENGTH = 5 * 4;
 
@@ -237,8 +238,93 @@ var pointInTetBounds = (queryPoint, cell) => {
     return pointInAABB(queryPoint, {min: minVec, max: maxVec});
 }
 
+const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
+    var cell = {
+        points : [
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0],
+        ],
+        values : [0, 0, 0, 0],
+        pointsIndices: [0, 0, 0, 0]
+    };
+    
+    var cellsPtr = leafNode.leftPtr; // go to where cells are stored
+    var cellID = dataObj.data.treeCells[cellsPtr + index];
+    var pointsOffset = dataObj.data.cellOffsets[cellID];
+    // read all the point positions
+    for (let j = 0; j < 4; j++) {
+        // get the coords of the point as an array 3
+        const thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+        cell.pointsIndices[j] = thisPointIndex;
+        cell.points[j][0] = dataObj.data.positions[3 * thisPointIndex + 0];
+        cell.points[j][1] = dataObj.data.positions[3 * thisPointIndex + 1];
+        cell.points[j][2] = dataObj.data.positions[3 * thisPointIndex + 2];
+    }
+    if (slotNum) {
+        cell.values[0] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]];
+        cell.values[1] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 1]];
+        cell.values[2] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 2]];
+        cell.values[3] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 3]];
+    }
+}
+
+const getCellAtIndexBlockMesh = (dataObj, leafNode, index, slotNum) => {
+    var cell = {
+        points : [
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0], 
+            [0, 0, 0],
+        ],
+        values : [0, 0, 0, 0],
+        pointsIndices: [0, 0, 0, 0]
+    };
+    
+    // check the cells in the leaf node found
+    let blockPtr = leafNode.leftPtr; // the index of the mesh block
+    let offPtr = data.meshBlockSizes.cellOffsets * blockPtr;
+    let posPtr = data.meshBlockSizes.positions * blockPtr;
+    let conPtr = data.meshBlockSizes.cellConnectivity * blockPtr;
+
+    var pointsOffset = dataObj.data.cellOffsets[offPtr + index * 4];
+    // read all the point positions
+    for (let j = 0; j < 4; j++) {
+        // get the coords of the point as an array 3
+        const thisPointIndex = dataObj.data.cellConnectivity[conPtr + pointsOffset + j];
+        cell.pointsIndices[j] = thisPointIndex;
+        cell.points[j][0] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 0];
+        cell.points[j][1] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 1];
+        cell.points[j][2] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 2];
+    }
+    if (slotNum) {
+        const valPtr = posPtr/3;
+        cell.values[0] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 0]];
+        cell.values[1] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 1]];
+        cell.values[2] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 2]];
+        cell.values[3] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 3]];
+    }
+}
+
+
+
+function* iterateLeafCells(dataObj, leafNode, slotNum) {
+    // check the cells in the leaf node found
+    for (let i = 0; i < leafNode.cellCount; i++) {
+        // go through and check all the contained cells
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+            yield getCellAtIndexBlockMesh(dataObj, leafNode, i, slotNum);
+        } else {
+            yield getCellAtIndex(dataObj, leafNode, i, slotNum);
+        }
+    }
+    return;
+}
+
 // searches through all points specified in the leaf node to find the closest to the sample point
 export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) => {
+    /*
     let point = [0, 0, 0];
     let dist = 0;
 
@@ -276,6 +362,26 @@ export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) =
         }   
     }
 
+    */
+
+    let bestPoint = [0, 0, 0];
+    let bestDist = Number.POSITIVE_INFINITY;
+    let val = 0;
+
+    const checked = new Set();
+    for (let cell of iterateLeafCells(dataObj, leafNode, slotNum)) {
+        for (let i = 0; i < cell.points.length; i++) {
+            if (checked.has(cell.pointsIndices[i])) continue;
+            checked.add(cell.pointsIndices[i]);
+            dist = VecMath.magnitude(VecMath.vecMinus(cell.points[i], queryPoint));
+            if (dist < bestDist) {
+                bestPoint = [...cell.points[i]];
+                bestDist = dist;
+                val = cell.values[i];
+            }
+        }
+    }
+
     return {
         position: bestPoint,
         value: val
@@ -284,6 +390,7 @@ export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) =
 
 
 export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
+    /*
     var cell = {
         points : [
             [0, 0, 0], 
@@ -331,6 +438,23 @@ export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
         cell.factors = tetFactors;
         break;
     }
+
+    */
+
+
+    // improved version
+    for (let cell of iterateLeafCells(dataObj, leafNode, slotNum)) {
+        // check if
+        if(!pointInTetBounds(queryPoint, cell)) continue;
+        var tetFactors = pointInTetDet(queryPoint, cell);
+        if (tetFactors.every(v => v == 0)) continue;
+        cell.factors = tetFactors;
+        break;
+    }
+
+
+
+
     return cell;
 }
 
@@ -380,22 +504,30 @@ export const getLeafAverage = (dataObj, slotNum, leafNode, leafBox) => {
 export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
     // console.log(leafNode.thisPtr);
     const cellIndex = Math.floor(Math.random()*leafNode.cellCount);
-    const cellID = dataObj.data.treeCells[leafNode.leftPtr + cellIndex];
-    var pointsOffset = dataObj.data.cellOffsets[cellID];
+    let cell;
+    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+        cell = getCellAtIndexBlockMesh(dataObj, leafNode, index, slotNum);
+    } else {
+        cell = getCellAtIndex(dataObj, leafNode, cellIndex, slotNum);
+    }
 
-    // always choose the first point in the cell
-    const thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + 0];
-    const position = [
-        dataObj.data.positions[3 * thisPointIndex + 0],
-        dataObj.data.positions[3 * thisPointIndex + 1],
-        dataObj.data.positions[3 * thisPointIndex + 2]
-    ];
 
-    const value = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]]
+    // const cellID = dataObj.data.treeCells[leafNode.leftPtr + cellIndex];
+    // var pointsOffset = dataObj.data.cellOffsets[cellID];
+
+    // // always choose the first point in the cell
+    // const thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + 0];
+    // const position = [
+    //     dataObj.data.positions[3 * thisPointIndex + 0],
+    //     dataObj.data.positions[3 * thisPointIndex + 1],
+    //     dataObj.data.positions[3 * thisPointIndex + 2]
+    // ];
+
+    // const value = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]]
     
     return {
-        position: position,
-        value: value
+        position: cell.points[0],
+        value: cell.values[0]
     }
 }
 

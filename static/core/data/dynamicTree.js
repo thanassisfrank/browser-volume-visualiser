@@ -230,44 +230,24 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
 }
 
 
-// updates the dynamic tree buffers based on camera location
-// split nodes that are too large
-// merge nodes that are too small
-export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
-    // get the node scores, n lowest highest
-    performance.mark("scoresStart");
-    const scores = getNodeScores(dataObj, focusCoords, camCoords);
-    performance.mark("scoresEnd");
-    performance.measure("scoresDur", "scoresStart", "scoresEnd");
-
-    performance.mark("sortStart");
-    scores.sort((a, b) => a.score - b.score);
-    performance.mark("sortEnd");
-    performance.measure("sortDur", "sortStart", "sortEnd");
-
-    // scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
-    performance.mark("msStart");
-    const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
-    performance.mark("msEnd");
-    performance.measure("msDur", "msStart", "msEnd");
+// updates the dynamic dataset based on camera location
+// this handles updating the dynamic nodes and dynamic mesh
+export var updateDynamicDataset = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
     
-    // console.log(mergeSplitLists);
-    // update the dynamic buffer contents
-    performance.mark("buffStart");
-    updateDynamicNodeCache(
-        dataObj,
-        dataObj.data.treeNodes, 
-        activeValueSlots,
-        mergeSplitLists
-    );  
-    performance.mark("buffEnd");
-    performance.measure("buffDur", "buffStart", "buffEnd");
-
-    // console.log("Scores", performance.measure("scoresDur", "scoresStart", "scoresEnd").duration);
-    // console.log("Sort", performance.measure("sortDur", "sortStart", "sortEnd").duration);
-    // console.log("MergeSplit", performance.measure("msDur", "msStart", "msEnd").duration);
-    // console.log("Buff", performance.measure("buffDur", "buffStart", "buffEnd").duration);
-    // console.log("updated");  
+    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+        // get the node scores, n lowest highest
+        const scores = getNodeScores(dataObj, focusCoords, camCoords);
+        scores.sort((a, b) => a.score - b.score);
+        const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
+        
+        // update the dynamic buffer contents
+        updateDynamicNodeCache(
+            dataObj,
+            dataObj.data.treeNodes, 
+            activeValueSlots,
+            mergeSplitLists
+        );   
+    }
 }
 
 

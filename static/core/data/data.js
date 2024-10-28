@@ -186,7 +186,7 @@ var dataManager = {
                 });
 
                 console.log(maxCells, maxVerts);
-
+                newData.data.fullLeafCount = leafCount;
                 newData.meshBlockSizes = {
                     positions: 3 * maxVerts,
                     cellOffsets: maxCells,
@@ -194,7 +194,8 @@ var dataManager = {
                 };
                 this.createLeafMeshData(newData, newData.meshBlockSizes, leafCount);
                 this.createDynamicMeshCache(newData, newData.meshBlockSizes, leafCount, opts.dynamicMeshBlockCount);
-                newData.resolutionMode != ResolutionModes.DYNAMIC_CELLS;
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS;
+                console.log("Created dynamic mesh dataset");
             } catch (e) {
                 console.error("Could not create dataset with dynamic cells data:", e)
             }
@@ -469,26 +470,29 @@ function Data(id) {
         treeNodeCount: 0,
         treeNodes: null,
         treeCells: null,
+        fullLeafCount: 0,
 
         dynamicNodeCount: 0,
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
+
+        leafVerts: null,
     };
 
     // objects that handle the state of the dynamic node, corner values and mesh buffers
     this.dynamicNodeCache;
     this.dynamicMeshCache;
 
-    // any additional mesh geometry that is part of the dataset but not part of the mesh
-    this.geometry = {
+    // the lengths of the blocks in the mesh buffers if a block mesh is being used
+    this.meshBlockSizes;
 
-    }
+    // any additional mesh geometry that is part of the dataset but not part of the mesh
+    this.geometry = {}
 
     // information about the data files that have been pre-generated and are available to be laoded from the server
     this.preGeneratedInfo = {};
 
     this.cornerValType = null;
-
 
     this.flowSolutionNode = null;
 
@@ -663,6 +667,7 @@ function Data(id) {
                         data: new DATA_TYPES[this.config.dataType](responseBuffer),
                         limits: this.config.limits,
                     }) - 1;
+                    console.log("loaded raw data");
                     break;
                 case DataFileTypes.CGNS:
                     var data = this.flowSolutionNode.get(name + "/ data").value;
@@ -675,15 +680,26 @@ function Data(id) {
 
                     newSlotNum = this.data.values.push({name: name, data: data, limits: limits}) - 1;
                     break;
+                default:
+                    throw Error("dataset has unsupported file type");
             }            
         } catch (e) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
         }
+        // if the data is in the normal mesh format, reformat to block mesh
+        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) {
+            this.convertValuesToBlockMesh(newSlotNum);
+            console.log("converted values");
+        }
 
         // if this is dynamic, load corner values too
-        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
+        if (ResolutionModes.FULL != this.resolutionMode) {
             await this.createCornerValues(newSlotNum)
+            console.log("created corner vals");
+        }
+        // initialise the dynamic corner values buffer to match dynamic nodes
+        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
         }
 
@@ -734,6 +750,15 @@ function Data(id) {
     // matches the nodes currently loaded in dynamic tree
     this.createDynamicCornerValues = function(slotNum) {
         this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
+    }
+
+    this.convertValuesToBlockMesh = function(slotNum) {
+        // create new buffer to re-write values into
+        // if vert count < block length, value of vert 0 will be written
+        const blockVals = new Float32Array(this.data.leafVerts.length);
+        this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getValues(slotNum)[e]);
+        delete this.data.values[slotNum].data;
+        this.data.values[slotNum].data = blockVals;
     }
 
     this.generateData = function(config) {

@@ -54,6 +54,9 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
         let currNode = readNodeFromBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH);
         if (0 != currNode.rightPtr) continue;
 
+        // TEMP TESTING: write the leaf index into the cells pointer
+        writeNodeToBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex);
+
         // this is a leaf node, generate the mesh segments for it
         let currOffsetIndex = 0;
         let currConnectivityIndex = 0;

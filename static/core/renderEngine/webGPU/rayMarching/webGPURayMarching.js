@@ -398,7 +398,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderable.passData.cornerValType = dataObj.cornerValType;
 
         renderable.passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS;
-        renderable.passData.blockSizes = dataObj.meshBlockSizes;
+        renderable.passData.blockSizes = {
+            positions: dataObj.meshBlockSizes?.positions ?? 0,
+            cellOffsets: dataObj.meshBlockSizes?.cellOffsets ?? 0,
+            cellConnectivity: dataObj.meshBlockSizes?.cellConnectivity ?? 0,
+            valuesA: dataObj.meshBlockSizes?.positions/3 ?? 0,
+            valuesB: dataObj.meshBlockSizes?.positions/3 ?? 0,
+        };
         
         // buffers and other data 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -417,15 +423,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // only handle tetrahedra for now
         // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
         // write the tree buffer
-        if (dataObj.resolutionMode == ResolutionModes.FULL) {
-            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
-            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
-        } else if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
-            // TEMP
-            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data dynamic tree cells");
         } else {
-            throw "Unstructured dataset unsupported resolution mode '" + dataObj.resolutionMode?.toString() + "'";
+            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
+        }
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+            renderData.buffers.treeCells = webGPU.makeBuffer(0, usage, "empty tree cells");
+        } else {
+            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
         }
 
         renderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
@@ -1087,8 +1093,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.blockSizes.positions,
                     renderable.passData.blockSizes.cellOffsets,
                     renderable.passData.blockSizes.cellConnectivity,
-                    renderable.passData.blockSizes.positions/3,
-                    renderable.passData.blockSizes.positions/3,
+                    renderable.passData.blockSizes.valuesA,
+                    renderable.passData.blockSizes.valuesB,
                     0, 0, 0,
                     renderable.passData.usesBlockMesh,
                 ]),
