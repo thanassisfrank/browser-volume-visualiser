@@ -388,6 +388,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         var renderable = new Renderable(RenderableTypes.UNSTRUCTURED_DATA, RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME);
         var renderData = renderable.renderData;
 
+        // information about the data being sent
+        renderable.passData.isoSurfaceSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};
+        renderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
+        renderable.passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};;
+        renderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
+
+        renderable.passData.dMatInv = dataObj.getdMatInv();
+        renderable.passData.cornerValType = dataObj.cornerValType;
+
+        renderable.passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS;
+        renderable.passData.blockSizes = dataObj.meshBlockSizes;
+        
+        // buffers and other data 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
         // console.log(dataObj.data.values.byteLength, dataObj.data.values);
         renderData.buffers.valuesA = webGPU.makeBuffer(0, usage, "empty data vert A values");
@@ -395,16 +408,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         renderData.buffers.cornerValuesA = webGPU.makeBuffer(0, usage, "empty corner values A");
         renderData.buffers.cornerValuesB = webGPU.makeBuffer(0, usage, "empty corner values B");
-
-        renderable.passData.isoSurfaceSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};
-        renderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
-        renderable.passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};;
-        renderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
-
-        // renderable.passData.dataBoxMin = dataObj.extentBox.min;
-        // renderable.passData.dataBoxMax = dataObj.extentBox.max;
-        renderable.passData.dMatInv = dataObj.getdMatInv();
-        renderable.passData.cornerValType = dataObj.cornerValType;
 
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
@@ -1079,7 +1082,16 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.volumeTransferFunction.opacity[2],
                     ...renderable.passData.volumeTransferFunction.colour[3],
                     renderable.passData.volumeTransferFunction.opacity[3],
-                ])
+                ]),
+                new Uint32Array([
+                    renderable.passData.blockSizes.positions,
+                    renderable.passData.blockSizes.cellOffsets,
+                    renderable.passData.blockSizes.cellConnectivity,
+                    renderable.passData.blockSizes.positions/3,
+                    renderable.passData.blockSizes.positions/3,
+                    0, 0, 0,
+                    renderable.passData.usesBlockMesh,
+                ]),
             ]
         );
 

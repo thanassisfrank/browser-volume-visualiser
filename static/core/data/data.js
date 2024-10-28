@@ -187,13 +187,13 @@ var dataManager = {
 
                 console.log(maxCells, maxVerts);
 
-                const blockSizes = {
+                newData.meshBlockSizes = {
                     positions: 3 * maxVerts,
                     cellOffsets: maxCells,
                     cellConnectivity: 4 * maxCells,
                 };
-                this.createLeafMeshData(newData, blockSizes, leafCount);
-                this.createDynamicMeshCache(newData, blockSizes, leafCount, opts.dynamicMeshBlockCount);
+                this.createLeafMeshData(newData, newData.meshBlockSizes, leafCount);
+                this.createDynamicMeshCache(newData, newData.meshBlockSizes, leafCount, opts.dynamicMeshBlockCount);
                 newData.resolutionMode != ResolutionModes.DYNAMIC_CELLS;
             } catch (e) {
                 console.error("Could not create dataset with dynamic cells data:", e)
@@ -376,7 +376,7 @@ var dataManager = {
             console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
             console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
         }
-        
+
         // over write the plain mesh buffers
         dataObj.data.positions = leafMeshBuffers.positions;
         dataObj.data.cellOffsets = leafMeshBuffers.cellOffsets;

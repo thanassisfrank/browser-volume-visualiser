@@ -21,13 +21,23 @@ struct RayMarchPassInfo {
     @size(4)  surfaceColSrc : u32,
     @size(4)  colourScale : u32,
     @size(4)  cornerValType : u32,
-              transferFunction : array<TransferFunctionPoint,4>,
+    @size(64) transferFunction : array<TransferFunctionPoint, 4>,
+    @size(20) blockSizes : MeshBlockSizes,
+    @size(4)  @align(16) usesBlockMesh : u32,
+};
+
+struct MeshBlockSizes {
+    positions: u32,
+    cellOffsets: u32,
+    cellConnectivity: u32,
+    valueA: u32,
+    valueB: u32
 };
 
 struct TransferFunctionPoint {
     col: vec3<f32>,
     opacity : f32,
-}
+};
 
 // a set of flags for settings within the pass
 struct RayMarchPassFlags {

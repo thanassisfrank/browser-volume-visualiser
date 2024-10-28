@@ -8,7 +8,7 @@
 struct CombinedPassInfo {
     @size(208) globalInfo : GlobalUniform,
     @size(160) objectInfo : ObjectInfo,
-    @size(240) passInfo : RayMarchPassInfo,
+    passInfo : RayMarchPassInfo,
 };
 
 // tree nodes can be in one of 3 states:
@@ -254,7 +254,7 @@ fn pointInTetBounds(queryPoint : vec3<f32>, cell : InterpolationCell) -> bool {
     return pointInAABB(queryPoint, AABB(minVec, maxVec, 0u));
 }
 
-
+// the normal mesh version
 fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u32) -> InterpolationCell {
     var cell : InterpolationCell;
 
@@ -321,6 +321,69 @@ fn getContainingCell(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u3
     return cell;
 }
 
+// the version for a block mesh where data is segmented
+fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dataSrc : u32) -> InterpolationCell {
+    var cell : InterpolationCell;
+
+    var cellTest : CellTestResult;
+
+    // check the cells in the leaf node found
+    let blockPtr = leafNode.leftPtr; // the index of the mesh block
+    let offPtr = passInfo.blockSizes.cellOffsets * blockPtr;
+    let posPtr = passInfo.blockSizes.positions * blockPtr;
+    let conPtr = passInfo.blockSizes.cellConnectivity * blockPtr;
+
+    var foundCell = false;
+    var pointsOffset : u32;
+    var p0 : array<f32, 3>;
+    var p1 : array<f32, 3>;
+    var p2 : array<f32, 3>;
+    var p3 : array<f32, 3>;
+    for (var i = 0u; i < leafNode.cellCount; i++) {
+        // local offset into connectivity inside the block
+        pointsOffset = cellOffsets.buffer[offPtr + i * 4];
+
+        p0 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
+        p1 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
+        p2 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 2]];
+        p3 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 3]];
+
+        cell.points[0] = vec3<f32>(p0[0], p0[1], p0[2]);
+        cell.points[1] = vec3<f32>(p1[0], p1[1], p1[2]);
+        cell.points[2] = vec3<f32>(p2[0], p2[1], p2[2]);
+        cell.points[3] = vec3<f32>(p3[0], p3[1], p3[2]);
+
+        // check cell bounding box
+        if (pointInTetBounds(queryPoint, cell)) {
+            cellTest = pointInTetTriple(queryPoint, cell);
+            cell.factors = cellTest.factors;
+            cell.valid = cellTest.inside;
+        }
+
+        if (cell.valid) {break;}
+    }
+
+    if (cell.valid) {
+        switch (dataSrc) {
+            case DATA_SRC_VALUE_A, default {
+                let valAPtr = passInfo.blockSizes.valueA * blockPtr;
+                cell.values[0] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
+                cell.values[1] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
+                cell.values[2] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 2]];
+                cell.values[3] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 3]];
+            }
+            case DATA_SRC_VALUE_B {
+                let valBPtr = passInfo.blockSizes.valueB * blockPtr;
+                cell.values[0] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
+                cell.values[1] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
+                cell.values[2] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 2]];
+                cell.values[3] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 3]];
+            }
+        }
+    }
+
+    return cell;
+}
 
 
 // interpolate inside of a node as a hex cell
@@ -473,7 +536,13 @@ fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
     } else if (currLeafNode.cellCount > 0) {
         // sample the leaf depending on what type it is
         // true leaf, sample the cells within
-        var cell : InterpolationCell = getContainingCell(queryPoint, currLeafNode, dataSrc);
+
+        var cell : InterpolationCell;
+        if (bool(passInfo.usesBlockMesh)) {
+            cell = getContainingCellBlockMesh(queryPoint, currLeafNode, dataSrc);
+        } else {
+            cell = getContainingCell(queryPoint, currLeafNode, dataSrc);
+        }
         // interpolate value
         if (!cell.valid) {
             sampleVal = F32_OUTSIDE_CELLS;
