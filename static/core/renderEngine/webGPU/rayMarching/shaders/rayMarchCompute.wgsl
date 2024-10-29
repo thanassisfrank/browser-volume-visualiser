@@ -328,10 +328,10 @@ fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dat
     var cellTest : CellTestResult;
 
     // check the cells in the leaf node found
-    let blockPtr = leafNode.leftPtr; // the index of the mesh block
-    let offPtr = passInfo.blockSizes.cellOffsets * blockPtr;
-    let posPtr = passInfo.blockSizes.positions * blockPtr;
-    let conPtr = passInfo.blockSizes.cellConnectivity * blockPtr;
+    let blockPtr : u32 = leafNode.leftPtr; // the index of the mesh block
+    let offPtr : u32 = blockPtr * passInfo.blockSizes.cellOffsets;
+    let posPtr : u32 = blockPtr * passInfo.blockSizes.positions/3;
+    let conPtr : u32 = blockPtr * passInfo.blockSizes.cellConnectivity;
 
     var foundCell = false;
     var pointsOffset : u32;
@@ -341,7 +341,7 @@ fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dat
     var p3 : array<f32, 3>;
     for (var i = 0u; i < leafNode.cellCount; i++) {
         // local offset into connectivity inside the block
-        pointsOffset = cellOffsets.buffer[offPtr + i * 4];
+        pointsOffset = cellOffsets.buffer[offPtr + i];
 
         p0 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
         p1 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
@@ -366,14 +366,14 @@ fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dat
     if (cell.valid) {
         switch (dataSrc) {
             case DATA_SRC_VALUE_A, default {
-                let valAPtr = passInfo.blockSizes.valueA * blockPtr;
+                let valAPtr = blockPtr * passInfo.blockSizes.valueA;
                 cell.values[0] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
                 cell.values[1] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
                 cell.values[2] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 2]];
                 cell.values[3] = vertexDataA.buffer[valAPtr + cellConnectivity.buffer[conPtr + pointsOffset + 3]];
             }
             case DATA_SRC_VALUE_B {
-                let valBPtr = passInfo.blockSizes.valueB * blockPtr;
+                let valBPtr = blockPtr * passInfo.blockSizes.valueB;
                 cell.values[0] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
                 cell.values[1] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
                 cell.values[2] = vertexDataB.buffer[valBPtr + cellConnectivity.buffer[conPtr + pointsOffset + 2]];

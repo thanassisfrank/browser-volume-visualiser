@@ -49,21 +49,23 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
     var fullToLeafIndexMap = new Map();
 
     var currLeafIndex = 0;
+
     // iterate through nodes, check for leaf
     for (let i = 0; i < dataObj.data.treeNodeCount; i++) {
         let currNode = readNodeFromBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH);
         if (0 != currNode.rightPtr) continue;
 
         // TEMP TESTING: write the leaf index into the cells pointer
-        writeNodeToBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex);
+        writeNodeToBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
 
         // this is a leaf node, generate the mesh segments for it
         let currOffsetIndex = 0;
         let currConnectivityIndex = 0;
         let currVertIndex = 0;
-        // iterate through the cells in this leaf
         const uniqueVerts = new Map();
-        var cellsPtr = currNode.leftPtr; // go to where cells are stored
+        var cellsPtr = currNode.leftPtr;
+
+        // iterate through all cells in this leaf node
         for (let i = 0; i < currNode.cellCount; i++) {
             // go through and check all the contained cells
             var cellID = dataObj.data.treeCells[cellsPtr + i];
@@ -71,7 +73,7 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
             // add a new entry into cell offsets (4 more than last as all tets)
             leafCellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
 
-            // iterate through cell connectivity pointers
+            // iterate through the cell vertices
             for (let j = 0; j < 4; j++) {
                 let thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
                 let thisPointBlockIndex;
@@ -85,9 +87,9 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
                     // add to list of verts in this leaf
                     leafVerts[currLeafIndex * blockSizes.positions/3 + currVertIndex] = thisPointIndex;
                     // pull in vert into next free vert slot
-                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 0] = dataObj.data.positions[3 * thisPointIndex + 0];
-                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 1] = dataObj.data.positions[3 * thisPointIndex + 1];
-                    leafPositions[currLeafIndex * blockSizes.positions + currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 0] = dataObj.data.positions[3 * thisPointIndex + 0];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 1] = dataObj.data.positions[3 * thisPointIndex + 1];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
                     // add to unique verts list
                     uniqueVerts.set(thisPointIndex, currVertIndex++);
                 }

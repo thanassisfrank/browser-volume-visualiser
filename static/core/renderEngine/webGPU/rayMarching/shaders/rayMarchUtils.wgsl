@@ -473,7 +473,7 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32,
 
     if (passFlags.showSurfLeafCells) {
         var cellCount : u32 = getNodeCellCountAtPoint(tipDataPos);
-        let threshold : u32 = 64;
+        let threshold : u32 = 128;
         
         if (0u == cellCount) {
             material.diffuseCol = vec3<f32>(0, 0, 1);

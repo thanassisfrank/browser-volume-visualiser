@@ -742,7 +742,7 @@ function Data(id) {
 
         }
         if (found) return;
-        console.log("generating tree");
+        console.log("generating corner vals");
         this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
     }
 
@@ -757,7 +757,7 @@ function Data(id) {
         // if vert count < block length, value of vert 0 will be written
         const blockVals = new Float32Array(this.data.leafVerts.length);
         this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getValues(slotNum)[e]);
-        delete this.data.values[slotNum].data;
+        // delete this.data.values[slotNum].data;
         this.data.values[slotNum].data = blockVals;
     }
 
