@@ -3,12 +3,14 @@
 
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
-import { createDynamicTreeNodes, getCellTreeBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { getCellTreeBuffers, getLeafMeshBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
+import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 
 export {dataManager};
 
@@ -19,9 +21,11 @@ export const DataFormats = {
     UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
 }
 
+// these act as 
 export const ResolutionModes = {
-    FULL:    0, // resolution is fixed at the maximum 
-    DYNAMIC: 1, // the resolution is variable
+    FULL:          0b00, // resolution is fixed at the maximum 
+    DYNAMIC_NODES: 0b01, // the resolution is variable
+    DYNAMIC_CELLS: 0b10, // cell and vertex data are arranged per-leaf
 }
 
 export const DataFileTypes = {
@@ -159,18 +163,48 @@ var dataManager = {
             newData.setCornerValType(opts.cornerValType);
         }
 
-        // create dynamic tree
-        if (opts.createDynamic) {
+        // create dynamic tree (nodes)
+        if (opts.dynamicNodes) {
             try {
                 this.createDynamicTree(newData, opts.dynamicNodeCount);
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
             } catch (e) {
-                console.error("Could not create a dynamic dataset:", e)
+                console.error("Could not create dataset with dynamic node set:", e)
+            }
+        }
+
+        // create dynamic mesh information
+        if (opts.dynamicMesh) {
+            try {
+                var maxCells = 0; // max number of cells found within the leaf nodes
+                var maxVerts = 0; // max number of unique verts found in the leaf nodes
+                var leafCount = 0;
+                processLeafMeshDataInfo(newData, l => {
+                    maxCells = Math.max(maxCells, l.cells);
+                    maxVerts = Math.max(maxVerts, l.verts);
+                    leafCount++;
+                });
+
+                console.log(maxCells, maxVerts);
+                newData.data.fullLeafCount = leafCount;
+                newData.meshBlockSizes = {
+                    positions: 3 * maxVerts,
+                    cellOffsets: maxCells,
+                    cellConnectivity: 4 * maxCells,
+                };
+                this.createLeafMeshData(newData, newData.meshBlockSizes, leafCount);
+                this.createDynamicMeshCache(newData, newData.meshBlockSizes, leafCount, opts.dynamicMeshBlockCount);
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS;
+                console.log("Created dynamic mesh dataset");
+            } catch (e) {
+                console.error("Could not create dataset with dynamic cells data:", e)
             }
         }
 
         this.datas[id] = newData;
         return newData;
     },
+
     downsampleStructured: function(dataObj, scale) {
         var fullDataSize = dataObj.getDataSize(); // the size in data points
         var dataSize = [
@@ -317,26 +351,61 @@ var dataManager = {
         dataObj.data.treeNodes = treeBuffers.nodes;
         dataObj.data.treeCells = treeBuffers.cells;
         dataObj.data.treeNodeCount = treeBuffers.nodeCount;
-
     },
 
-
+    // create the unstructured tree with a varying subset of the nodes
+    // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
         if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic tree, dataset not of dataFormat UNSTRUCTURED";
-        // dataObj.data.nodeVals = createNodeValuesBuffer(dataObj);
-        // addNodeValsToFullTree(dataObj.data.treeNodes, dataObj.data.nodeVals);
-        // dataObj.data.cornerValues = createNodeCornerValuesBuffer(dataObj);
-        if (dynamicNodeCount > dataObj.data.treeNodeCount) {
-            console.warn("Attempted to create dynamic tree that is too large, falling back to total nodes in dataset");
+        
+        if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
+            console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
+            return;
+        }
+        dataObj.data.dynamicNodeCount = dynamicNodeCount;
+
+        dataObj.dynamicNodeCache = createDynamicNodeCache(dataObj, dynamicNodeCount);
+        console.log(dataObj.dynamicNodeCache);
+        dataObj.data.dynamicTreeNodes = dataObj.dynamicNodeCache.getBuffers().nodes;
+    },
+
+    // converts the geometry buffers and generates a new buffer tracking the vertices for each leaf
+    createLeafMeshData: function(dataObj, blockSizes, leafCount) {
+        // create the new buffers
+        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
+        for (let name of ["positions", "cellOffsets", "cellConnectivity"]) {
+            console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
+            console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
         }
 
-        var nodes = Math.min(dynamicNodeCount, dataObj.data.treeNodeCount);
-        dataObj.data.dynamicNodeCount = nodes;
+        // over write the plain mesh buffers
+        dataObj.data.positions = leafMeshBuffers.positions;
+        dataObj.data.cellOffsets = leafMeshBuffers.cellOffsets;
+        dataObj.data.cellConnectivity = leafMeshBuffers.cellConnectivity;
 
-        dataObj.data.dynamicTreeNodes = createDynamicTreeNodes(dataObj, nodes);
-        // dataObj.data.dynamicCornerValues = dynamicBuffers.cornerValues;
+        dataObj.data.leafVerts = leafMeshBuffers.leafVerts;
+        dataObj.fullToLeafIndexMap = leafMeshBuffers.indexMap;
 
-        dataObj.resolutionMode = ResolutionModes.DYNAMIC;
+        console.log(leafMeshBuffers);
+    },
+
+    // create dynamic mesh buffers that contain a varying subset of the leaves cell data
+    // fixed number of data slots
+    createDynamicMeshCache: function(dataObj, blockSizes, fullLeafCount, dynamicLeafCount) {
+        if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic cells, dataset not of dataFormat UNSTRUCTURED";
+        
+        // the total number of leaves of a binary tree of node count n is n/2
+        if (dynamicLeafCount >= fullLeafCount) {
+            console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
+            return;
+        }
+
+        dataObj.dynamicMeshCache = createDynamicMeshCache(blockSizes, dynamicLeafCount);
+
+        const buffers = dataObj.dynamicMeshCache.getBuffers();
+        dataObj.data.dynamicPositions = buffers.positions;
+        dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
+        dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
     },
     
     addUser: function(data) {
@@ -392,30 +461,43 @@ function Data(id) {
 
         // the geometry
         positions: null,
-        cellConnectivity: null,
         cellOffsets: null,
+        cellConnectivity: null,
         cellTypes: null,
+
+        dynamicPositions: null,
+        dynamicCellOffsets: null,
+        dynamicCellConnectivity: null,
+
         // 1-based indexing compatability
         zeroBased: true,
         // spatial acceleration structure
+        treeNodeCount: 0,
         treeNodes: null,
         treeCells: null,
-        treeNodeCount: 0,
+        fullLeafCount: 0,
+
         dynamicNodeCount: 0,
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
+
+        leafVerts: null,
     };
 
-    // any additional mesh geometry that is part of the dataset but not part of the mesh
-    this.geometry = {
+    // objects that handle the state of the dynamic node, corner values and mesh buffers
+    this.dynamicNodeCache;
+    this.dynamicMeshCache;
 
-    }
+    // the lengths of the blocks in the mesh buffers if a block mesh is being used
+    this.meshBlockSizes;
+
+    // any additional mesh geometry that is part of the dataset but not part of the mesh
+    this.geometry = {}
 
     // information about the data files that have been pre-generated and are available to be laoded from the server
     this.preGeneratedInfo = {};
 
     this.cornerValType = null;
-
 
     this.flowSolutionNode = null;
 
@@ -590,6 +672,7 @@ function Data(id) {
                         data: new DATA_TYPES[this.config.dataType](responseBuffer),
                         limits: this.config.limits,
                     }) - 1;
+                    console.log("loaded raw data");
                     break;
                 case DataFileTypes.CGNS:
                     var data = this.flowSolutionNode.get(name + "/ data").value;
@@ -602,20 +685,66 @@ function Data(id) {
 
                     newSlotNum = this.data.values.push({name: name, data: data, limits: limits}) - 1;
                     break;
+                default:
+                    throw Error("dataset has unsupported file type");
             }            
         } catch (e) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
         }
+        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) {
+            // if the data is in the normal mesh format, reformat to block mesh
+            this.convertValuesToBlockMesh(newSlotNum);
+            console.log("converted values");
+            // create new entry in the dynamic mesh cache object
+            this.createDynamicBlockValues(newSlotNum);
+            console.log("created dynamic values")
+        }
 
         // if this is dynamic, load corner values too
-        if (ResolutionModes.DYNAMIC == this.resolutionMode) {
+        if (ResolutionModes.FULL != this.resolutionMode) {
             await this.createCornerValues(newSlotNum)
+            console.log("created corner vals");
+        }
+        // initialise the dynamic corner values buffer to match dynamic nodes
+        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
+            console.log("created dynamic corners")
         }
 
 
         return newSlotNum;
+    }
+
+    // gets the data describing the mesh geometry and values for the mesh of this node
+    // if this node is not a leaf, returns undefined
+    this.getNodeMeshBlock = function(nodeIndex, valueSlots) {
+        if (!this.fullToLeafIndexMap.has(nodeIndex)) return;
+        const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
+        // slice the mesh geometry buffers
+        let buffers = {
+            positions: this.data.positions.slice(
+                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions 
+            ),
+            cellOffsets: this.data.cellOffsets.slice(
+                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets 
+            ),
+            cellConnectivity: this.data.cellConnectivity.slice(
+                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity 
+            )
+        };
+
+        // slice the needed value buffers
+        for (const slotNum of valueSlots) {
+            const values = this.getFullValues(slotNum);
+            if (!values) continue;
+            buffers["values" + slotNum] = values.slice(
+                leafIndex * this.meshBlockSizes.positions/3, (leafIndex + 1) * this.meshBlockSizes.positions/3
+            );
+        }
+
+        // return the buffers together
+        return buffers;
     }
 
     this.setCornerValType = function(type) {
@@ -646,7 +775,7 @@ function Data(id) {
 
         }
         if (found) return;
-        console.log("generating tree");
+        console.log("generating corner vals");
         this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
     }
 
@@ -654,6 +783,19 @@ function Data(id) {
     // matches the nodes currently loaded in dynamic tree
     this.createDynamicCornerValues = function(slotNum) {
         this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
+    }
+
+    this.convertValuesToBlockMesh = function(slotNum) {
+        // create new buffer to re-write values into
+        // if vert count < block length, value of vert 0 will be written
+        const blockVals = new Float32Array(this.data.leafVerts.length);
+        this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getFullValues(slotNum)[e]);
+        // delete this.data.values[slotNum].data;
+        this.data.values[slotNum].data = blockVals;
+    }
+
+    this.createDynamicBlockValues = function(slotNum) {
+        this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
     }
 
     this.generateData = function(config) {
@@ -683,7 +825,7 @@ function Data(id) {
 
     // returns the byte length of the values array
     this.getValuesByteLength = function(slotNum) {
-        return this.data.values[slotNum]?.data.byteLength;
+        return this.getValues(slotNum).byteLength;
     }
     this.getLimits = function(slotNum) {
         return this.data.values[slotNum]?.limits;
@@ -768,6 +910,7 @@ function Data(id) {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return this.getDataSize().join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
+            // TODO: update to support dynamic mesh formatted buffers
             return this.data.cellOffsets.length.toLocaleString() + "u";
         }
         return "";
@@ -781,12 +924,25 @@ function Data(id) {
         return this.data.dynamicNodeCount;
     }
 
+
     this.getValues = function(slotNum) {
+        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) return this.getDynamicValues(slotNum);
+        return this.getFullValues(slotNum);
+    }
+
+    this.getFullValues = function(slotNum) {
         return this.data.values?.[slotNum]?.data;
     }
+
+    this.getDynamicValues = function(slotNum) {
+        return this.data.values?.[slotNum]?.dynamicData;
+    }
+
+
+    // fetching the corner values buffers
     this.getCornerValues = function(slotNum) {
-        if (ResolutionModes.DYNAMIC == this.resolutionMode) return this.getDynamicCornerValues(slotNum);
-        if (ResolutionModes.FULL == this.resolutionMode) return this.getFullCornerValues(slotNum);
+        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+        return this.getFullCornerValues(slotNum);
     }
     this.getFullCornerValues = function(slotNum) {
         return this.data.values?.[slotNum]?.cornerValues;
@@ -794,6 +950,7 @@ function Data(id) {
     this.getDynamicCornerValues = function(slotNum) {
         return this.data.values?.[slotNum]?.dynamicCornerValues;
     }
+
     
     this.getName = function() {
         return this?.config?.name || "Unnamed data";

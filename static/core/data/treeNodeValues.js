@@ -59,26 +59,11 @@ const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
         [leafBox.min[0], leafBox.max[1], leafBox.max[2]],
         leafBox.max,
     ];
-    let val;
+    // debugger;
     for (let i = 0; i < points.length; i++) {
-        // val = sampleLeaf(dataObj, slotNum, leafNode, points[i]);
-        // if (null == val) {
-        //     val = getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
-        // }
-        // cornerVals[i] = val;
         cornerVals[i] = sampleLeaf(dataObj, slotNum, leafNode, points[i]) ?? getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
     }
-
-    // cornerVals[1] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
-    // cornerVals[2] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
-    // cornerVals[3] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
-    // cornerVals[4] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
-    // cornerVals[5] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
-    // cornerVals[6] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
-    // cornerVals[7] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.max);
-
     
-
     return cornerVals;
 }
 
@@ -414,7 +399,7 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
 }
 
 
-
+// generates the corner values for the full node tree of the data set
 export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
     if (CornerValTypes.SAMPLE == type) {
         return createNodeSampleCornerValuesBuffer(dataObj, slotNum);
@@ -426,48 +411,26 @@ export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
 }
 
 // creates or modifies the dynamic corner values buffer 
-// agnocis to samples vs poly
+// agnostic to samples vs poly
+// extends the cache object used for dynamic nodes
 export var createMatchedDynamicCornerValues = (dataObj, slotNum) => {
     // use existing or create new
-    var nodeCount = dataObj.getDynamicNodeCount();
-    var dynamicCornerValues = dataObj.getDynamicCornerValues(slotNum) ?? new Float32Array(8 * nodeCount);
     var fullCornerValues = dataObj.getFullCornerValues(slotNum);
-
+    
     if (!fullCornerValues) {
         throw Error("Unable to generate dynamic corner values, full corner values does not exist for slot " + slotNum);
     }
-
-    var dynamicNodes = dataObj.data.dynamicTreeNodes;
-    var fullNodes = dataObj.data.treeNodes;
-
-    var nodes = [readNodeFromBuffer(dynamicNodes, 0)];
-
-    while (nodes.length > 0) {
-        var currNode = nodes.pop();
-        var currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);  
         
-        writeCornerVals(
-            dynamicCornerValues,
-            currNode.thisPtr,
-            readCornerVals(fullCornerValues, currFullNode.thisPtr)
-        );
-        
-        if (currNode.rightPtr != 0) {
-            // add its children to the next nodes
-            var rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
-            var leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
-            nodes.push({
-                ...rightNode, 
-                thisFullPtr: currFullNode.rightPtr,
-            });
-            nodes.push({
-                ...leftNode, 
-                thisFullPtr: currFullNode.leftPtr,
-            });
-        }
+    const buffName = "corners" + slotNum; 
+    if (!dataObj.dynamicNodeCache.getBuffers()[buffName] ) {
+        // create if not present
+        dataObj.dynamicNodeCache.createBuffer(buffName, Float32Array, 8);
     }
+
+    // make sure that the corner buffer is synchronised to the currently loaded nodes
+    dataObj.dynamicNodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
     
-    return dynamicCornerValues;
+    return dataObj.dynamicNodeCache.getBuffers()[buffName];
 }
 
 

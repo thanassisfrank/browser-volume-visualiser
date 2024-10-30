@@ -9,7 +9,7 @@ import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { Axes, SceneGraph } from "./core/renderEngine/sceneObjects.js";
 
 import { DataFormats, dataManager, ResolutionModes } from "./core/data/data.js";
-import { updateDynamicTreeBuffers } from "./core/data/cellTree.js";
+import { updateDynamicDataset } from "./core/data/dynamicTree.js";
 
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
@@ -423,6 +423,7 @@ function View(id, camera, data, renderMode) {
             case DataSrcTypes.DATA:
                 // load data
                 slotNum = await this.data.loadDataArray(name);
+                console.log("slotnum is " + slotNum);
                 if (slotNum == -1) return;
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
@@ -506,8 +507,8 @@ function View(id, camera, data, renderMode) {
         var focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
 
         // need to find the camera position in world space
-        if (this.data.resolutionMode == ResolutionModes.DYNAMIC && this.updateDynamicTree) {
-            updateDynamicTreeBuffers(
+        if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
+            updateDynamicDataset(
                 this.data, 
                 0, 
                 focusPoint,  

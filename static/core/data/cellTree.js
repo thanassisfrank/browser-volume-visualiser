@@ -1,9 +1,6 @@
 // cellTree.js
-// allows creating a kd based cell tree
-// manages
-import { NODE_BYTE_LENGTH, ChildTypes, writeNodeToBuffer, readNodeFromBuffer, getNodeBox, pivotFull, forEachDepth } from "./cellTreeUtils.js";
-import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
-import { VecMath } from "../VecMath.js";
+// provides functions to create and manage full resolution trees generated on unstructured meshes
+import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer } from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
     VERT_MEDIAN:    1,
@@ -13,417 +10,106 @@ export const KDTreeSplitTypes = {
     VOLUME_HEUR:    5
 }
 
+// finds the sizes of the buffers required for each leaf to store its part of the mesh
+// logs this to the console
+export const logLeafMeshBufferSizes = (dataObj) => {
+    const leafInfo = [];
 
-// calculates a score for the box
-// high score -> too big -> split
-// low score -> too small -> merge
-// box size/distance from focus point
-// modified by distance of camera -> focus point
-// > closer -> 
-var calcBoxScore = (box, focusCoords, camToFocDist) => {
-    // get corner-to-corner length of the box
-    // var length = VecMath.magnitude(VecMath.vecMinus(box.max, box.min));
-    var lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
-    var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
-    // distance of box from camera
-    // var distToCam = VecMath.magnitude(VecMath.vecMinus(camCoords, mid));
-    // distance of box from focus
-    var distToFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, mid));
-    // distance of camera from focus
-    // var camtoFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
+    processLeafMeshDataInfo(dataObj, d => leafInfo.push(d));
 
-    // original
-    // return lMax/Math.pow(dist, 0.8);
+    // bufferBytes.offsets.sort((a, b) => a.size - b.size);
 
-    // return Math.max(0, length - 0.01*(dist * (50 - camDist)));
+    var str = ""
 
+    // for (let name of ["offsets"]) {
+    //     const minVal = bufferBytes[name][0].size;
+    //     const maxVal = bufferBytes[name].at(-1).size;
+    //     console.log("min " + name + " size " + minVal.toString() + "B");
+    //     console.log("max " + name + " size " + maxVal.toString() + "B");
+    // }
 
-    // var score = lMax/distToCam; // visual size estimate
-    // if (camDist/dist > 2) score /= camDist; // focus spot bonus
-    // score += Math.pow(camtoFoc/distToFoc, 1.5);
-    // score += Math.pow(2, -Math.pow(camtoFoc/distToFoc, 2))/camtoFoc;
+    str += "cells\tverts\tdepth\n";
 
-    // most successful so far
-    // return lMax/distToCam * Math.max(0, (5-Math.abs(distToFoc)/camtoFoc)/camtoFoc);
+    str += leafInfo.map((e, i) => 
+        e.cells.toString() + "\t" + e.verts.toString() + "\t" + e.depth.toString()
+    ).join("\n");
 
-    // score seems to be too focussed on centre
-    // return  lMax + Math.min(5, Math.max(-1, (2-Math.abs(distToFoc/2)/(0.1*camtoFoc))/(0.1*camtoFoc)));
+    navigator.clipboard.writeText(str);
 
-    // target length approach
-    // return lMax - Math.max(0, Math.abs(distToFoc/2))
-    return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
-
-
-    
+    console.log("samples copied to clipboard!")
 }
 
+export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
+    var leafPositions = new Float32Array(blockSizes.positions * leafCount);
+    var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
+    var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
 
-// calculate the scores for the current leaf nodes, true leaf or pruned
-// returns a list of leaf node objects containing their score
-// assumes camera coords is in the dataset coordinate space
-function getNodeScores (dataObj, focusCoords, camCoords) {
-    // console.log(threshold);
-    var dynamicNodes = dataObj.data.dynamicTreeNodes;
-    var fullNodes = dataObj.data.treeNodes;
-    var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
+    var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
 
-    const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));;
+    var fullToLeafIndexMap = new Map();
 
-    var scores = [];
+    var currLeafIndex = 0;
 
-    var rootNode = readNodeFromBuffer(dynamicNodes, 0);
-    rootNode.depth = 0;
-    var rootBox = {
-        max: [...dataObj.extentBox.max],
-        min: [...dataObj.extentBox.min],
-    };
+    // iterate through nodes, check for leaf
+    for (let i = 0; i < dataObj.data.treeNodeCount; i++) {
+        let currNode = readNodeFromBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH);
+        if (0 != currNode.rightPtr) continue;
 
-    // the next nodes to process
-    var nodes = [rootNode];
-    var boxes = [rootBox];
-    var processed = 0;
-    while (nodes.length > 0 && processed < nodeCount * 3) {
-        processed++;
-        const currNode = nodes.pop();
-        const currBox = boxes.pop();
-        if (currNode.rightPtr == 0) {
-            // this is a leaf node, get its score
-            currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
-            scores.push(currNode);
+        // This is needed to be able to properly address a leaf node's cells
+        writeNodeToBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
 
-        } else {
-            // get the ptr to the children in the full buffer
-            const currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
-            // add its children to the next nodes
-            const rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
-            const leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
-            const bothLeaves = leftNode.rightPtr == 0 && rightNode.rightPtr == 0;
+        // this is a leaf node, generate the mesh segments for it
+        let currOffsetIndex = 0;
+        let currConnectivityIndex = 0;
+        let currVertIndex = 0;
+        const uniqueVerts = new Map();
+        var cellsPtr = currNode.leftPtr;
 
-            rightNode.thisFullPtr = currFullNode.rightPtr;
-            rightNode.bothSiblingsLeaves = bothLeaves;
-            rightNode.depth = currNode.depth + 1;
-            nodes.push(rightNode);
-            
-            const rightBox = {
-                min: [currBox.min[0], currBox.min[1], currBox.min[2]],
-                max: [currBox.max[0], currBox.max[1], currBox.max[2]],
-            };
-            rightBox.min[currNode.depth % 3] = currNode.splitVal;
-            boxes.push(rightBox);
+        // iterate through all cells in this leaf node
+        for (let i = 0; i < currNode.cellCount; i++) {
+            // go through and check all the contained cells
+            var cellID = dataObj.data.treeCells[cellsPtr + i];
+            var pointsOffset = dataObj.data.cellOffsets[cellID];
+            // add a new entry into cell offsets (4 more than last as all tets)
+            leafCellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
 
-
-            leftNode.thisFullPtr = currFullNode.leftPtr;
-            leftNode.bothSiblingsLeaves = bothLeaves;
-            leftNode.depth = currNode.depth + 1;
-            nodes.push(leftNode);
-
-            const leftBox = {
-                min: [currBox.min[0], currBox.min[1], currBox.min[2]],
-                max: [currBox.max[0], currBox.max[1], currBox.max[2]],
-            };
-            leftBox.max[currNode.depth % 3] = currNode.splitVal;
-            boxes.push(leftBox);
+            // iterate through the cell vertices
+            for (let j = 0; j < 4; j++) {
+                let thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                let thisPointBlockIndex;
+                // check if the offset points to a vert already pulled in
+                if (uniqueVerts.has(thisPointIndex)) {
+                    // get the local block-level position
+                    thisPointBlockIndex = uniqueVerts.get(thisPointIndex);
+                } else {
+                    // its position is the next free space
+                    thisPointBlockIndex = currVertIndex;
+                    // add to list of verts in this leaf
+                    leafVerts[currLeafIndex * blockSizes.positions/3 + currVertIndex] = thisPointIndex;
+                    // pull in vert into next free vert slot
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 0] = dataObj.data.positions[3 * thisPointIndex + 0];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 1] = dataObj.data.positions[3 * thisPointIndex + 1];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
+                    // add to unique verts list
+                    uniqueVerts.set(thisPointIndex, currVertIndex++);
+                }
+                // add connectivity entry for vert position within the block
+                leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
+            }  
         }
-    }
 
-    // return the unsorted scores 
-    return scores;
-}
-
-// takes the full scores list and returns a list of nodes to split and a list to merge
-// these will have length equal to count
-// the split list contains pruned leaves that should be split
-// the merge list contains leaves that should be merged with their siblings
-var createMergeSplitLists = (fullNodes, scores, maxCount) => {
-    // proportion of the scores to search for nodes to split and merge
-    // combats flickering 
-    const searchProp = 1;
-    var mergeList = [];
-    var splitList = [];
-
-    let currNode, currFullNode;
-
-    let lowestSplitIndex = scores.length - 1;
-    // create the split list first
-    for (let i = scores.length - 1; i >= Math.max(0, scores.length * (1 - searchProp)); i--) {
-        if (splitList.length >= maxCount) break;
-        currNode = scores[i];
-        currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
-        // can't be split if its a true leaf
-        if (currFullNode.rightPtr == 0) continue;
-
-        // passed all checks
-        splitList.push(currNode);
-        lowestSplitIndex = i;
-    }
-
-    // create merge list
-    // only go up to the lowest split index to prevent nodes included in both
-    for (let i = 0; i < Math.min(lowestSplitIndex, scores.length * searchProp); i++) {
-        // check if we have enough
-        if (mergeList.length >= maxCount) break;
-        currNode = scores[i];
-        // can't be merged if sibling not a leaf
-        if (!currNode.bothSiblingsLeaves) continue;
-        // check if sibling is in split list
-        // check if the same parent appears there
-        if (!splitList.every(x => x.parentPtr != currNode.parentPtr)) continue;
-        // check if sibling is already in merge list
-        if (!mergeList.every(x => x.parentPtr != currNode.parentPtr)) continue;
-
-
-        // passed all checks
-        mergeList.push(currNode);
+        // update index map to allow full node index -> leaf node index
+        fullToLeafIndexMap.set(i, currLeafIndex++);
     }
 
     return {
-        merge: mergeList,
-        split: splitList
+        positions: leafPositions,
+        cellOffsets: leafCellOffsets,
+        cellConnectivity: leafCellConnectivity,
+        leafVerts: leafVerts,
+        indexMap: fullToLeafIndexMap
     }
 }
-
-
-var changeNodeBufferContents = (dataObj, dynamicNodes, fullNodes, activeValueSlots, scores) => {
-    // find the amount of changes we can now make
-    // var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
-    const changeCount = Math.min(scores.merge.length, scores.split.length);
-    // cap this at 1
-    // changeCount = Math.min(1, changeCount);
-    // console.log(changeCount);
-
-    // merge the leaves with the highest scores with their siblings (delete 2 per change)
-    var freePtrs = [];
-    for (let i = 0; i < changeCount; i++) {
-        // console.log("pruning", scores.low[i].parentPtr);
-        var parentNode = readNodeFromBuffer(dynamicNodes, scores.merge[i].parentPtr * NODE_BYTE_LENGTH);
-        // var parentFullPtr = readNodeFromBuffer(fullNodes, scores.merge[i]).parentPtr;
-        freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
-        // convert the parentNode to a pruned leaf
-        writeNodeToBuffer(
-            dynamicNodes, 
-            scores.merge[i].parentPtr * NODE_BYTE_LENGTH,
-            null,
-            null,
-            null,
-            0,
-            0,
-        );
-    }
-
-    // console.log(freePtrs);
-
-    // split the leaves with the lowest scores (write 2 per change)
-    for (let i = 0; i < freePtrs.length/2; i++) {
-        var thisNode = scores.split[i];
-        // console.log("splitting", thisNode.thisPtr);
-        var thisNodeFull = readNodeFromBuffer(fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
-        // update node to branch
-        writeNodeToBuffer(
-            dynamicNodes,
-            thisNode.thisPtr * NODE_BYTE_LENGTH,
-            thisNodeFull.splitVal, // important to re-write the split val
-            0,
-            null,
-            freePtrs[2*i],
-            freePtrs[2*i + 1]
-        );
-
-        // console.log(readNodeFromBuffer(dynamicNodes, thisNode.thisPtr * NODE_BYTE_LENGTH));
-        
-        // fetch the left node from the full buffer and write to dynamic as pruned leaf
-        var leftNode = readNodeFromBuffer(fullNodes, thisNodeFull.leftPtr * NODE_BYTE_LENGTH);
-        writeNodeToBuffer(
-            dynamicNodes, 
-            freePtrs[2*i] * NODE_BYTE_LENGTH, 
-            null, 
-            leftNode.cellCount,
-            thisNode.thisPtr, 
-            leftNode.leftPtr, 
-            0
-        );
-
-        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i] * NODE_BYTE_LENGTH));
-        // fetch the right node from the full buffer and write to dynamic as pruned leaf
-        var rightNode = readNodeFromBuffer(fullNodes, thisNodeFull.rightPtr * NODE_BYTE_LENGTH);
-        writeNodeToBuffer(
-            dynamicNodes, 
-            freePtrs[2*i + 1] * NODE_BYTE_LENGTH, 
-            null, 
-            rightNode.cellCount,
-            thisNode.thisPtr, 
-            rightNode.leftPtr, 
-            0
-        );
-
-        for (let slotNum of activeValueSlots) {
-            writeCornerVals(
-                dataObj.getDynamicCornerValues(slotNum),
-                freePtrs[2*i],
-                readCornerVals(dataObj.getFullCornerValues(slotNum), leftNode.thisPtr)
-            )
-            writeCornerVals(
-                dataObj.getDynamicCornerValues(slotNum),
-                freePtrs[2*i + 1],
-                readCornerVals(dataObj.getFullCornerValues(slotNum), rightNode.thisPtr)
-            )
-        }
-
-        // console.log(readNodeFromBuffer(dynamicNodes, freePtrs[2*i + 1] * NODE_BYTE_LENGTH));
-    }
-}
-
-
-// updates the dynamic tree buffers based on camera location
-// split nodes that are too large
-// merge nodes that are too small
-// if a node is 
-export var updateDynamicTreeBuffers = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
-    // get the node scores, n lowest highest
-    performance.mark("scoresStart");
-    const scores = getNodeScores(dataObj, focusCoords, camCoords);
-    performance.mark("scoresEnd");
-    performance.measure("scoresDur", "scoresStart", "scoresEnd");
-
-    performance.mark("sortStart");
-    scores.sort((a, b) => a.score - b.score);
-    performance.mark("sortEnd");
-    performance.measure("sortDur", "sortStart", "sortEnd");
-
-    // scores = sanitiseNodeScores(dataObj.data.treeNodes, scores);
-    performance.mark("msStart");
-    const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
-    performance.mark("msEnd");
-    performance.measure("msDur", "msStart", "msEnd");
-    
-    // console.log(mergeSplitLists);
-    // update the dynamic buffer contents
-    performance.mark("buffStart");
-    changeNodeBufferContents(
-        dataObj,
-        dataObj.data.dynamicTreeNodes, 
-        dataObj.data.treeNodes, 
-        activeValueSlots,
-        mergeSplitLists
-    );  
-    performance.mark("buffEnd");
-    performance.measure("buffDur", "buffStart", "buffEnd");
-
-    // console.log("Scores", performance.measure("scoresDur", "scoresStart", "scoresEnd").duration);
-    // console.log("Sort", performance.measure("sortDur", "sortStart", "sortEnd").duration);
-    // console.log("MergeSplit", performance.measure("msDur", "msStart", "msEnd").duration);
-    // console.log("Buff", performance.measure("buffDur", "buffStart", "buffEnd").duration);
-    // console.log("updated");  
-}
-
-
-
-// create the buffers used for dynamic data resolution
-// for the first iteration, this only modifies the treenodes buffer
-export var createDynamicTreeNodes = (dataObj, maxNodes) => {
-    var fullNodes = dataObj.data.treeNodes;
-    // create the empty cache buffers at the given maximum size
-    var dynamicNodes = new ArrayBuffer(maxNodes * NODE_BYTE_LENGTH);
-    // var dynamicCornerValues = new Float32Array(8 * maxNodes);
-    // find the depth of the tree 
-    // fill the dynamic buffer from the full tree buffer, breadth first
-    var currNodeIndex = 0; // where to write the next node
-
-    var rootNode = readNodeFromBuffer(fullNodes, 0);
-    // console.log(rootNode);
-    writeNodeToBuffer(dynamicNodes, 0, rootNode.splitVal, 0, 0, 0, 0);
-    currNodeIndex++;
-        
-    var currDepth = 0;
-    while (currNodeIndex < maxNodes) {
-        // loop through all the nodes at this level of the tree 
-        // try to add both their children
-        addLayer: {
-            for (let i = 0; i < Math.pow(2, currDepth); i++) {
-                // the parent node as it currently is in dynamic nodes
-                var currParent = readNodeFromBuffer(dynamicNodes, 0);
-                // the parent node in the full tree buffer
-                var currParentFull = rootNode;
-                var parentLoc = 0;
-                var parentLocFull = 0;
-
-                // navigate to the next node to add children too
-                for (let j = 0; j < currDepth; j++) {
-                    // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
-                    if ((i >> (currDepth - j - 1)) & 1 != 0) {
-                        // go right
-                        parentLoc = currParent.rightPtr * NODE_BYTE_LENGTH;
-                        parentLocFull = currParentFull.rightPtr * NODE_BYTE_LENGTH;
-                    } else {
-                        // go left
-                        parentLoc = currParent.leftPtr * NODE_BYTE_LENGTH;
-                        parentLocFull = currParentFull.leftPtr * NODE_BYTE_LENGTH;
-                    }
-                    currParent = readNodeFromBuffer(dynamicNodes, parentLoc);
-                    currParentFull = readNodeFromBuffer(fullNodes, parentLocFull);
-                }
-                // got to the node we want to add children to
-                // check if there is room to add the children
-                if (currNodeIndex < maxNodes - 2) {
-                    // update parent so it is not a pruned leaf node
-                    writeNodeToBuffer(
-                        dynamicNodes, 
-                        parentLoc, 
-                        currParentFull.splitVal, 
-                        0, 
-                        null,
-                        currNodeIndex, 
-                        currNodeIndex + 1
-                    )
-                    
-                    // fetch the left node from the full buffer and write to dynamic as pruned leaf
-                    // console.log(currParentFull.leftPtr);
-                    var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
-                    writeNodeToBuffer(
-                        dynamicNodes, 
-                        currNodeIndex * NODE_BYTE_LENGTH, 
-                        leftNode.splitVal, 
-                        0,
-                        parentLoc/NODE_BYTE_LENGTH, 
-                        0, 
-                        0
-                    );
-                    // writeCornerVals(
-                    //     dynamicCornerValues,
-                    //     currNodeIndex,
-                    //     dataObj.data.cornerValues.slice(leftNode.thisPtr * 8, (leftNode.thisPtr + 1)* 8)
-                    // );
-                    // fetch the right node from the full buffer and write to dynamic as pruned leaf
-                    var rightNode = readNodeFromBuffer(fullNodes, currParentFull.rightPtr * NODE_BYTE_LENGTH);
-                    writeNodeToBuffer(
-                        dynamicNodes, 
-                        (currNodeIndex + 1) * NODE_BYTE_LENGTH, 
-                        rightNode.splitVal, 
-                        0, 
-                        parentLoc/NODE_BYTE_LENGTH, 
-                        0, 
-                        0
-                    )
-                    // writeCornerVals( 
-                    //     dynamicCornerValues,
-                    //     (currNodeIndex + 1),
-                    //     dataObj.data.cornerValues.slice(rightNode.thisPtr * 8, (rightNode.thisPtr + 1)* 8)
-                    // );
-                }
-                currNodeIndex += 2;
-                if (currNodeIndex >= maxNodes) break addLayer;
-            }
-        } 
-        currDepth++;
-    }
-    console.log("written up to depth of", currDepth);
-    console.log("written", currNodeIndex - 1, "nodes");
-    console.log("made dynamic tree node buffer");
-    for (let i = 0; i < dynamicNodes.byteLength/NODE_BYTE_LENGTH; i++) {
-        // console.log(readNodeFromBuffer(dynamicNodes, i * NODE_BYTE_LENGTH));
-    }
-    return dynamicNodes;
-}
-
 
 // generates the cell tree for fast lookups in unstructured data
 // returns two buffers:
@@ -751,6 +437,9 @@ export function CellTree() {
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
+
+        var maxCellCount = 0;
+        var maxLeafDepth = 0;
         // make a root node with the whole dataset
         var root = {...this.createNode(), box: Object.assign({}, this.extentBox)};
 
@@ -769,6 +458,8 @@ export function CellTree() {
             // or stop if the # cells is already low enough
             if (currentDepth > maxDepth || parentNode.cells.length <= maxLeafCells) {
                 // console.log(parentNode.points.length);
+                maxCellCount = Math.max(maxCellCount, parentNode.cells.length);
+                maxLeafDepth = Math.max(maxLeafDepth, parentNode.depth);
                 cellsCountSum += parentNode.cells.length;
                 leavesCount++;
                 continue;
@@ -822,6 +513,8 @@ export function CellTree() {
         }
 
         console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+        console.log("max cells in leaves:", maxCellCount);
+        console.log("max tree depth:", maxLeafDepth);
     
         // return the tree object
         this.tree = root;

@@ -78,6 +78,10 @@ fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
     return 0;
 }
 
+fn getNodeCellCountAtPoint(p : vec3<f32>) -> u32 {
+    return 1;
+}
+
 // takes device coords (-1 to 1)
 fn getPrevOptimisationSample(x : f32, y : f32) -> OptimisationSample {
     var textureDims : vec2<u32> = textureDimensions(offsetOptimisationTextureOld);

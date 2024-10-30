@@ -134,6 +134,7 @@
                 <input type="checkbox" class="ray-march-opt" name="renderNodeVals"><label>Render Nodes</label><br>
                 <input type="checkbox" class="ray-march-opt" name="showTestedCells"><label>Cell test count</label><br>
                 <input type="checkbox" class="ray-march-opt" name="showSurfNodeDepth"><label>Surf node depth</label><br>
+                <input type="checkbox" class="ray-march-opt" name="showSurfLeafCells"><label>Surf cell count</label><br>
             </details>
         </div>
 
@@ -144,16 +145,18 @@
                 <input type="checkbox" class="dataset-opt" name="createUnstructured" ><label>Struct->unstruct</label><br>
             </details>
             <details>
-                <summary>Unstructured</summary>
+                <summary>Unstruct tree</summary>
                 <select id="kd-tree-type-select" class="dataset-opt" name="kdTreeType"></select><br>
                 <input type="number" class="dataset-opt" name="leafCells" min="8" max="256" value="64" style="width:5ch"><label>Leaf cells</label><br>
-                <input type="number" class="dataset-opt" name="maxDepth" min="0" max="32" value="20" style="width:5ch"><label>Max depth</label><br>
+                <input type="number" class="dataset-opt" name="maxDepth" min="0" max="50" value="40" style="width:5ch"><label>Max depth</label><br>
             </details>
             <details>
-                <summary>Dynamic tree</summary>
-                <input type="checkbox" class="dataset-opt" name="dynamicResolution" ><label>Dynamic res</label><br>
-                <input type="number" class="dataset-opt" name="dynamicNodes" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
+                <summary>Dynamic res</summary>
+                <input type="checkbox" class="dataset-opt" name="dynamicNodes"><label>Dynamic nodes</label><br>
+                <input type="checkbox" class="dataset-opt" name="dynamicMesh"><label>Dynamic mesh</label><br>
+                <input type="number" class="dataset-opt" name="dynamicNodeCount" min="8" max="10000" value="4000" style="width:10ch"><label>Nodes</label><br>
                 <select id="corner-val-type-select" class="dataset-opt" name="cornerValType"></select><br>
+                <input type="number" class="dataset-opt" name="dynamicMeshBlockCount" min="0" max="400" value="100" style="width:10ch"><label>Mesh</label><br>
             </details>
             <details>
                 <summary>Rendering</summary>

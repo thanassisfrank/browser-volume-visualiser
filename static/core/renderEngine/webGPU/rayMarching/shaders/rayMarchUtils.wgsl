@@ -21,13 +21,23 @@ struct RayMarchPassInfo {
     @size(4)  surfaceColSrc : u32,
     @size(4)  colourScale : u32,
     @size(4)  cornerValType : u32,
-              transferFunction : array<TransferFunctionPoint,4>,
+    @size(64) transferFunction : array<TransferFunctionPoint, 4>,
+    @size(20) blockSizes : MeshBlockSizes,
+    @size(4)  @align(16) usesBlockMesh : u32,
+};
+
+struct MeshBlockSizes {
+    positions: u32,
+    cellOffsets: u32,
+    cellConnectivity: u32,
+    valueA: u32,
+    valueB: u32
 };
 
 struct TransferFunctionPoint {
     col: vec3<f32>,
     opacity : f32,
-}
+};
 
 // a set of flags for settings within the pass
 struct RayMarchPassFlags {
@@ -53,6 +63,7 @@ struct RayMarchPassFlags {
     useBestDepth        : bool,
     showTestedCells     : bool,
     showSurfNodeDepth   : bool,
+    showSurfLeafCells   : bool,
     contCornerVals      : bool,
 };
 
@@ -130,6 +141,7 @@ fn getFlags(flagUint : u32) -> RayMarchPassFlags {
         (flagUint & (1u << 20)) != 0,
         (flagUint & (1u << 21)) != 0,
         (flagUint & (1u << 22)) != 0,
+        (flagUint & (1u << 23)) != 0,
     );
 };
 
@@ -453,6 +465,23 @@ fn getIsoSurfaceMaterial(dataSrc : u32, tipDataPos : vec3<f32>, normalFac : f32,
     if (passFlags.showSurfNodeDepth) {
         var depth : u32 = getNodeDepthAtPoint(tipDataPos);
         material.diffuseCol = u32ToCol(randomU32(depth));
+        material.specularCol = material.diffuseCol * 1.05;
+        material.shininess = 50;
+
+        return material;
+    }
+
+    if (passFlags.showSurfLeafCells) {
+        var cellCount : u32 = getNodeCellCountAtPoint(tipDataPos);
+        let threshold : u32 = 128;
+        
+        if (0u == cellCount) {
+            material.diffuseCol = vec3<f32>(0, 0, 1);
+        } else if (cellCount > threshold) {
+            material.diffuseCol = vec3<f32>(1, 0, 0);
+        } else {
+            material.diffuseCol = vec3<f32>(f32(cellCount)/f32(threshold));
+        }
         material.specularCol = material.diffuseCol * 1.05;
         material.shininess = 50;
 
