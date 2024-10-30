@@ -373,7 +373,6 @@ export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
         return null;
     };
     const val = vec4.dot(cell.values, cell.factors);
-    if (leafNode.thisPtr == 34614 && queryPoint[0] == 18 && queryPoint[1] == 1 && queryPoint[2] == 2) debugger;
     return val;
 }
 

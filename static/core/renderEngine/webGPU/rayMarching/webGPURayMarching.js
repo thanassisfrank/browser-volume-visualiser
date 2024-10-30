@@ -786,17 +786,35 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 // update the dynamic tree nodes buffer
                 if (dataObj.resolutionMode != ResolutionModes.FULL) {
                     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
+                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                        // write updated mesh data to the GPU
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
+                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
+                    }
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_A) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
+                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesA, [dataObj.getDynamicValues(updateObj.isoSurfaceSrc.slotNum)]);
+                        }
                     }
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_B) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
+                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesB, [dataObj.getDynamicValues(updateObj.isoSurfaceSrc.slotNum)]);
+                        }
                     }
                     if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_A) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
+                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesA, [dataObj.getDynamicValues(updateObj.surfaceColSrc.slotNum)]);
+                        }
                     }
                     if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_B) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
+                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesB, [dataObj.getDynamicValues(updateObj.surfaceColSrc.slotNum)]);
+                        }
                     }
                 }
 

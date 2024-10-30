@@ -194,7 +194,7 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
             let newData = {
                 "nodes": {
                     splitVal: childNode.splitVal, 
-                    cellCount: 0,//childNode.cellCount, 
+                    cellCount: childNode.cellCount, 
                     parentPtr: thisNode.thisPtr, 
                     leftPtr: childNode.leftPtr, 
                     rightPtr: 0
@@ -203,7 +203,7 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
 
             if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS && 0 == childNode.rightPtr) {
                 // this new node is a true leaf, check if the mesh data is already cached
-                console.log("new leaf");
+                // console.log("new leaf");
                 var meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
                 if (-1 == meshBlockIndex) {
                     // the mesh data for this leaf is not currently loaded, load it
@@ -222,6 +222,7 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
 
                 // mark as a full leaf
                 newData["nodes"].leftPtr = meshBlockIndex;
+                newData["nodes"].cellCount = childNode.cellCount;
             }
 
             for (let slotNum of activeValueSlots) {
