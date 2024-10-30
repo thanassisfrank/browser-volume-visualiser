@@ -262,11 +262,11 @@ const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
         cell.points[j][1] = dataObj.data.positions[3 * thisPointIndex + 1];
         cell.points[j][2] = dataObj.data.positions[3 * thisPointIndex + 2];
     }
-    if (slotNum) {
-        cell.values[0] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]];
-        cell.values[1] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 1]];
-        cell.values[2] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 2]];
-        cell.values[3] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 3]];
+    if (slotNum != undefined) {
+        cell.values[0] = dataObj.getFullValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]];
+        cell.values[1] = dataObj.getFullValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 1]];
+        cell.values[2] = dataObj.getFullValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 2]];
+        cell.values[3] = dataObj.getFullValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 3]];
     }
 
     return cell;
@@ -285,12 +285,13 @@ const getCellAtIndexBlockMesh = (dataObj, leafNode, index, slotNum) => {
     };
     
     // check the cells in the leaf node found
-    let blockPtr = leafNode.leftPtr; // the index of the mesh block
-    let offPtr = dataObj.meshBlockSizes.cellOffsets * blockPtr;
-    let posPtr = dataObj.meshBlockSizes.positions * blockPtr;
-    let conPtr = dataObj.meshBlockSizes.cellConnectivity * blockPtr;
+    const blockPtr = leafNode.leftPtr; // the index of the mesh block
+    const offPtr = dataObj.meshBlockSizes.cellOffsets * blockPtr;
+    const posPtr = dataObj.meshBlockSizes.positions * blockPtr;
+    const conPtr = dataObj.meshBlockSizes.cellConnectivity * blockPtr;
+    const valPtr = posPtr/3;
 
-    var pointsOffset = dataObj.data.cellOffsets[offPtr + index * 4];
+    var pointsOffset = dataObj.data.cellOffsets[offPtr + index];
     // read all the point positions
     for (let j = 0; j < 4; j++) {
         // get the coords of the point as an array 3
@@ -299,13 +300,9 @@ const getCellAtIndexBlockMesh = (dataObj, leafNode, index, slotNum) => {
         cell.points[j][0] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 0];
         cell.points[j][1] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 1];
         cell.points[j][2] = dataObj.data.positions[posPtr + 3 * thisPointIndex + 2];
-    }
-    if (slotNum) {
-        const valPtr = posPtr/3;
-        cell.values[0] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 0]];
-        cell.values[1] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 1]];
-        cell.values[2] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 2]];
-        cell.values[3] = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[valPtr + pointsOffset + 3]];
+        if (slotNum != undefined) {
+            cell.values[j] = dataObj.getFullValues(slotNum)[valPtr + thisPointIndex];
+        }
     }
 
     return cell;
@@ -368,13 +365,16 @@ export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
 // samples a given leaf at the given position by interpolating within mesh
 export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
     // true leaf, sample the cells within
-    var cell = getContainingCell(dataObj, slotNum, queryPoint, leafNode);
+    const cell = getContainingCell(dataObj, slotNum, queryPoint, leafNode);
     // interpolate value
     if (!cell) {
         // if not inside any cell, return null
+        // debugger;
         return null;
     };
-    return vec4.dot(cell.values, cell.factors);
+    const val = vec4.dot(cell.values, cell.factors);
+    if (leafNode.thisPtr == 34614 && queryPoint[0] == 18 && queryPoint[1] == 1 && queryPoint[2] == 2) debugger;
+    return val;
 }
 
 //
@@ -417,20 +417,6 @@ export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
     } else {
         cell = getCellAtIndex(dataObj, leafNode, cellIndex, slotNum);
     }
-
-
-    // const cellID = dataObj.data.treeCells[leafNode.leftPtr + cellIndex];
-    // var pointsOffset = dataObj.data.cellOffsets[cellID];
-
-    // // always choose the first point in the cell
-    // const thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + 0];
-    // const position = [
-    //     dataObj.data.positions[3 * thisPointIndex + 0],
-    //     dataObj.data.positions[3 * thisPointIndex + 1],
-    //     dataObj.data.positions[3 * thisPointIndex + 2]
-    // ];
-
-    // const value = dataObj.getValues(slotNum)[dataObj.data.cellConnectivity[pointsOffset + 0]]
     
     return {
         position: cell.points[0],

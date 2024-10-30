@@ -42,6 +42,7 @@ export function AssociativeCache(slotCount) {
     this.syncBuffer = function(name, getDataFunc) {
         if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
         for (let i = 0; i < this.slotCount; i++) {
+            if (!this.tags[i]) continue; // skip emtpy slots
             (this.writeFuncs[name] ?? this.writeFuncs.default)(
                 this.buffers[name], getDataFunc(this.tags[i]), i, this.blockSizes[name]
             );

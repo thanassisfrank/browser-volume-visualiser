@@ -190,36 +190,40 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
 
         const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
         for (let j = 0; j < 2; j++) {
-            var childNode = readNodeFromBuffer(fullNodes, childPtrs[j] * NODE_BYTE_LENGTH);
+            let childNode = readNodeFromBuffer(fullNodes, childPtrs[j] * NODE_BYTE_LENGTH);
+            let newData = {
+                "nodes": {
+                    splitVal: childNode.splitVal, 
+                    cellCount: 0,//childNode.cellCount, 
+                    parentPtr: thisNode.thisPtr, 
+                    leftPtr: childNode.leftPtr, 
+                    rightPtr: 0
+                }
+            };
 
             if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS && 0 == childNode.rightPtr) {
                 // this new node is a true leaf, check if the mesh data is already cached
                 console.log("new leaf");
-                var currSlot = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
-                if (-1 == currSlot) {
+                var meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
+                if (-1 == meshBlockIndex) {
                     // the mesh data for this leaf is not currently loaded, load it
-                    const leafMesh = dataObj.getLeafMesh(childNode.thisPtr, activeValueSlots);
-                    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(childNode.thisPtr, {
-                        "positions": leafMesh.positions,
-                        "cellOffsets": leafMesh.cellOffsets,
-                        "cellConnectivity": leafMesh.cellConnectivity
-                    });
-                    currSlot = loadResult.newSlot;
-
+                    const leafMesh = dataObj.getNodeMeshBlock(childNode.thisPtr, activeValueSlots);
+                    const loadResult = dataObj.dynamicMeshCache.insertNewBlockRand(childNode.thisPtr, leafMesh);
+                    meshBlockIndex = loadResult.slot;
                     // check if the evicted block is currently loaded in the dynamic node cache
-                    const evictedTagNodeSlot = dataObj.dynamicNodeCache.getTagSlotNum(childNode.thisPtr)
-                    if (-1 != currSlot) {
-                        // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
-                        dataObj.dynamicNodeCache.updateBlockAt(evictedTagNodeSlot, {
-                            "nodes": {cellCount: 0}
-                        })
+                    if (undefined != loadResult.evicted) {
+                        const evictedTagNodeSlot = dataObj.dynamicNodeCache.getTagSlotNum(loadResult.evicted);
+                        if (-1 != evictedTagNodeSlot) {
+                            // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
+                            dataObj.dynamicNodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
+                        }
                     }
                 }
+
+                // mark as a full leaf
+                newData["nodes"].leftPtr = meshBlockIndex;
             }
 
-            var newData = {
-                "nodes": {cellCount: childNode.cellCount, parentPtr: thisNode.thisPtr, leftPtr: childNode.leftPtr, rightPtr: 0}
-            };
             for (let slotNum of activeValueSlots) {
                 newData["corners" + slotNum] = readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr);
             }
@@ -369,23 +373,17 @@ export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
 // creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
 // dynamic mesh buffers for the mesh geometry
 export const createMatchedDynamicMeshValueArray = (dataObj, slotNum) => {
-    // use existing or create new
-    var fullLeafMeshValues = dataObj.getFullCornerValues(slotNum);
-    
-    if (!fullLeafMeshValues) {
-        throw Error("Unable to generate dynamic mesh veretx values, full mesh vertex values does not exist for slot " + slotNum);
-    }
-        
     const buffName = "values" + slotNum; 
     if (!dataObj.dynamicMeshCache.getBuffers()[buffName] ) {
         // create if not present
-        dataObj.dynamicMeshCache.createBuffer(buffName, Float32Array, dataObj.dynamicMeshCache.blockSize.positions/3);
+        dataObj.dynamicMeshCache.createBuffer(buffName, Float32Array, dataObj.dynamicMeshCache.blockSizes.positions/3);
     }
 
+    console.log(dataObj.dynamicMeshCache);
     // make sure that the corner buffer is synchronised to the currently loaded nodes
     dataObj.dynamicMeshCache.syncBuffer(
         buffName, 
-        // (fullPtr) => readCornerVals(fullCornerValues, fullPtr)
+        (fullPtr) => dataObj.getNodeMeshBlock(fullPtr, [slotNum])[buffName]
     );
     
     return dataObj.dynamicMeshCache.getBuffers()[buffName];

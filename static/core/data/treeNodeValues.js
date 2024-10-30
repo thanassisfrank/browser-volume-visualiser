@@ -59,26 +59,11 @@ const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
         [leafBox.min[0], leafBox.max[1], leafBox.max[2]],
         leafBox.max,
     ];
-    let val;
+    // debugger;
     for (let i = 0; i < points.length; i++) {
-        // val = sampleLeaf(dataObj, slotNum, leafNode, points[i]);
-        // if (null == val) {
-        //     val = getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
-        // }
-        // cornerVals[i] = val;
         cornerVals[i] = sampleLeaf(dataObj, slotNum, leafNode, points[i]) ?? getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
     }
-
-    // cornerVals[1] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.min[2]]);
-    // cornerVals[2] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.min[2]]);
-    // cornerVals[3] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.max[1], leafBox.min[2]]);
-    // cornerVals[4] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.min[1], leafBox.max[2]]);
-    // cornerVals[5] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.max[0], leafBox.min[1], leafBox.max[2]]);
-    // cornerVals[6] = sampleLeaf(dataObj, slotNum, leafNode, [leafBox.min[0], leafBox.max[1], leafBox.max[2]]);
-    // cornerVals[7] = sampleLeaf(dataObj, slotNum, leafNode, leafBox.max);
-
     
-
     return cornerVals;
 }
 

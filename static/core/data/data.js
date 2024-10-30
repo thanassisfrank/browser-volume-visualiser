@@ -4,7 +4,7 @@
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
 import { getCellTreeBuffers, getLeafMeshBuffers, KDTreeSplitTypes } from "./cellTree.js";
-import { createDynamicNodeCache, createDynamicMeshCache } from "./dynamicTree.js";
+import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
@@ -464,6 +464,11 @@ function Data(id) {
         cellOffsets: null,
         cellConnectivity: null,
         cellTypes: null,
+
+        dynamicPositions: null,
+        dynamicCellOffsets: null,
+        dynamicCellConnectivity: null,
+
         // 1-based indexing compatability
         zeroBased: true,
         // spatial acceleration structure
@@ -687,10 +692,13 @@ function Data(id) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
         }
-        // if the data is in the normal mesh format, reformat to block mesh
         if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) {
+            // if the data is in the normal mesh format, reformat to block mesh
             this.convertValuesToBlockMesh(newSlotNum);
             console.log("converted values");
+            // create new entry in the dynamic mesh cache object
+            this.createDynamicBlockValues(newSlotNum);
+            console.log("created dynamic values")
         }
 
         // if this is dynamic, load corner values too
@@ -701,17 +709,42 @@ function Data(id) {
         // initialise the dynamic corner values buffer to match dynamic nodes
         if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
+            console.log("created dynamic corners")
         }
 
 
         return newSlotNum;
     }
 
-    // gets the data describing the mesh geometry and values for the mesh of this leaf node
-    this.getLeafMesh = function(leafPtr, valueSlots) {
+    // gets the data describing the mesh geometry and values for the mesh of this node
+    // if this node is not a leaf, returns undefined
+    this.getNodeMeshBlock = function(nodeIndex, valueSlots) {
+        if (!this.fullToLeafIndexMap.has(nodeIndex)) return;
+        const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
         // slice the mesh geometry buffers
+        let buffers = {
+            positions: this.data.positions.slice(
+                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions 
+            ),
+            cellOffsets: this.data.cellOffsets.slice(
+                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets 
+            ),
+            cellConnectivity: this.data.cellConnectivity.slice(
+                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity 
+            )
+        };
+
         // slice the needed value buffers
+        for (const slotNum of valueSlots) {
+            const values = this.getFullValues(slotNum);
+            if (!values) continue;
+            buffers["values" + slotNum] = values.slice(
+                leafIndex * this.meshBlockSizes.positions/3, (leafIndex + 1) * this.meshBlockSizes.positions/3
+            );
+        }
+
         // return the buffers together
+        return buffers;
     }
 
     this.setCornerValType = function(type) {
@@ -756,9 +789,13 @@ function Data(id) {
         // create new buffer to re-write values into
         // if vert count < block length, value of vert 0 will be written
         const blockVals = new Float32Array(this.data.leafVerts.length);
-        this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getValues(slotNum)[e]);
+        this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getFullValues(slotNum)[e]);
         // delete this.data.values[slotNum].data;
         this.data.values[slotNum].data = blockVals;
+    }
+
+    this.createDynamicBlockValues = function(slotNum) {
+        this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
     }
 
     this.generateData = function(config) {
@@ -788,7 +825,7 @@ function Data(id) {
 
     // returns the byte length of the values array
     this.getValuesByteLength = function(slotNum) {
-        return this.data.values[slotNum]?.data.byteLength;
+        return this.getValues(slotNum).byteLength;
     }
     this.getLimits = function(slotNum) {
         return this.data.values[slotNum]?.limits;
@@ -887,9 +924,20 @@ function Data(id) {
         return this.data.dynamicNodeCount;
     }
 
+
     this.getValues = function(slotNum) {
+        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) return this.getDynamicValues(slotNum);
+        return this.getFullValues(slotNum);
+    }
+
+    this.getFullValues = function(slotNum) {
         return this.data.values?.[slotNum]?.data;
     }
+
+    this.getDynamicValues = function(slotNum) {
+        return this.data.values?.[slotNum]?.dynamicData;
+    }
+
 
     // fetching the corner values buffers
     this.getCornerValues = function(slotNum) {
@@ -902,6 +950,7 @@ function Data(id) {
     this.getDynamicCornerValues = function(slotNum) {
         return this.data.values?.[slotNum]?.dynamicCornerValues;
     }
+
     
     this.getName = function() {
         return this?.config?.name || "Unnamed data";

@@ -417,21 +417,23 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
-        renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
-        renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
-        renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
-        // only handle tetrahedra for now
-        // renderData.buffers.cellTypes = webGPU.createFilledBuffer("u32", dataObj.data.cellTypes, usage);
         // write the tree buffer
         if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
         } else {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
         }
+        
         if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
             renderData.buffers.treeCells = webGPU.makeBuffer(0, usage, "empty tree cells");
+            renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.dynamicPositions, usage, "data dynamic vert positions");
+            renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellConnectivity, usage, "data dynamic cell connectivity");
+            renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellOffsets, usage, "data dynamic cell offsets");
         } else {
             renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
+            renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
+            renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
+            renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
         }
 
         renderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
@@ -702,7 +704,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             created |= this.writeDataIntoValuesTexture(dataObj.getValues(dataSlotNum), dimensions, renderData, valuesSlotName);
         // write corner values if needed
         if (writeCornerVals)
-            created |= this.writeDataIntoValuesStorageBuffer(dataObj.getDynamicCornerValues(dataSlotNum), renderData, cornerValuesSlotname);
+            created |= this.writeDataIntoValuesStorageBuffer(dataObj.getCornerValues(dataSlotNum), renderData, cornerValuesSlotname);
         
         passData[valuesSlotName].name = dataSrc.name;
         passData[valuesSlotName].limits = dataSrc.limits;
@@ -748,7 +750,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         passData,
                         renderable.renderData,
                         renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        !!(dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES)
+                        dataObj.resolutionMode != ResolutionModes.FULL
                     );
                     passData.isoSurfaceSrcUint = isoLoadResult.uint;
                     var valueBufferCreatedIso = isoLoadResult.created;
@@ -768,7 +770,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         passData,
                         renderable.renderData,
                         renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        !!(dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES)
+                        dataObj.resolutionMode != ResolutionModes.FULL
                     );
                     passData.surfaceColSrcUint = colLoadResult.uint;
                     var valueBufferCreatedCol = colLoadResult.created;
@@ -782,7 +784,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
                 // update unstructured data renderables
                 // update the dynamic tree nodes buffer
-                if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+                if (dataObj.resolutionMode != ResolutionModes.FULL) {
                     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
                     if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_A) {
                         webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
