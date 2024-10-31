@@ -6,7 +6,7 @@ import { newId, DATA_TYPES} from "../utils.js";
 import { getCellTreeBuffers, getLeafMeshBuffers, KDTreeSplitTypes } from "./cellTree.js";
 import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
-import h5wasm from "https://cdn.jsdelivr.net/npm/h5wasm@0.4.9/dist/esm/hdf5_hl.js";
+import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
