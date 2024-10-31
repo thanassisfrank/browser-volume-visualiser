@@ -14,7 +14,7 @@ import { updateDynamicDataset } from "./core/data/dynamicTree.js";
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
-
+const BINCOUNT = 100;
 
 export var viewManager = {
     
@@ -397,10 +397,9 @@ function View(id, camera, data, renderMode) {
 
     this.updateDensityGraph = function(slotNum) {
         if (this.elems.densityGraph) {
-            const binCount = 100;
-            this.elems.densityGraph.width = binCount;
+            this.elems.densityGraph.width = BINCOUNT;
             this.elems.densityGraph.height = 20;
-            var {counts, max} = this.data.getValueCounts(slotNum, binCount);
+            var {counts, max} = this.data.getValueCounts(slotNum, BINCOUNT);
             var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, [2, 1]);
             for (let val of counts) {
                 densityPlotter.update(Math.log10(val));
@@ -422,7 +421,7 @@ function View(id, camera, data, renderMode) {
                 break;
             case DataSrcTypes.DATA:
                 // load data
-                slotNum = await this.data.loadDataArray(name);
+                slotNum = await this.data.loadDataArray(name, BINCOUNT);
                 console.log("slotnum is " + slotNum);
                 if (slotNum == -1) return;
                 // update the limits of slider
@@ -453,7 +452,7 @@ function View(id, camera, data, renderMode) {
                 break;
             case DataSrcTypes.DATA:
                 // load data
-                slotNum = await this.data.loadDataArray(name);
+                slotNum = await this.data.loadDataArray(name, BINCOUNT);
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
         }

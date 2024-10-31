@@ -502,6 +502,8 @@ function Data(id) {
 
     this.flowSolutionNode = null;
 
+    this.valueCounts = [];
+
     // supplemental attributes
     // the dimensions in data space
     this.size = [0, 0, 0];
@@ -672,7 +674,7 @@ function Data(id) {
 
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
-    this.loadDataArray = async function(name) {
+    this.loadDataArray = async function(name, binCount) {
         // check if already loaded
         var loadedIndex = this.data.values.findIndex(elem => elem.name == name);
         if (loadedIndex != -1) return loadedIndex;
@@ -714,6 +716,11 @@ function Data(id) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
         }
+        // get the histogram if required
+        if (binCount) {
+            this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
+        }
+
         if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) {
             // if the data is in the normal mesh format, reformat to block mesh
             this.convertValuesToBlockMesh(newSlotNum);
@@ -992,11 +999,12 @@ function Data(id) {
     // returns the number of values within this.data.values that fall into a number of bins
     // bins are in the range this.limits and there are binCount number
     this.getValueCounts = function(slotNum, binCount) {
+        if (this.valueCounts?.[slotNum]?.counts.length == binCount) return this.valueCounts[slotNum];
         var counts = new Uint32Array(binCount);
         var max = 0;
         var index;
         var limits = this.getLimits(slotNum);
-        for (let val of this.getValues(slotNum)) {
+        for (let val of this.getFullValues(slotNum)) {
             index = Math.floor((val - limits[0]) * (binCount-1)/(limits[1] - limits[0]));
             max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount-1))]);
         }
