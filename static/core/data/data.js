@@ -176,9 +176,10 @@ var dataManager = {
         // create dynamic mesh information
         if (opts.dynamicMesh) {
             try {
-                var maxCells = 0; // max number of cells found within the leaf nodes
-                var maxVerts = 0; // max number of unique verts found in the leaf nodes
-                var leafCount = 0;
+                newData.data.totalCellCount = newData.data?.cellOffsets?.length;
+                let maxCells = 0; // max number of cells found within the leaf nodes
+                let maxVerts = 0; // max number of unique verts found in the leaf nodes
+                let leafCount = 0;
                 processLeafMeshDataInfo(newData, l => {
                     maxCells = Math.max(maxCells, l.cells);
                     maxVerts = Math.max(maxVerts, l.verts);
@@ -931,8 +932,11 @@ function Data(id) {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return this.getDataSize().join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
-            // TODO: update to support dynamic mesh formatted buffers
-            return this.data.cellOffsets.length.toLocaleString() + "u";
+            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                return this.data.totalCellCount.toLocaleString() + "u";
+            } else {
+                return this.data.cellOffsets.length.toLocaleString() + "u";
+            }
         }
         return "";
     }

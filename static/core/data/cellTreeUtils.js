@@ -427,6 +427,7 @@ export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
 // perform callback with the information of each
 export const processLeafMeshDataInfo = (dataObj, callback) => {
     const treeNodes = dataObj.data.treeNodes;
+    if (!dataObj.data.treeNodes) throw TypeError("Data object does not contain a node buffer");
     // iterate through all leaves
     var rootNode = readNodeFromBuffer(treeNodes, 0);
     rootNode.depth = 0;
