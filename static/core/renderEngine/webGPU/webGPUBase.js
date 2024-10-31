@@ -452,6 +452,33 @@ export function WebGPUBase (verbose) {
             currOffset += dataArrays[i].byteLength;
         }
     }
+
+    // attempts to write into the supplied buffer, if it is too small, returns new buffer
+    this.writeOrCreateNewBuffer = function(buffer, data, usage, label="") {
+        let resultBuffer = buffer;
+        let created = false;
+        if (buffer.size < data.byteLength) {
+            console.log("create " + label)
+            // create new buffer in this slot
+            this.deleteBuffer(buffer);
+            resultBuffer = this.createFilledBuffer(
+                "f32",
+                new Float32Array(data),
+                usage,
+                label
+            );
+            created = true;
+        } else {
+            console.log("write " + label);
+            this.writeDataToBuffer(buffer, [new Float32Array(data)]);
+            resultBuffer = buffer;
+        }
+        return {
+            created: created,
+            buffer: resultBuffer
+        }
+    }
+
     // copy a buffer to CPU side and return the contents as array buffer
     this.readBuffer = async function(buffer, start, byteLength) {
         if (!buffer) return;
@@ -606,6 +633,42 @@ export function WebGPUBase (verbose) {
 
         await this.waitForDone();
         
+    }
+
+    this.writeOrCreateNewTexture = function(texture, data, dimensions, usage, label="") {
+        let created = false;
+        let resultTexture = texture;
+
+        const textureSize = {
+            width: dimensions[0],
+            height: dimensions[1],
+            depthOrArrayLayers: dimensions[2]
+        }
+
+        if (
+            texture.width != textureSize.width || 
+            texture.height != textureSize.height ||
+            texture.depthOrArrayLayers != textureSize.depthOrArrayLayers
+        ) {
+            this.deleteTexture(texture);
+
+            resultTexture = this.makeTexture({
+                label: label,
+                size: textureSize,
+                dimension: "3d",
+                format: "r32float",
+                usage: usage
+            });
+            created = true;
+        } else {
+            console.log("write" + valuesBufferName);
+        }
+
+        this.fillTexture(resultTexture, textureSize, 4, Float32Array.from(data).buffer);
+        return {
+            created: created,
+            texture: resultTexture
+        }
     }
 
     // TODO: allow copying from arbitrary origins within both images

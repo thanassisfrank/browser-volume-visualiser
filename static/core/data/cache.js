@@ -32,11 +32,16 @@ export function AssociativeCache(slotCount) {
         this.writeFuncs[name] = writeFunc;
     }
 
-    // create a new 
+    // create a new buffer
     this.createBuffer = function(name, prototype, blockSize) {
-        this.buffers[name] = new prototype(blockSize * this.slotCount);
-        this.blockSizes[name] = blockSize;
+        this.setBuffer(name, new prototype(blockSize * this.slotCount), blockSize);
     };
+
+    // set an already created buffer
+    this.setBuffer = function(name, buffer, blockSize=1) {
+        this.buffers[name] = buffer;
+        this.blockSizes[name] = blockSize;
+    }
 
     // synchronises the named buffer with the state of this.tags
     this.syncBuffer = function(name, getDataFunc) {
@@ -64,6 +69,19 @@ export function AssociativeCache(slotCount) {
             );
         };
     }
+
+    // updates the block that matches the supplied tag
+    this.updateBlockWithTag = function(tag, newData={}) {
+        if (!this.directory.get(tag)) return;
+        for (const name in newData) {
+            if (!this.buffers[name]) continue;
+            // TODO: only allow writing of data up to block size
+            (this.writeFuncs[name] ?? this.writeFuncs.default)(
+                this.buffers[name], newData[name], slot, this.blockSizes[name]
+            );
+        };
+    }
+
     // insert new block at given position
     this.insertNewBlockAt = function(newSlot, newTag, newData = {}) {
         // invalidate the data of the leaf node that was stored at that location before
@@ -73,12 +91,14 @@ export function AssociativeCache(slotCount) {
         // update cache information
         this.tags[newSlot] = newTag;
         this.directory.set(newTag, newSlot);
+
+        let info = {}
     
         // write the new data into this slot
         for (const name in newData) {
             if (!this.buffers[name]) continue;
             // TODO: only allow writing of data up to block size
-            (this.writeFuncs[name] ?? this.writeFuncs.default)(
+            info[name] = (this.writeFuncs[name] ?? this.writeFuncs.default)(
                 this.buffers[name], newData[name], newSlot, this.blockSizes[name]
             );
         };
@@ -86,6 +106,7 @@ export function AssociativeCache(slotCount) {
         return {
             slot: newSlot,
             evicted: evictedTag,
+            info: info
         }
     }
 

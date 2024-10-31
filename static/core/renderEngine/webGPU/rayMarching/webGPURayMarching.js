@@ -1,6 +1,7 @@
 // webGPURayMarching.js
 // implements the ray marching algorithm with webgpu
 
+import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats, ResolutionModes } from "../../../data/data.js";
 import { boxesEqual, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
@@ -353,8 +354,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     };
 
     this.createStructuredDataRenderable = async function(dataObj) {
-        var renderable = new Renderable(RenderableTypes.DATA, RenderableRenderModes.NONE);
-        var renderData = renderable.renderData;
+        let renderable = new Renderable(RenderableTypes.DATA, RenderableRenderModes.NONE);
+        let renderData = renderable.renderData;
+        let passData = renderable.passData
         var datasetSize = dataObj.getDataSize();
         // copy the data to a texture
         // const textureSize = {
@@ -363,20 +365,45 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         //     depthOrArrayLayers: datasetSize[2]
         // }
 
-        renderData.textures.valuesA = webGPU.makeTexture({
-            label: "empty values A texture",
-            size: {},
-            dimension: "3d",
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-        });
+        renderData.textures.values = [
+            webGPU.makeTexture({
+                label: "empty values A texture",
+                size: {},
+                dimension: "3d",
+                format: "r32float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            }),
+            webGPU.makeTexture({
+                label: "empty values B texture",
+                size: {},
+                dimension: "3d",
+                format: "r32float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            }),
+        ];
 
-        renderData.textures.valuesB = webGPU.makeTexture({
-            label: "empty values B texture",
-            size: {},
-            dimension: "3d",
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+        passData.values = [
+            {name: "None", limits: [0, 1]},
+            {name: "None", limits: [0, 1]},
+        ];
+
+        passData.dataCache = new AssociativeCache(2);
+        passData.dataCache.setBuffer("info", passData.values);
+        passData.dataCache.setBuffer("values", renderData.textures.values);
+
+        // setup the writing function
+        passData.dataCache.setWriteFunc("info", (buff, data, slot) => buff[slot] = data);
+        passData.dataCache.setReadFunc("info", (buff, slot) => buff[slot]);
+        passData.dataCache.setWriteFunc("values", (buff, data, slot) => {
+            const result = webGPU.writeOrCreateNewTexture(
+                buff[slot], 
+                data.texture, 
+                data.dimensions, 
+                buff[slot].usage, 
+                `values ${slot} texture`
+            );
+            buff[slot] = result.texture;
+            return result;
         });
 
         renderData.buffers.passInfo = webGPU.makeBuffer(512, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray pass info");
@@ -387,18 +414,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.createUnstructuredDataRenderable = async function(dataObj) {
         var renderable = new Renderable(RenderableTypes.UNSTRUCTURED_DATA, RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME);
         var renderData = renderable.renderData;
+        var passData = renderable.passData;
 
         // information about the data being sent
-        renderable.passData.isoSurfaceSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};
-        renderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
-        renderable.passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1]};;
-        renderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
+        passData.isoSurfaceSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE};
+        passData.surfaceColSrc = {type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE};;
 
-        renderable.passData.dMatInv = dataObj.getdMatInv();
-        renderable.passData.cornerValType = dataObj.cornerValType;
+        passData.dMatInv = dataObj.getdMatInv();
+        passData.cornerValType = dataObj.cornerValType;
 
-        renderable.passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS;
-        renderable.passData.blockSizes = {
+        passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS;
+        passData.blockSizes = {
             positions: dataObj.meshBlockSizes?.positions ?? 0,
             cellOffsets: dataObj.meshBlockSizes?.cellOffsets ?? 0,
             cellConnectivity: dataObj.meshBlockSizes?.cellConnectivity ?? 0,
@@ -408,12 +434,50 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         // buffers and other data 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
-        // console.log(dataObj.data.values.byteLength, dataObj.data.values);
-        renderData.buffers.valuesA = webGPU.makeBuffer(0, usage, "empty data vert A values");
-        renderData.buffers.valuesB = webGPU.makeBuffer(0, usage, "empty data vert B values");
 
-        renderData.buffers.cornerValuesA = webGPU.makeBuffer(0, usage, "empty corner values A");
-        renderData.buffers.cornerValuesB = webGPU.makeBuffer(0, usage, "empty corner values B");
+        // initialise the values cache
+        renderData.buffers.values = [
+            webGPU.makeBuffer(0, usage, "empty data vert A values"),
+            webGPU.makeBuffer(0, usage, "empty data vert B values"),
+        ];
+
+        renderData.buffers.cornerValues = [
+            webGPU.makeBuffer(0, usage, "empty corner values A"),
+            webGPU.makeBuffer(0, usage, "empty corner values B")
+        ];
+
+        passData.values = [
+            {name: "None", limits: [0, 1]},
+            {name: "None", limits: [0, 1]},
+        ];
+
+        passData.dataCache = new AssociativeCache(2);
+        passData.dataCache.setBuffer("info", passData.values);
+        passData.dataCache.setBuffer("values", renderData.buffers.values);
+        passData.dataCache.setBuffer("cornerValues", renderData.buffers.cornerValues);
+
+        passData.dataCache.setWriteFunc("info", (buff, data, slot) => buff[slot] = data);
+        passData.dataCache.setReadFunc("info", (buff, slot) => buff[slot]);
+        passData.dataCache.setWriteFunc("values", (buff, data, slot) => {
+            const result = webGPU.writeOrCreateNewBuffer(
+                buff[slot], 
+                data.buffer, 
+                buff[slot].usage, 
+                `values ${slot} buffer`
+            );
+            buff[slot] = result.buffer;
+            return result;
+        });
+        passData.dataCache.setWriteFunc("cornerValues", (buff, data, slot) => {
+            const result = webGPU.writeOrCreateNewBuffer(
+                buff[slot], 
+                data.buffer, 
+                buff[slot].usage, 
+                `corner values ${slot} buffer`
+            );
+            buff[slot] = result.buffer;
+            return result;
+        });
 
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
@@ -436,37 +500,36 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
         }
 
-        renderable.renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
-        renderable.renderData.buffers.objectInfo = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
+        renderData.buffers.consts = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
+        renderData.buffers.objectInfo = webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
 
-        renderable.renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
+        renderData.buffers.combinedPassInfo = webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
         
         
-        renderable.renderData.bindGroups.compute0 = webGPU.generateBG(
+        renderData.bindGroups.compute0 = webGPU.generateBG(
             this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
             [
-                renderable.renderData.buffers.combinedPassInfo, 
+                renderData.buffers.combinedPassInfo, 
             ],
         );
 
-        renderable.renderData.bindGroups.compute1 = webGPU.generateBG(
+        renderData.bindGroups.compute1 = webGPU.generateBG(
             this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
             [
-                renderable.renderData.buffers.treeNodes,
-                renderable.renderData.buffers.treeCells,
-                renderable.renderData.buffers.positions,
-                renderable.renderData.buffers.cellConnectivity,
-                renderable.renderData.buffers.cellOffsets,
-                
+                renderData.buffers.treeNodes,
+                renderData.buffers.treeCells,
+                renderData.buffers.positions,
+                renderData.buffers.cellConnectivity,
+                renderData.buffers.cellOffsets,
             ]
         );
-        renderable.renderData.bindGroups.compute2 = webGPU.generateBG(
+        renderData.bindGroups.compute2 = webGPU.generateBG(
             this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
             [
-                renderable.renderData.buffers.valuesA,
-                renderable.renderData.buffers.valuesB,
-                renderable.renderData.buffers.cornerValuesA,
-                renderable.renderData.buffers.cornerValuesB,
+                renderData.buffers.values[0],
+                renderData.buffers.values[1],
+                renderData.buffers.cornerValues[0],
+                renderData.buffers.cornerValues[1],
             ]
         );
         
@@ -543,7 +606,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 // structured
                 // faceRenderable.sharedData.textures.data = dataRenderable.renderData.textures.data;
                 faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
-
                 faceRenderable.renderData.bindGroups.rayMarch0 = webGPU.generateBG(
                     this.rayMarchPassDescriptor.bindGroupLayouts[0],
                     [constsBuffer, faceRenderable.renderData.buffers.objectInfo],
@@ -552,8 +614,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     this.rayMarchPassDescriptor.bindGroupLayouts[1],
                     [
                         faceRenderable.sharedData.buffers.passInfo, 
-                        dataRenderable.renderData.textures.valuesA.createView(),
-                        dataRenderable.renderData.textures.valuesB.createView(),
+                        dataRenderable.renderData.textures.values[0].createView(),
+                        dataRenderable.renderData.textures.values[1].createView(),
                     ],
                 );
             }
@@ -581,16 +643,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
         }
 
-        dataRenderable.passData.valuesA = {
-            name: "None",
-            limits: [0, 1]
-        }
-
-        dataRenderable.passData.valuesB = {
-            name: "None",
-            limits: [0, 1]
-        }
-
         // webGPU.readBuffer(dataRenderable.renderData.buffers.tree, 0, 256)
         //     .then(buff => console.log(new Uint32Array(buff)));
 
@@ -616,111 +668,60 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         }
         return null;
     }
+    
 
-    this.writeDataIntoValuesStorageBuffer = function(data, renderData, valuesBufferName) {
-        var created = false;
-        if (renderData.buffers[valuesBufferName].size < data.byteLength) {
-            console.log("create " + valuesBufferName)
-            // create new buffer in this slot
-            webGPU.deleteBuffer(renderData.buffers[valuesBufferName]);
-            renderData.buffers[valuesBufferName] = webGPU.createFilledBuffer(
-                "f32",
-                new Float32Array(data),
-                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-                valuesBufferName
-            );
-            created = true;
-        } else {
-            console.log("write " + valuesBufferName);
-            webGPU.writeDataToBuffer(renderData.buffers[valuesBufferName], [new Float32Array(data)])
-        }
-        return created
-    }
+    this.loadDataArray = function(dataObj, renderable, thisSrc, otherSrc) {
+        const dataUints = [DataSrcUints.VALUE_A, DataSrcUints.VALUE_B];
+        let created = false
 
-    this.writeDataIntoValuesTexture = function(data, dimensions, renderData, valuesBufferName) {
-        var created = false;
-        console.log(renderData.textures[valuesBufferName]);
-
-        const textureSize = {
-            width: dimensions[0],
-            height: dimensions[1],
-            depthOrArrayLayers: dimensions[2]
-        }
-
-        if (
-            renderData.textures[valuesBufferName].width != textureSize.width || 
-            renderData.textures[valuesBufferName].height != textureSize.height ||
-            renderData.textures[valuesBufferName].depthOrArrayLayers != textureSize.depthOrArrayLayers
-        ) {
-            webGPU.deleteTexture(renderData.textures[valuesBufferName]);
-
-            renderData.textures[valuesBufferName] = webGPU.makeTexture({
-                label: valuesBufferName,
-                size: textureSize,
-                dimension: "3d",
-                format: "r32float",
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-            });
-            created = true;
-        } else {
-            console.log("write" + valuesBufferName);
-        }
-
-        webGPU.fillTexture(renderData.textures[valuesBufferName], textureSize, 4, Float32Array.from(data).buffer);
-        return created;
-    }
-
-    // returns the new uint and if buffer(s) have been re-created
-    this.loadDataIntoValues = function(dataObj, dataSlotNum, dimensions, dataSrc, dataSrcUse, passData, renderData, resourceType, writeCornerVals) {
-        // check if its already loaded
-        if (dataSrc.name == passData.valuesA.name) return {uint: DataSrcUints.VALUE_A, created: false};
-        if (dataSrc.name == passData.valuesB.name) return {uint: DataSrcUints.VALUE_B, created: false};
-
-        // check to see what other data src is referencing
-        if (dataSrcUse == DataSrcUses.ISO_SURFACE) {
-            console.log("writing iso")
-            var otherUint = passData.surfaceColSrcUint;
-        } else {
-            console.log("writing surf col")
-            var otherUint = passData.isoSurfaceSrcUint;
-        }
+        if (thisSrc.type != DataSrcTypes.DATA) {
+            // not data, return the uint
+            return {uint:this.getDataSrcUint(thisSrc.type, thisSrc.name), created: false};
+        } 
         
-        if (otherUint != DataSrcUints.VALUE_A) {
-            // write into values a
-            var newUint = DataSrcUints.VALUE_A;
-            var valuesSlotName = "valuesA";
-            var cornerValuesSlotname = "cornerValuesA"
-        } else {
-            // write into values b
-            var newUint = DataSrcUints.VALUE_B;
-            var valuesSlotName = "valuesB";
-            var cornerValuesSlotname = "cornerValuesB"
+        // if it is data
+        // check if this data is already in cache
+        let cacheSlot = renderable.passData.dataCache.getTagSlotNum(thisSrc.name);
+        if (-1 == cacheSlot) {
+            // not loaded
+            let newData = {
+                "info": {name: thisSrc.name, limits: thisSrc.limits}
+            };
+            if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) 
+                newData["values"] = {buffer: dataObj.getValues(thisSrc.slotNum)};
+            if (renderable.type == RenderableTypes.DATA) 
+                newData["values"] = {texture: dataObj.getValues(thisSrc.slotNum), dimensions: dataObj.getDataSize()};
+            if (dataObj.resolutionMode != ResolutionModes.FULL)
+                newData["cornerValues"] = {buffer: dataObj.getCornerValues(thisSrc.slotNum)};
+            
+            // figure out where to write the new data
+            let newCacheSlot;
+            for (let i = 0; i < dataUints.length; i++) {
+                if (dataUints[i] == otherSrc.uint) continue;
+                newCacheSlot = i;
+                break;
+            }
+
+            // write to the new slot
+            const result = renderable.passData.dataCache.insertNewBlockAt(newCacheSlot, thisSrc.name, newData);
+            cacheSlot = result.slot;
+            // check if any value buffers were created
+            for (const buffInfo in result.info) {
+                created |= result.info[buffInfo].created;
+            }
         }
 
-        var created = false;
-        if (resourceType == GPUResourceTypes.BUFFER) 
-            created |= this.writeDataIntoValuesStorageBuffer(dataObj.getValues(dataSlotNum), renderData, valuesSlotName);
-        if (resourceType == GPUResourceTypes.TEXTURE) 
-            created |= this.writeDataIntoValuesTexture(dataObj.getValues(dataSlotNum), dimensions, renderData, valuesSlotName);
-        // write corner values if needed
-        if (writeCornerVals)
-            created |= this.writeDataIntoValuesStorageBuffer(dataObj.getCornerValues(dataSlotNum), renderData, cornerValuesSlotname);
-        
-        passData[valuesSlotName].name = dataSrc.name;
-        passData[valuesSlotName].limits = dataSrc.limits;
-
-        return {uint: newUint, created: created};
+        return {uint: dataUints[cacheSlot], created}
     }
 
 
     //updates the renderables for a data object
     this.updateDataObj = async function(dataObj, updateObj) {
         // update the data renderable first 
-        var dataRenderable;
-        var valueBufferCreated;
+        let dataRenderable;
+        let valueBufferCreated = false;
 
         for (let renderable of dataObj.renderables) {
-
             // reset offset optimisation if bounding box has changed
             if (!boxesEqual(renderable.passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
             renderable.passData.clippedDataBox = {
@@ -733,91 +734,63 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 opacity: [...updateObj.volumeTransferFunction.opacity]
             };
             
-            if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA || renderable.type == RenderableTypes.DATA) {
-                dataRenderable = renderable
-                var passData = dataRenderable.passData; 
-                if (updateObj.isoSurfaceSrc.type != DataSrcTypes.DATA) {
-                    passData.isoSurfaceSrcUint = this.getDataSrcUint(updateObj.isoSurfaceSrc.type, updateObj.isoSurfaceSrc.name);
-                } else {
-                    // deal with data
-                    // var slotNum = await dataObj.loadDataArray(dataObj.isoSurfaceSrc.name)
-                    var isoLoadResult = this.loadDataIntoValues(
-                        dataObj,
-                        dataObj.isoSurfaceSrc.slotNum, 
-                        dataObj.getDataSize(),
-                        updateObj.isoSurfaceSrc, 
-                        DataSrcUses.ISO_SURFACE,
-                        passData,
-                        renderable.renderData,
-                        renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        dataObj.resolutionMode != ResolutionModes.FULL
-                    );
-                    passData.isoSurfaceSrcUint = isoLoadResult.uint;
-                    var valueBufferCreatedIso = isoLoadResult.created;
+            if (renderable.type != RenderableTypes.UNSTRUCTURED_DATA && renderable.type != RenderableTypes.DATA) continue;
+
+            dataRenderable = renderable
+            let passData = renderable.passData; 
+
+            // iso surface src
+            const isoLoadResult = this.loadDataArray(
+                dataObj, 
+                renderable, 
+                updateObj.isoSurfaceSrc,
+                passData.surfaceColSrc,
+            );
+            
+            passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
+            // this has to be assigned after the previous line
+            passData.isoSurfaceSrc.uint = isoLoadResult.uint;
+            valueBufferCreated |= isoLoadResult.created;
+
+            // surface col src
+            const colLoadResult = this.loadDataArray(
+                dataObj, 
+                renderable, 
+                updateObj.surfaceColSrc,
+                passData.isoSurfaceSrc,
+            );
+            
+            passData.surfaceColSrc = updateObj.surfaceColSrc;
+            // this has to be assigned after the previous line
+            passData.surfaceColSrc.uint = colLoadResult.uint;
+            valueBufferCreated |= colLoadResult.created;
+
+            // update any dynamic buffers
+            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                // write updated mesh data to the GPU
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
+            }
+
+            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+                // update the nodes buffer
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
+            }
+
+            if (dataObj.resolutionMode != ResolutionModes.FULL) {
+                // update the corner values buffer(s)
+                const doneNames = new Set();
+                
+                for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
+                    if (doneNames.has(dataSrc.name)) continue;
+                    doneNames.add(dataSrc.name);
+                    
+                    passData.dataCache.updateBlockWithTag(dataSrc.name, {
+                        "values": dataObj.getDynamicValues(dataSrc.slotNum),
+                        "cornerValues": dataObj.getDynamicCornerValues(dataSrc.slotNum),
+                    });
                 }
-
-                if (updateObj.surfaceColSrc.type != DataSrcTypes.DATA) {
-                    passData.surfaceColSrcUint = this.getDataSrcUint(updateObj.surfaceColSrc.type, updateObj.surfaceColSrc.name);
-                } else {
-                    // deal with data
-                    // var slotNum = await dataObj.loadDataArray(dataObj.surfaceColSrc.name);
-                    var colLoadResult = this.loadDataIntoValues(
-                        dataObj,
-                        updateObj.surfaceColSrc.slotNum, 
-                        dataObj.getDataSize(),
-                        updateObj.surfaceColSrc, 
-                        DataSrcUses.SURFACE_COL,
-                        passData,
-                        renderable.renderData,
-                        renderable.type == RenderableTypes.UNSTRUCTURED_DATA ? GPUResourceTypes.BUFFER : GPUResourceTypes.TEXTURE,
-                        dataObj.resolutionMode != ResolutionModes.FULL
-                    );
-                    passData.surfaceColSrcUint = colLoadResult.uint;
-                    var valueBufferCreatedCol = colLoadResult.created;
-                }
-
-                passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
-                passData.surfaceColSrc = updateObj.surfaceColSrc;
-
-                // true if a buffer was created for either
-                valueBufferCreated = valueBufferCreatedIso || valueBufferCreatedCol;
-
-                // update unstructured data renderables
-                // update the dynamic tree nodes buffer
-                if (dataObj.resolutionMode != ResolutionModes.FULL) {
-                    webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
-                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
-                        // write updated mesh data to the GPU
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
-                    }
-                    if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_A) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
-                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
-                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesA, [dataObj.getDynamicValues(updateObj.isoSurfaceSrc.slotNum)]);
-                        }
-                    }
-                    if (dataRenderable.passData.isoSurfaceSrcUint == DataSrcUints.VALUE_B) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.isoSurfaceSrc.slotNum)]);
-                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
-                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesB, [dataObj.getDynamicValues(updateObj.isoSurfaceSrc.slotNum)]);
-                        }
-                    }
-                    if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_A) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesA, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
-                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
-                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesA, [dataObj.getDynamicValues(updateObj.surfaceColSrc.slotNum)]);
-                        }
-                    }
-                    if (dataRenderable.passData.surfaceColSrcUint == DataSrcUints.VALUE_B) {
-                        webGPU.writeDataToBuffer(renderable.renderData.buffers.cornerValuesB, [dataObj.getDynamicCornerValues(updateObj.surfaceColSrc.slotNum)]);
-                        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
-                            webGPU.writeDataToBuffer(renderable.renderData.buffers.valuesB, [dataObj.getDynamicValues(updateObj.surfaceColSrc.slotNum)]);
-                        }
-                    }
-                }
-
             }
         }
 
@@ -830,10 +803,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             dataRenderable.renderData.bindGroups.compute2 = webGPU.generateBG(
                 this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
                 [
-                    dataRenderable.renderData.buffers.valuesA,
-                    dataRenderable.renderData.buffers.valuesB,
-                    dataRenderable.renderData.buffers.cornerValuesA,
-                    dataRenderable.renderData.buffers.cornerValuesB,
+                    dataRenderable.renderData.buffers.values[0],
+                    dataRenderable.renderData.buffers.values[1],
+                    dataRenderable.renderData.buffers.cornerValues[0],
+                    dataRenderable.renderData.buffers.cornerValues[1],
                 ]
             );
         }
@@ -842,25 +815,23 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // update the face renderables
         for (let renderable of dataObj.renderables) {
             if (renderable.type != RenderableTypes.MESH) continue;
-            if (valueBufferCreated) {
-                if (dataRenderable.type == RenderableTypes.DATA) {
-                    renderable.renderData.bindGroups.rayMarch1 =  webGPU.generateBG(
-                        this.rayMarchPassDescriptor.bindGroupLayouts[1],
-                        [
-                            renderable.sharedData.buffers.passInfo, 
-                            dataRenderable.renderData.textures.valuesA.createView(),
-                            dataRenderable.renderData.textures.valuesB.createView(),
-                        ],
-                    );
-                }
-            }
+            if (!(renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME)) continue;
             // update the information about values A and values B
-            renderable.passData.valuesA = dataRenderable.passData.valuesA;
-            renderable.passData.valuesB = dataRenderable.passData.valuesB;
+            renderable.passData.values = dataRenderable.passData.values;
 
-            renderable.passData.isoSurfaceSrcUint = dataRenderable.passData.isoSurfaceSrcUint;
-            renderable.passData.surfaceColSrcUint = dataRenderable.passData.surfaceColSrcUint;
-            
+            renderable.passData.isoSurfaceSrc = dataRenderable.passData.isoSurfaceSrc;
+            renderable.passData.surfaceColSrc = dataRenderable.passData.surfaceColSrc;
+
+            if (!valueBufferCreated) continue;
+            if (dataRenderable.type != RenderableTypes.DATA) continue;
+            renderable.renderData.bindGroups.rayMarch1 =  webGPU.generateBG(
+                this.rayMarchPassDescriptor.bindGroupLayouts[1],
+                [
+                    renderable.sharedData.buffers.passInfo, 
+                    dataRenderable.renderData.textures.values[0].createView(),
+                    dataRenderable.renderData.textures.values[1].createView(),
+                ],
+            );
         }
     }
 
@@ -984,10 +955,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ]), 
                 new Float32Array([
                     renderable.passData.threshold, 
-                    renderable.passData.valuesA.limits[0],
-                    renderable.passData.valuesA.limits[1],
-                    renderable.passData.valuesB.limits[0],
-                    renderable.passData.valuesB.limits[1],
+                    renderable.passData.values[0].limits[0],
+                    renderable.passData.values[0].limits[1],
+                    renderable.passData.values[1].limits[0],
+                    renderable.passData.values[1].limits[1],
                     0,
                     ...renderable.passData.clippedDataBox.min, 0,
                     ...renderable.passData.clippedDataBox.max, 0,
@@ -998,8 +969,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     ...renderable.passData.dMatInv,
                 ]),
                 new Uint32Array([
-                    renderable.passData.isoSurfaceSrcUint,
-                    renderable.passData.surfaceColSrcUint,
+                    renderable.passData.isoSurfaceSrc.uint,
+                    renderable.passData.surfaceColSrc.uint,
                     this.globalPassInfo.colourScale, 0,
                 ]),
                 new Float32Array([
@@ -1080,10 +1051,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ]), 
                 new Float32Array([
                     renderable.passData.threshold, 
-                    renderable.passData.valuesA.limits[0],
-                    renderable.passData.valuesA.limits[1],
-                    renderable.passData.valuesB.limits[0],
-                    renderable.passData.valuesB.limits[1],
+                    renderable.passData.values[0].limits[0],
+                    renderable.passData.values[0].limits[1],
+                    renderable.passData.values[1].limits[0],
+                    renderable.passData.values[1].limits[1],
                     0,
                     ...renderable.passData.clippedDataBox.min, 0,
                     ...renderable.passData.clippedDataBox.max, 0,
@@ -1094,8 +1065,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     ...renderable.passData.dMatInv,
                 ]),
                 new Uint32Array([
-                    renderable.passData.isoSurfaceSrcUint,
-                    renderable.passData.surfaceColSrcUint,
+                    renderable.passData.isoSurfaceSrc.uint,
+                    renderable.passData.surfaceColSrc.uint,
                     this.globalPassInfo.colourScale, 
                     renderable.passData.cornerValType,
                 ]),
@@ -1166,7 +1137,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         
-        // debugger;
         const centerDepth = tex.readTexel(texSrcCenter.x - clipBox.min[0], texSrcCenter.y - clipBox.min[1])[1];
 
         // console.log("reading centre depth took:", performance.now() - start, "ms");
