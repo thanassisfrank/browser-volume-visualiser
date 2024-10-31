@@ -195,7 +195,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     this.setupDatasetMeshGeometry = function(data) {
         for (let meshName in data.geometry) {
             var renderable = webGPU.meshRenderableFromArrays(
-                data.data.positions, 
+                data.geometry[meshName].positions, 
                 null, 
                 data.geometry[meshName].indices, 
                 RenderableRenderModes.MESH_SURFACE

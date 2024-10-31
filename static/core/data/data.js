@@ -606,8 +606,11 @@ function Data(id) {
 
         // extract any mesh elements for structures/boundaries etc
         // look for element nodes where the type is TRI_3 = 5
-        // the indices all reference this.data.positions
+        // the indices all reference this.geometry.positions
         var elementNodes = cgns.getChildrenWithLabel(CGNSZoneNode, "Elements_t");
+        // keeps a track of the vertices already pulled in to the geometry positions buffer
+        let uniqueVerts = new Map();
+        let currVertIndex = 0;
         for (let node of elementNodes) {
             if (cgns.ELEMENT_TYPES[node.get(" data").value[0]] != "TRI_3") continue
             var meshName = node.attrs.name.value;
@@ -617,12 +620,30 @@ function Data(id) {
             // we have a triangular mesh element node
             var indices = node.get("ElementConnectivity/ data").value;
             for (let i = 0; i < indices.length; i++) {
-                indices[i]--;
+                indices[i]--; // convert from 1-based -> 0-based
+                // check if this vertex has already been seen
+                if (uniqueVerts.has(indices[i])) {
+                    indices[i] = uniqueVerts.get(indices[i]);
+                } else {
+                    uniqueVerts.set(indices[i], currVertIndex);
+                    indices[i] = currVertIndex++;
+                }
             }
 
             this.geometry[node.attrs.name.value] = {
                 indices: indices
             };
+        }
+
+        // get the extracted positions buffer
+        const pos = new Float32Array(currVertIndex * 3);
+        uniqueVerts.forEach((v, k) => {
+            pos[3 * v + 0] = this.data.positions[3 * k + 0];
+            pos[3 * v + 1] = this.data.positions[3 * k + 1];
+            pos[3 * v + 2] = this.data.positions[3 * k + 2];
+        });
+        for (let meshName in this.geometry) {
+            this.geometry[meshName].positions = pos;
         }
 
         console.log(this.geometry);
