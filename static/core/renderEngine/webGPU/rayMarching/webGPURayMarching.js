@@ -783,13 +783,18 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 const doneNames = new Set();
                 
                 for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
+                    if (dataSrc.type != DataSrcTypes.DATA) continue;
                     if (doneNames.has(dataSrc.name)) continue;
                     doneNames.add(dataSrc.name);
-                    
-                    passData.dataCache.updateBlockWithTag(dataSrc.name, {
-                        "values": dataObj.getDynamicValues(dataSrc.slotNum),
+
+                    let newData = {
                         "cornerValues": dataObj.getDynamicCornerValues(dataSrc.slotNum),
-                    });
+                    };
+                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                        newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);
+                    }
+                    debugger;
+                    passData.dataCache.updateBlockWithTag(dataSrc.name, newData);
                 }
             }
         }

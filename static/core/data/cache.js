@@ -72,7 +72,8 @@ export function AssociativeCache(slotCount) {
 
     // updates the block that matches the supplied tag
     this.updateBlockWithTag = function(tag, newData={}) {
-        if (!this.directory.get(tag)) return;
+        const slot = this.directory.get(tag)
+        if (slot == undefined) return;
         for (const name in newData) {
             if (!this.buffers[name]) continue;
             // TODO: only allow writing of data up to block size
