@@ -123,7 +123,7 @@ export async function createRenderEngine(canvas) {
     if (navigator.gpu) {
         // use webGPU
         console.log("webgpu is supported")
-        var webGPUBase = new WebGPUBase();
+        var webGPUBase = new WebGPUBase(false);
         await webGPUBase.setupWebGPU();
         return new WebGPURenderEngine(webGPUBase, canvas);
     } else {
