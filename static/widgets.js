@@ -16,18 +16,23 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1
     // colours
     this.bgCol = [0, 0, 0, 0];
     this.sampleCol = [200, 200, 200, 255];
+
     this.init = function () {
         setupCanvasDims(this.canvas, scale);
         this.ctx = canvas.getContext("2d", {willReadFrequently: true});
         this.ctx.fillStyle = "rgba(" + this.bgCol[0] + "," + this.bgCol[1] + "," + this.bgCol[2] + "," + this.bgCol[3] + ")";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
+    };
+
+    this.init();
+
     this.storeSample = function(newSample) {
         this.lastSamples.unshift(newSample);
         if (this.lastSamples.length > this.historyLength) {
             this.lastSamples.pop()
         }
-    }
+    };
+
     // adds a new sample to the graph (ms)
     this.update = function(newSample) {
         this.storeSample(newSample);
@@ -65,7 +70,7 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1
         }
         var newImg = new ImageData(newImgData, 1);
         this.ctx.putImageData(newImg, this.canvas.width - 1, 0);
-    }
+    };
 
     this.getAverage = function() {
         var total = 0;
@@ -73,7 +78,7 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1
             total += this.lastSamples[i];
         }
         return total/this.lastSamples.length;
-    }
+    };
 
     this.copySamples = function() {
         var str = "";
@@ -81,10 +86,9 @@ export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1
             str += sample + "\n";
         }
         navigator.clipboard.writeText(str);
-    }
-
-    this.init();
+    };
 }
+
 
 export function AxesWidget(canvas, invertY = true, scale = [1, 1]) {
     this.canvas = canvas;
@@ -93,6 +97,7 @@ export function AxesWidget(canvas, invertY = true, scale = [1, 1]) {
     this.vectorLength = 0;
     this.midPoint = [0, 0];
     this.vecCols = ["#f00", "#0f0", "#00f"];
+
     // initialise the canvas
     this.init = function() {
         setupCanvasDims(this.canvas, scale);
@@ -100,6 +105,9 @@ export function AxesWidget(canvas, invertY = true, scale = [1, 1]) {
         this.vectorLength = Math.min(this.canvas.width, this.canvas.height)/2;
         this.midPoint = [this.canvas.width/2, this.canvas.height/2];
     }
+
+    this.init();
+
     // update the axes display, expects viewMat is gl-matrix formatted
     this.update = function(viewMat) {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -116,6 +124,5 @@ export function AxesWidget(canvas, invertY = true, scale = [1, 1]) {
             );
             this.ctx.stroke();
         }
-
     }
 }

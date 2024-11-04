@@ -10,6 +10,7 @@ export const KDTreeSplitTypes = {
     VOLUME_HEUR:    5
 }
 
+
 // finds the sizes of the buffers required for each leaf to store its part of the mesh
 // logs this to the console
 export const logLeafMeshBufferSizes = (dataObj) => {
@@ -17,27 +18,17 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 
     processLeafMeshDataInfo(dataObj, d => leafInfo.push(d));
 
-    // bufferBytes.offsets.sort((a, b) => a.size - b.size);
-
     var str = ""
-
-    // for (let name of ["offsets"]) {
-    //     const minVal = bufferBytes[name][0].size;
-    //     const maxVal = bufferBytes[name].at(-1).size;
-    //     console.log("min " + name + " size " + minVal.toString() + "B");
-    //     console.log("max " + name + " size " + maxVal.toString() + "B");
-    // }
-
     str += "cells\tverts\tdepth\n";
-
     str += leafInfo.map((e, i) => 
         e.cells.toString() + "\t" + e.verts.toString() + "\t" + e.depth.toString()
     ).join("\n");
 
     navigator.clipboard.writeText(str);
 
-    console.log("samples copied to clipboard!")
-}
+    console.log("samples copied to clipboard!");
+};
+
 
 export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
     var leafPositions = new Float32Array(blockSizes.positions * leafCount);
@@ -108,8 +99,9 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
         cellConnectivity: leafCellConnectivity,
         leafVerts: leafVerts,
         indexMap: fullToLeafIndexMap
-    }
-}
+    };
+};
+
 
 // generates the cell tree for fast lookups in unstructured data
 // returns two buffers:
@@ -157,7 +149,8 @@ export var getCellTreeBuffers = (dataObj, maxLeafCells, maxDepth, treeSplitType)
     var t2 = performance.now();
     console.log("tree serialise took:", (t2 - t1)/1000, "s");
     return treeBuffers;
-}
+};
+
 
 export function CellTree() {
     this.tree = null;
@@ -176,11 +169,11 @@ export function CellTree() {
         this.cellConnectivity = cellConnectivity;
         this.cellOffsets = cellOffsets;
         this.cellTypes = cellTypes;
-    }
+    };
 
     this.setExtentBox = function(box) {
         this.extentBox = box;
-    }
+    };
 
     this.checkCellPosition = function(id, checkDimension, splitVal) {
         // first get the points in the cell
@@ -206,7 +199,7 @@ export function CellTree() {
             if (thisPointValue > splitVal)  results[1] = true;
         }
         return results;
-    }
+    };
 
     this.createNode = function(depth = 0, splitDimension = 0, points = null, cells = [], parent = null) {
         return{
@@ -219,8 +212,9 @@ export function CellTree() {
             right: null,
             points: points,
             cells: cells
-        }
-    }
+        };
+    };
+
     // builds a tree by splitting the whole data with median each time
     this.buildVertexMedian = function(maxLeafCells, maxDepth) {
         // console.log(points);
@@ -322,7 +316,7 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
-    }
+    };
 
     // builds a tree by splitting the whole data with median each time
     this.buildVertexAverage = function(maxLeafCells, maxDepth) {
@@ -425,7 +419,7 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
-    }
+    };
 
     // builds a tree by splitting nodes at their centre
     this.buildNodeMedian = function(maxLeafCells, maxDepth) {
@@ -452,7 +446,6 @@ export function CellTree() {
     
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
-            // debugger;
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
             // or stop if the # cells is already low enough
@@ -519,7 +512,7 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
-    }
+    };
 
     // builds a tree by splitting nodes at their centre
     this.buildSAH = function(maxLeafCells, maxDepth) {
@@ -528,7 +521,8 @@ export function CellTree() {
             const y = box.max[1] - box.min[1];
             const z = box.max[2] - box.min[2];
             return 2*(x*y + x*z + y*z);
-        }
+        };
+
         // estimates the cost to tree of splitting at this value using a surface area heuristic
         // C(A, B) = nodeCost + (pA * NA + pB * NB)
         var calcSplitCost = (node, dimension, splitVal) => {
@@ -548,11 +542,8 @@ export function CellTree() {
             }
 
             return 1/16 + (calcBoxSA(boxA) * NA + calcBoxSA(boxB) * NB)/calcBoxSA(node.box);
+        };
 
-        }
-
-
-        // console.log(points);
         var cellsTree = false;
         if (this.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
@@ -575,7 +566,6 @@ export function CellTree() {
     
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
-            // debugger;
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
             // or stop if the # cells is already low enough
@@ -656,7 +646,7 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
-    }
+    };
 
     // builds a tree by splitting nodes at their centre
     this.buildVolH = function(maxLeafCells, maxDepth) {
@@ -665,7 +655,8 @@ export function CellTree() {
             const y = box.max[1] - box.min[1];
             const z = box.max[2] - box.min[2];
             return x*y*z;
-        }
+        };
+
         // estimates the cost to tree of splitting at this value using a surface area heuristic
         // C(A, B) = nodeCost + (pA * NA + pB * NB)
         var calcSplitCost = (node, dimension, splitVal) => {
@@ -685,7 +676,6 @@ export function CellTree() {
             }
 
             return 1/16 + (calcBoxVol(boxA) * NA + calcBoxVol(boxB) * NB)/calcBoxVol(node.box);
-
         }
 
 
@@ -712,7 +702,6 @@ export function CellTree() {
     
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
-            // debugger;
             var currentDepth = parentNode.depth + 1;
             // stop the expansion of this node if the tree is deep enough
             // or stop if the # cells is already low enough
@@ -793,7 +782,7 @@ export function CellTree() {
         // return the tree object
         this.tree = root;
         return this.tree;
-    }
+    };
 
     this.getTreeNodeCount = function() {
         var count = 0;
@@ -803,7 +792,8 @@ export function CellTree() {
             () => {}
         ); 
         return count;
-    }
+    };
+
     this.getTreeCellsCount = function() {
         var count = 0;
         var under10 = 0;
@@ -817,7 +807,8 @@ export function CellTree() {
         );
         console.log(under10 + " nodes with <10 cells");
         return count;
-    }
+    };
+
     // returns the tree as a buffer
     this.serialise = function() {
         // tree has not been built
@@ -900,12 +891,12 @@ export function CellTree() {
             cells: cellsBuffer,
             nodeCount: totalNodeCount,
         }
-    }
+    };
 
     // print the tree node info
     // if full, prints more info
     // if not full, prints only info sent to gpu
-    this.printNodes = function(full = false) {
+    this.printNodes = function() {
         console.log("splitDim, splitVal, cellsLen, cellsLoc, leftLoc, rightLoc")
         forEachDepth(this.tree,
             (node) => {
@@ -921,5 +912,5 @@ export function CellTree() {
             () => {},
             () => {}
         )
-    }
+    };
 }

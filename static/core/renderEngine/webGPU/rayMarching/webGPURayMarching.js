@@ -11,13 +11,13 @@ export const DataSrcUses = {
     NONE: 0,
     ISO_SURFACE: 1,
     SURFACE_COL: 2,
-}
+};
 
 export const ColourScales = {
     B_W: 0,
     BL_W_R: 1,
     BL_C_G_Y_R: 2
-}
+};
 
 export function WebGPURayMarchingEngine(webGPUBase) {
     var webGPU = webGPUBase;
@@ -49,7 +49,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             specularCol: [0.4, 0.4, 0.9],
             shininess: 1000
         }
-    }
+    };
 
     this.passFlags = {
         // sent to gpu
@@ -91,7 +91,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.getPassFlag = function(name) {
         return this.passFlags[name];
-    }
+    };
 
     this.setPassFlag = function(name, state) {
         if (
@@ -103,7 +103,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             this.globalPassInfo.framesSinceMove = 0;
         }
         this.passFlags[name] = state;
-    }
+    };
 
     this.getPassFlagsUint = function() {
         var flags = 0;
@@ -132,7 +132,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         flags |= this.passFlags.showSurfLeafCells << 22 & 0b1 << 22;
         flags |= this.passFlags.contCornerVals    << 23 & 0b1 << 23;
         return flags;
-    }
+    };
 
     this.calculateStepSize = function() {
         var falloffFrames = 3;
@@ -142,18 +142,20 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             return this.globalPassInfo.stepSize * (1 + (stepMaxScale - 1) * (1 - this.globalPassInfo.framesSinceMove/falloffFrames))
         }
         return this.globalPassInfo.stepSize;
-    }
+    };
+    
     this.getStepSize = function() {
         return this.globalPassInfo.stepSize;
-    }
+    };
+
     this.setStepSize = function(step) {
         this.globalPassInfo.stepSize = step;
         this.globalPassInfo.framesSinceMove = 0;
-    }
+    };
 
     this.setColourScale = function(colourScale) {
         this.globalPassInfo.colourScale = colourScale;
-    }
+    };
 
     this.setupEngine = async function() {
         // make bind group layouts
@@ -189,15 +191,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         viewDimension: "2d",
                         multiSampled: "false"
                     }
-                },
-                // {
-                //     visibility: GPUShaderStage.FRAGMENT,
-                //     texture: {
-                //         sampleType: "unfilterable-float",
-                //         viewDimension: "2d",
-                //         multiSampled: "false"
-                //     }
-                // }
+                }
             ], "ray2"),
         ];
         
@@ -290,7 +284,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     }
                 }
             ], "Compute ray-march images")
-        ]
+        ];
 
         // create all the global buffers and bind groups common to all
         constsBuffer = webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray consts", true); //"u cs cd"
@@ -330,7 +324,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     {str: depthPassCode, formatObj: {}},
                     "depth pass"
                 );
-            })
+            });
         
             
         var computeRayMarchPromise = webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchCompute.wgsl")
@@ -350,20 +344,12 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         this.computeRayMarchPassDescriptor = passDescriptors[2];
 
         console.log(performance.now() - t0, "ms for ray pipeline creation");
-
     };
 
     this.createStructuredDataRenderable = async function(dataObj) {
         let renderable = new Renderable(RenderableTypes.DATA, RenderableRenderModes.NONE);
         let renderData = renderable.renderData;
         let passData = renderable.passData
-        var datasetSize = dataObj.getDataSize();
-        // copy the data to a texture
-        // const textureSize = {
-        //     width: datasetSize[0],
-        //     height: datasetSize[1],
-        //     depthOrArrayLayers: datasetSize[2]
-        // }
 
         renderData.textures.values = [
             webGPU.makeTexture({
@@ -409,7 +395,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderData.buffers.passInfo = webGPU.makeBuffer(512, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "ray pass info");
 
         return renderable;
-    }
+    };
 
     this.createUnstructuredDataRenderable = async function(dataObj) {
         var renderable = new Renderable(RenderableTypes.UNSTRUCTURED_DATA, RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME);
@@ -534,7 +520,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
         
         return renderable;
-    }
+    };
 
     this.createDataMeshRenderables = function(dataObj, dataRenderable) {
         if (dataObj.dataFormat == DataFormats.STRUCTURED) {
@@ -559,7 +545,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             [4, 2, 0, 2, 4, 6],
             [0, 1, 4, 5, 4, 1],
             [6, 3, 2, 3, 6, 7]
-        ]
+        ];
 
         var meshRenderables = [];
         for (let i = 0; i < faceIndices.length; i++) {
@@ -589,22 +575,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             faceRenderable.depthSort = true;
             faceRenderable.highPriority = true;
 
-            // faceRenderable.passData.threshold = dataObj.threshold;
-            // faceRenderable.passData.limits = dataObj.getLimits(0);
-            // faceRenderable.passData.dataSize = dataObj.getDataSize();
-            // faceRenderable.passData.dataBoxMin = dataObj.extentBox.min;
-            // faceRenderable.passData.dataBoxMax = dataObj.extentBox.max;
             faceRenderable.passData.dMatInv = dataObj.getdMatInv();
 
             faceRenderable.passData.isoSurfaceSrcUint = DataSrcUints.NONE;
             faceRenderable.passData.surfaceColSrcUint = DataSrcUints.NONE;
 
-            // console.log(faceRenderable.passData.dMatInv)
-
             // add the shared data
             if (faceRenderMode == RenderableRenderModes.DATA_RAY_VOLUME) {
                 // structured
-                // faceRenderable.sharedData.textures.data = dataRenderable.renderData.textures.data;
                 faceRenderable.sharedData.buffers.passInfo = dataRenderable.renderData.buffers.passInfo;
                 faceRenderable.renderData.bindGroups.rayMarch0 = webGPU.generateBG(
                     this.rayMarchPassDescriptor.bindGroupLayouts[0],
@@ -620,13 +598,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 );
             }
 
-
-            // webGPU.readBuffer(faceRenderable.sharedData.buffers.tree, 0, 256).then(buff => console.log(new Uint32Array(buff)));
             meshRenderables.push(faceRenderable);
         }
 
         return meshRenderables;
-    }
+    };
 
     // setup the data sceneObj with the correct renderables 
     // one that contains the data
@@ -643,16 +619,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
         }
 
-        // webGPU.readBuffer(dataRenderable.renderData.buffers.tree, 0, 256)
-        //     .then(buff => console.log(new Uint32Array(buff)));
-
-
         // add the data renderable
         dataObj.renderables.push(dataRenderable);
         
-        
         console.log("setup data for ray marching");
-    }
+    };
 
 
     this.getDataSrcUint = function(type, name) {        
@@ -667,12 +638,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 return DataSrcUints.NONE;
         }
         return null;
-    }
+    };
     
-
     this.loadDataArray = function(dataObj, renderable, thisSrc, otherSrc) {
         const dataUints = [DataSrcUints.VALUE_A, DataSrcUints.VALUE_B];
-        let created = false
+        let created = false;
 
         if (thisSrc.type != DataSrcTypes.DATA) {
             // not data, return the uint
@@ -711,11 +681,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             }
         }
 
-        return {uint: dataUints[cacheSlot], created}
-    }
+        return {uint: dataUints[cacheSlot], created};
+    };
 
 
-    //updates the renderables for a data object
+    // updates the renderables for a data object
     this.updateDataObj = async function(dataObj, updateObj) {
         // update the data renderable first 
         let dataRenderable;
@@ -793,13 +763,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
                         newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);
                     }
-                    debugger;
+                                        
                     passData.dataCache.updateBlockWithTag(dataSrc.name, newData);
                 }
             }
         }
-
-
 
         if (!dataRenderable) return;
 
@@ -838,7 +806,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 ],
             );
         }
-    }
+    };
 
 
     this.beginFrame = function(ctx, resized, cameraMoved, thresholdChanged) {
@@ -889,7 +857,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING
             });
         }
-    }
+    };
 
     this.endFrame = function(ctx) {
         this.globalPassInfo.framesSinceMove++;
@@ -903,7 +871,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 depthOrArrayLayers: 1
             }
         );
-    }
+    };
 
     // do ray marching on the data
     // this is run for every face of the bounding box
@@ -937,7 +905,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             vertexBuffers: [renderable.renderData.buffers.vertex],
             indexBuffer: renderable.renderData.buffers.index,
             indicesCount: renderable.indexCount,
-        }
+        };
 
         // encode the render pass
         webGPU.encodeGPUPass(commandEncoder, rayMarchRenderPass);
@@ -992,11 +960,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         webGPU.submitCommandEncoder(commandEncoder);
-    }
-
-    this.marchNew = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, canvas) {
-        
-    }
+    };
 
     // this is run for every face of the bounding box
     this.marchUnstructured = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
@@ -1098,16 +1062,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         webGPU.submitCommandEncoder(commandEncoder);
-    }
+    };
 
     // reads the texture corresponding to the best found ray depth
     // returns the length of the ray at the center of the image
     this.getCenterRayLength = async function() {
         const texSrc = this.offsetOptimisationTextureOld;
         if (!texSrc) return;
-
-        // const start = performance.now();
-
 
         // find where the center pixel is in the image
         const texSrcCenter = {
@@ -1120,7 +1081,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         // work out the smallest box around the centre of the image that can be taken
         // the restriction is bytesPerRow must be multiple of 256
-        
         const widthAlign = BYTES_PER_ROW_ALIGN/GPUTexelByteLength[texSrc.format];
         const minCorner = [texSrcCenter.x - targetRegionSize/2, texSrcCenter.y - targetRegionSize/2, 0];
         const clipBox = {
@@ -1130,7 +1090,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 minCorner[1] + targetRegionSize,
                 1
             ]
-        }
+        };
         const mappedTexData = await webGPU.readTexture(texSrc, clipBox);
 
         var tex =  new GPUTextureMapped(
@@ -1144,8 +1104,6 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         const centerDepth = tex.readTexel(texSrcCenter.x - clipBox.min[0], texSrcCenter.y - clipBox.min[1])[1];
 
-        // console.log("reading centre depth took:", performance.now() - start, "ms");
-
         return centerDepth;
-    }
+    };
 }

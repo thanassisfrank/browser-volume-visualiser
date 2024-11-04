@@ -4,6 +4,7 @@ import { mat4, vec4 } from "../gl-matrix.js";
 import { VecMath } from "../VecMath.js";
 import { ResolutionModes } from "./data.js";
 
+
 export const NODE_BYTE_LENGTH = 5 * 4;
 
 export const ChildTypes = {
@@ -19,9 +20,7 @@ export const ChildTypes = {
 //     leftPtr : u32,
 //     rightPtr : u32,
 // };
-export const nodeToArrayBuffer = () => {
 
-}
 
 export var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, parentPtr, leftPtr, rightPtr) => {
     var f32View = new Float32Array(buffer, byteOffset, 1);
@@ -31,7 +30,8 @@ export var writeNodeToBuffer = (buffer, byteOffset, splitVal, cellCount, parentP
     if (parentPtr != null) u32View[2] = parentPtr;
     if (leftPtr != null) u32View[3] = leftPtr;
     if (rightPtr != null) u32View[4] = rightPtr;
-}
+};
+
 
 // be careful as the elements of the node still reference the underlying buffer
 export var readNodeFromBuffer = (buffer, byteOffset) => {
@@ -39,13 +39,14 @@ export var readNodeFromBuffer = (buffer, byteOffset) => {
     var u32View = new Uint32Array(buffer, byteOffset, NODE_BYTE_LENGTH/4);
     return {
         thisPtr: byteOffset/NODE_BYTE_LENGTH,
-        splitVal:  f32View[0],//.slice(0, 1)[0],
-        cellCount: u32View[1],//.slice(1, 2)[0],
-        parentPtr: u32View[2],//.slice(2, 3)[0],
-        leftPtr:   u32View[3],//.slice(3, 4)[0],
-        rightPtr:  u32View[4],//.slice(4, 5)[0],
+        splitVal:  f32View[0],
+        cellCount: u32View[1],
+        parentPtr: u32View[2],
+        leftPtr:   u32View[3],
+        rightPtr:  u32View[4],
     };
-}
+};
+
 
 // goes through each node, depth first
 // callBacks receive the current node
@@ -63,7 +64,8 @@ export var forEachDepth = (tree, alwaysFunc, leafFunc, branchFunc) => {
             nodeQueue.push(currNode.left, currNode.right);
         }
     }
-}
+};
+
 
 // same as above but breadth first
 export var forEachBreadth = (tree, alwaysFunc, leafFunc, branchFunc) => {
@@ -80,7 +82,8 @@ export var forEachBreadth = (tree, alwaysFunc, leafFunc, branchFunc) => {
             nodeQueue.unshift(currNode.left, currNode.right);
         }
     }
-}
+};
+
 
 // simplified traversal 
 export const traverseNodeBufferDepth = (buff, alwaysFunc, leafFunc, branchFunc) => {
@@ -100,7 +103,7 @@ export const traverseNodeBufferDepth = (buff, alwaysFunc, leafFunc, branchFunc) 
             );
         }
     }
-}
+};
 
 
 // returns the box covering this node from the direct parent node's box
@@ -111,15 +114,14 @@ export var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {
         max: [parentBox.max[0], parentBox.max[1], parentBox.max[2]], 
     };
 
-    // var thisBox = {min: parentBox.min, max: parentBox.max};
-
     if (childType == ChildTypes.LEFT) {
         thisBox.max[splitDimension] = splitVal;
     } else {
         thisBox.min[splitDimension] = splitVal;
     }
     return thisBox;
-}
+};
+
 
 export var pivotFull = (a) => {
     var sorted = a.sort((a, b) => {
@@ -128,7 +130,8 @@ export var pivotFull = (a) => {
     });
     // console.log(sorted);
     return sorted[Math.floor(a.length/2) - 1];
-}
+};
+
 
 // estimate the median from a random sample
 export var pivotRandom = (a) => {
@@ -144,7 +147,8 @@ export var pivotRandom = (a) => {
         console.log(a);
     }
     return median;
-}
+};
+
 
 export var pivot = (a) => {
     if (a.length < 500) {
@@ -152,9 +156,7 @@ export var pivot = (a) => {
     } else {
         return pivotRandom(a);
     }
-}
-
-
+};
 
 
 // test if a given point is within an AABB
@@ -167,6 +169,7 @@ var pointInAABB = (p, box) => {
     }
     return true;
 };
+
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
@@ -219,8 +222,8 @@ var pointInTetDet = (queryPoint, cell) => {
         // not in this cell
         return [0, 0, 0, 0];
     }
+};
 
-}
 
 var pointInTetBounds = (queryPoint, cell) => {
     var minVec = [
@@ -236,7 +239,8 @@ var pointInTetBounds = (queryPoint, cell) => {
     ];
 
     return pointInAABB(queryPoint, {min: minVec, max: maxVec});
-}
+};
+
 
 const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
     var cell = {
@@ -270,7 +274,8 @@ const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
     }
 
     return cell;
-}
+};
+
 
 const getCellAtIndexBlockMesh = (dataObj, leafNode, index, slotNum) => {
     var cell = {
@@ -306,8 +311,7 @@ const getCellAtIndexBlockMesh = (dataObj, leafNode, index, slotNum) => {
     }
 
     return cell;
-}
-
+};
 
 
 function* iterateLeafCells(dataObj, leafNode, slotNum) {
@@ -321,7 +325,8 @@ function* iterateLeafCells(dataObj, leafNode, slotNum) {
         }
     }
     return;
-}
+};
+
 
 // searches through all points specified in the leaf node to find the closest to the sample point
 export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) => {
@@ -347,7 +352,7 @@ export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) =
         position: bestPoint,
         value: val
     };
-}
+};
 
 
 export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
@@ -360,7 +365,8 @@ export const getContainingCell = (dataObj, slotNum, queryPoint, leafNode) => {
         cell.factors = tetFactors;
         return cell;
     }
-}
+};
+
 
 // samples a given leaf at the given position by interpolating within mesh
 export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
@@ -369,21 +375,22 @@ export const sampleLeaf = (dataObj, slotNum, leafNode, queryPoint) => {
     // interpolate value
     if (!cell) {
         // if not inside any cell, return null
-        // debugger;
         return null;
     };
     const val = vec4.dot(cell.values, cell.factors);
     return val;
-}
+};
 
-//
+
+// returns a random position inside the supplied box
 export const randomInsideBox = (box, map = x => x) => {
     return [
         map(Math.random()) * (box.max[0] - box.min[0]) + box.min[0],
         map(Math.random()) * (box.max[1] - box.min[1]) + box.min[1],
         map(Math.random()) * (box.max[2] - box.min[2]) + box.min[2],
     ];
-}
+};
+
 
 // returns a random point inside the given leaf node
 export const sampleLeafRandom = (dataObj, slotNum, leafNode, leafBox, map) => {
@@ -393,7 +400,8 @@ export const sampleLeafRandom = (dataObj, slotNum, leafNode, leafBox, map) => {
         position: position,
         value: sampleLeaf(dataObj, slotNum, leafNode, position) ?? getClosestVertexInLeaf(dataObj, slotNum, position, leafNode).value
     };
-}
+};
+
 
 export const getLeafAverage = (dataObj, slotNum, leafNode, leafBox) => {
     var sampleCount = 10;
@@ -404,7 +412,8 @@ export const getLeafAverage = (dataObj, slotNum, leafNode, leafBox) => {
     }
 
     return averageVal;
-}
+};
+
 
 // returns a random vertex from the given leaf node
 export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
@@ -421,7 +430,8 @@ export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
         position: cell.points[0],
         value: cell.values[0]
     }
-}
+};
+
 
 // interate through all of the leaves in the data objects tree nodes buffer
 // perform callback with the information of each
@@ -469,4 +479,4 @@ export const processLeafMeshDataInfo = (dataObj, callback) => {
             nodes.push(rightNode);
         }
     }
-}
+};

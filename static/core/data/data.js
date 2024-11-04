@@ -21,7 +21,7 @@ export const DataFormats = {
     UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
 }
 
-// these act as 
+// these act as bit masks to create the full resolution mode
 export const ResolutionModes = {
     FULL:          0b00, // resolution is fixed at the maximum 
     DYNAMIC_NODES: 0b01, // the resolution is variable
@@ -34,39 +34,14 @@ export const DataFileTypes = {
     CGNS: 2,
 }
 
-// object that manages data object instances
-// types of data object creatable:
-// - from a function
-//   a function is supplied as well as dimensions and the full dataset is generated on creation
-// - from a file (simple)
-//   a source path is specified and the whole dataset is loaded on creation
-
-var dataManager = {
+// object in charge of creating, transforming and deleting data objects
+const dataManager = {
     datas: {},
     // directory of data objects corresponding to each dataset
     directory: {},
     // keep the config set too
     configSet: {},
-    // called by outside code to generate a new data object
-    // config object form:
-    // {
-    //     "name": "engine",
-    //     "path": "engine_256x256x128_uint8.raw",
-    //     "type": "raw",
-    //     "size": {
-    //         "x": 128,
-    //         "y": 256,
-    //         "z": 256
-    //     },
-    //     "cellSize": {
-    //         "x": 1,
-    //         "y": 1,
-    //         "z": 1
-    //     },
-    //     "dataType": "uint8"
-    //     "f": some function
-    //     "accessType": "whole"/"complex"
-    // }
+
     setConfigSet: function(configSet) {
         this.configSet = configSet;
         for (let id in configSet) {
@@ -74,6 +49,7 @@ var dataManager = {
             this.directory[id] = null;
         }
     },
+
     getDataObj: async function(configId, opts) {
         // returns already created data object if it exists
         if (this.directory[configId]) {
@@ -82,9 +58,9 @@ var dataManager = {
         // else, creates a new one
         var newDataObj = await this.createData(this.configSet[configId], opts);
         this.directory[configId] = newDataObj;
-        // await this.setupDataObj(newDataObj);
         return newDataObj; 
     },
+
     createData: async function(config, opts) {
         const id = newId(this.datas);
         var newData = new Data(id);
@@ -152,7 +128,7 @@ var dataManager = {
                 newData.data.treeNodeCount = preGenTree.treeNodeCount;
 
                 // store in the data object for future reference
-                // used when generating
+                // used when generating corner values
                 newData.preGeneratedInfo = preGenTree;
             }
             if (!found) {
@@ -230,8 +206,7 @@ var dataManager = {
         }
         dataObj.data.values = temp;
     },
-    // takes a data object with format STRUCTURED and converts to UNSTRUCTRED with tetrahedral cells
-    // resolution specified the stride within which to create the unstructured cells
+
     convertToUnstructured: function(dataObj) {
         if (dataObj.dataFormat != DataFormats.STRUCTURED) {
             console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
@@ -413,6 +388,7 @@ var dataManager = {
         this.datas[data.id].users++;
         return  this.datas[data.id].users;
     },
+
     removeUser: function(data) {
         this.datas[data.id].users--;
         if (this.datas[data.id].users == 0) {
@@ -421,7 +397,6 @@ var dataManager = {
         }
     },
 
-    
     deleteData: function(data) {
         // cleanup the data used by the march module
         for (let id in this.directory) {
@@ -432,7 +407,6 @@ var dataManager = {
         delete this.datas[data.id];
     }
 }
-
 
 function Data(id) {
     SceneObject.call(this, SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
@@ -517,6 +491,7 @@ function Data(id) {
     // includes scaling of the grid
     this.dataTransformMat = mat4.create();
 
+
     this.createFromFunction = function(config) {
         this.config = config;
         this.dataFormat = DataFormats.STRUCTURED;
@@ -573,8 +548,6 @@ function Data(id) {
         var coords = cgns.getGridCoordinatePositionsCart3D(coordsNode);
         this.data.positions = coords.positions;
         this.extentBox = coords.extentBox;
-
-
         
         // get connectivity information for an element node of this zone
         var gridElementsNode = CGNSZoneNode.get("GridElements");
@@ -650,7 +623,6 @@ function Data(id) {
         }
 
         console.log(this.geometry);
-        
     };
 
     this.getAvailableDataArrays = function() {
@@ -670,7 +642,7 @@ function Data(id) {
         }
         
         return dataArrayNames;
-    }
+    };
 
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
@@ -679,7 +651,6 @@ function Data(id) {
         var loadedIndex = this.data.values.findIndex(elem => elem.name == name);
         if (loadedIndex != -1) return loadedIndex;
 
-        
         var newSlotNum;
         try {
             switch (this.fileType) {
@@ -704,8 +675,6 @@ function Data(id) {
                     for (let i = 0; i < data.length; i++) {
                         limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
                     }
-
-                    // console.log(data, limits, name)
 
                     newSlotNum = this.data.values.push({name: name, data: data, limits: limits}) - 1;
                     break;
@@ -743,7 +712,7 @@ function Data(id) {
 
 
         return newSlotNum;
-    }
+    };
 
     // gets the data describing the mesh geometry and values for the mesh of this node
     // if this node is not a leaf, returns undefined
@@ -774,15 +743,15 @@ function Data(id) {
 
         // return the buffers together
         return buffers;
-    }
+    };
 
     this.setCornerValType = function(type) {
         this.cornerValType = type;
-    }
+    };
+
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
     this.createCornerValues = async function(slotNum) {
         // first, check if the corner values are available on the server
-        // console.log(this.data.values[slotNum].name, this.cornerValType, this.preGeneratedInfo.cornerValues);
         var found = false;
 
         for (let preGenCornerVal of this.preGeneratedInfo.cornerValues ?? []) {
@@ -801,31 +770,30 @@ function Data(id) {
                 console.warn("unable to load pre-generated corner val, generating instead...");
                 found = false;
             }
-
         }
         if (found) return;
         console.log("generating corner vals");
         this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
-    }
+    };
 
     // creates the dynamic corner values buffer from scratch
     // matches the nodes currently loaded in dynamic tree
     this.createDynamicCornerValues = function(slotNum) {
         this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
-    }
+    };
 
     this.convertValuesToBlockMesh = function(slotNum) {
         // create new buffer to re-write values into
         // if vert count < block length, value of vert 0 will be written
         const blockVals = new Float32Array(this.data.leafVerts.length);
         this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getFullValues(slotNum)[e]);
-        // delete this.data.values[slotNum].data;
+
         this.data.values[slotNum].data = blockVals;
-    }
+    };
 
     this.createDynamicBlockValues = function(slotNum) {
         this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
-    }
+    };
 
     this.generateData = function(config) {
         const x = config.size.x;
@@ -855,10 +823,12 @@ function Data(id) {
     // returns the byte length of the values array
     this.getValuesByteLength = function(slotNum) {
         return this.getValues(slotNum).byteLength;
-    }
+    };
+
     this.getLimits = function(slotNum) {
         return this.data.values[slotNum]?.limits;
-    }
+    };
+
     // returns the positions of the boundary points
     this.getBoundaryPoints = function() {
         if (this.dataFormat == DataFormats.STRUCTURED) {
@@ -907,7 +877,8 @@ function Data(id) {
         } 
 
         return points;
-    }
+    };
+
     this.getMidPoint = function() {
         var points = this.getBoundaryPoints();
         var min = points.slice(0, 3);
@@ -917,8 +888,9 @@ function Data(id) {
             (min[0] + max[0])/2,
             (min[1] + max[1])/2,
             (min[2] + max[2])/2,
-        ]
-    }
+        ];
+    };
+
     this.getMaxLength = function() {
         var points = this.getBoundaryPoints();
         var min = points.slice(0, 3);
@@ -928,12 +900,14 @@ function Data(id) {
             min[0] - max[0],
             min[1] - max[1],
             min[2] - max[2],
-        ])
-    }
+        ]);
+    };
+
     // for structured formats, this returns the dimensions of the data grid in # data points
     this.getDataSize = function() {
         return this.size ?? [0, 0, 0];
-    }
+    };
+
     // returns a string which indicates the size of the dataset for the user
     this.getDataSizeString = function() {
         if (this.dataFormat == DataFormats.STRUCTURED) {
@@ -946,47 +920,48 @@ function Data(id) {
             }
         }
         return "";
-    }
+    };
+
     this.setDataSize = function(size) {
         this.extentBox.max = size;
         this.size = size;
-    }
+    };
 
     this.getDynamicNodeCount = function() {
         return this.data.dynamicNodeCount;
-    }
+    };
 
 
     this.getValues = function(slotNum) {
         if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) return this.getDynamicValues(slotNum);
         return this.getFullValues(slotNum);
-    }
+    };
 
     this.getFullValues = function(slotNum) {
         return this.data.values?.[slotNum]?.data;
-    }
+    };
 
     this.getDynamicValues = function(slotNum) {
         return this.data.values?.[slotNum]?.dynamicData;
-    }
-
+    };
 
     // fetching the corner values buffers
     this.getCornerValues = function(slotNum) {
         if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
         return this.getFullCornerValues(slotNum);
-    }
+    };
+
     this.getFullCornerValues = function(slotNum) {
         return this.data.values?.[slotNum]?.cornerValues;
-    }
+    };
+
     this.getDynamicCornerValues = function(slotNum) {
         return this.data.values?.[slotNum]?.dynamicCornerValues;
-    }
-
+    };
     
     this.getName = function() {
         return this?.config?.name || "Unnamed data";
-    }
+    };
 
     // returns a mat4 encoding object space -> data space
     // includes 
@@ -994,7 +969,7 @@ function Data(id) {
         var dMatInv = mat4.create();
         mat4.invert(dMatInv, this.dataTransformMat);
         return dMatInv;
-    }
+    };
 
     // returns the number of values within this.data.values that fall into a number of bins
     // bins are in the range this.limits and there are binCount number
@@ -1011,6 +986,6 @@ function Data(id) {
         return {
             counts: counts,
             max: max
-        }
-    }
+        };
+    };
 }

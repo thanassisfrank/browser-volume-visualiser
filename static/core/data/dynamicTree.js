@@ -15,7 +15,7 @@ import { ResolutionModes } from "./data.js";
 // box size/distance from focus point
 // modified by distance of camera -> focus point
 // > closer -> 
-var calcBoxScore = (box, focusCoords, camToFocDist) => {
+const calcBoxScore = (box, focusCoords, camToFocDist) => {
     // get max axis=aligned dimension of box
     var lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
     var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
@@ -24,14 +24,13 @@ var calcBoxScore = (box, focusCoords, camToFocDist) => {
     var distToFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, mid));
     // target length approach
     return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
-}
+};
 
 
 // calculate the scores for the current leaf nodes, true leaf or pruned
 // returns a list of leaf node objects containing their score
 // assumes camera coords is in the dataset coordinate space
 function getNodeScores (dataObj, focusCoords, camCoords) {
-    // console.log(threshold);
     var dynamicNodes = dataObj.data.dynamicTreeNodes;
     var fullNodes = dataObj.data.treeNodes;
     var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
@@ -97,13 +96,14 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
 
     // return the unsorted scores 
     return scores;
-}
+};
+
 
 // takes the full scores list and returns a list of nodes to split and a list to merge
 // these will have length equal to count
 // the split list contains pruned leaves that should be split
 // the merge list contains leaves that should be merged with their siblings
-var createMergeSplitLists = (fullNodes, scores, maxCount) => {
+const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     // proportion of the scores to search for nodes to split and merge
     // combats flickering 
     const searchProp = 1;
@@ -127,8 +127,6 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
         lowestSplitIndex = i;
     }
 
-    
-
     // create merge list
     // only go up to the lowest split index to prevent nodes included in both
     let highestMergeIndex = 0;
@@ -150,23 +148,17 @@ var createMergeSplitLists = (fullNodes, scores, maxCount) => {
         highestMergeIndex = i;
     }
 
-    // console.log("lowest split index:", lowestSplitIndex);
-    // console.log("highest merge index:", highestMergeIndex);
-
     return {
         merge: mergeList,
         split: splitList
-    }
-}
+    };
+};
 
 
-var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
+const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
     // find the amount of changes we can now make
-    // var changeCount = Math.min(scores.high.length, Math.floor(scores.low.length/2) * 2);
     const changeCount = Math.min(scores.merge.length, scores.split.length);
-    // cap this at 1
-    // changeCount = Math.min(1, changeCount);
-    // console.log(changeCount);
+
 
     // merge the leaves with the highest scores with their siblings (delete 2 per change)
     var freePtrs = [];
@@ -232,13 +224,12 @@ var updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
             dataObj.dynamicNodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
         }
     }
-}
+};
 
 
 // updates the dynamic dataset based on camera location
 // this handles updating the dynamic nodes and dynamic mesh
-export var updateDynamicDataset = (dataObj, threshold, focusCoords, camCoords, activeValueSlots) => {
-    
+export const updateDynamicDataset = (dataObj, focusCoords, camCoords, activeValueSlots) => {
     if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
         // get the node scores, n lowest highest
         const scores = getNodeScores(dataObj, focusCoords, camCoords);
@@ -253,8 +244,7 @@ export var updateDynamicDataset = (dataObj, threshold, focusCoords, camCoords, a
             mergeSplitLists
         );   
     }
-}
-
+};
 
 
 // create the buffers used for dynamic data resolution
@@ -266,7 +256,6 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
     var dynamicNodeCache = new AssociativeCache(maxNodes);
     dynamicNodeCache.createBuffer("nodes", ArrayBuffer, NODE_BYTE_LENGTH);
     dynamicNodeCache.setReadFunc("nodes", (buff, slotNum, blockSize) => {
-        // console.log("n");
         return readNodeFromBuffer(buff, slotNum * blockSize);
     });
     dynamicNodeCache.setWriteFunc("nodes", (buff, data, slotNum, blockSize) => {
@@ -288,7 +277,6 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 
     var rootNode = readNodeFromBuffer(fullNodes, 0);
 
-    // writeNodeToBuffer(dynamicNodes, 0, rootNode.splitVal, 0, 0, 0, 0);
     dynamicNodeCache.insertNewBlockAt(0, rootNode.thisPtr, {
         "nodes": {splitVal: rootNode.splitVal, cellCount: 0, parentPtr: 0, leftPtr: 0, rightPtr: 0}
     });
@@ -314,14 +302,13 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
                     // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
                     if ((i >> (currDepth - j - 1)) & 1 != 0) {
                         // go right
-                        parentLoc = currParent.rightPtr //* NODE_BYTE_LENGTH;
-                        parentLocFull = currParentFull.rightPtr //* NODE_BYTE_LENGTH;
+                        parentLoc = currParent.rightPtr;
+                        parentLocFull = currParentFull.rightPtr;
                     } else {
                         // go left
-                        parentLoc = currParent.leftPtr //* NODE_BYTE_LENGTH;
-                        parentLocFull = currParentFull.leftPtr //* NODE_BYTE_LENGTH;
+                        parentLoc = currParent.leftPtr;
+                        parentLocFull = currParentFull.leftPtr;
                     }
-                    // currParent = readNodeFromBuffer(dynamicNodes, parentLoc);
                     currParent = dynamicNodeCache.readBuffSlotAt("nodes", parentLoc);
                     currParentFull = readNodeFromBuffer(fullNodes, parentLocFull * NODE_BYTE_LENGTH);
                 }
@@ -334,7 +321,6 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
                     });
                     
                     // fetch the left node from the full buffer and write to dynamic as pruned leaf
-                    // console.log(currParentFull.leftPtr);
                     var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
                     dynamicNodeCache.insertNewBlockAt(currNodeIndex, leftNode.thisPtr, {
                         "nodes": {splitVal: leftNode.splitVal, cellCount: 0, parentPtr: parentLoc, leftPtr: 0, rightPtr: 0}
@@ -356,7 +342,7 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
     console.log("written", currNodeIndex - 1, "nodes");
     console.log("made dynamic tree node buffer");
     return dynamicNodeCache;
-}
+};
 
 
 
@@ -368,7 +354,7 @@ export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
     dynamicMeshCache.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
 
     return dynamicMeshCache;
-}
+};
 
 // run when a new data array is selected
 // creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
@@ -388,4 +374,4 @@ export const createMatchedDynamicMeshValueArray = (dataObj, slotNum) => {
     );
     
     return dataObj.dynamicMeshCache.getBuffers()[buffName];
-}
+};

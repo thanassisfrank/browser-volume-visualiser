@@ -20,17 +20,17 @@ export function AssociativeCache(slotCount) {
         default: (buff, data, slotNum, blockSize) => {
             buff.set(data, blockSize * slotNum);
         }
-    }
+    };
 
     // these allow setting custom behaviour when reading/writing data to the underlying data store
     // can be specified per buffer
     this.setReadFunc = function(name, readFunc) {
         this.readFuncs[name] = readFunc;
-    }
+    };
 
     this.setWriteFunc = function(name, writeFunc) {
         this.writeFuncs[name] = writeFunc;
-    }
+    };
 
     // create a new buffer
     this.createBuffer = function(name, prototype, blockSize) {
@@ -41,7 +41,7 @@ export function AssociativeCache(slotCount) {
     this.setBuffer = function(name, buffer, blockSize=1) {
         this.buffers[name] = buffer;
         this.blockSizes[name] = blockSize;
-    }
+    };
 
     // synchronises the named buffer with the state of this.tags
     this.syncBuffer = function(name, getDataFunc) {
@@ -58,7 +58,7 @@ export function AssociativeCache(slotCount) {
     // if not slot contains the data for this, return -1
     this.getTagSlotNum = function(tag) {
         return this.directory.get(tag) ?? -1;
-    }
+    };
 
     this.updateBlockAt = function(slot, newData={}) {
         for (const name in newData) {
@@ -68,7 +68,7 @@ export function AssociativeCache(slotCount) {
                 this.buffers[name], newData[name], slot, this.blockSizes[name]
             );
         };
-    }
+    };
 
     // updates the block that matches the supplied tag
     this.updateBlockWithTag = function(tag, newData={}) {
@@ -81,7 +81,7 @@ export function AssociativeCache(slotCount) {
                 this.buffers[name], newData[name], slot, this.blockSizes[name]
             );
         };
-    }
+    };
 
     // insert new block at given position
     this.insertNewBlockAt = function(newSlot, newTag, newData = {}) {
@@ -109,27 +109,27 @@ export function AssociativeCache(slotCount) {
             evicted: evictedTag,
             info: info
         }
-    }
+    };
 
     // insert new block into random position
     this.insertNewBlockRand = function(newTag, newData = {}) {
         const newSlot = Math.floor(Math.random()*this.slotCount);
         return this.insertNewBlockAt(newSlot, newTag, newData);        
-    }
+    };
 
     // insert new block using LRU eviction
     this.insertNewBlockLRU = function(newTag, newData = {}) {
 
-    }
+    };
 
     this.readBuffSlotAt = function(name, slotNum) {
         if (!this.buffers[name]) throw ReferenceError(`Buffer of name '${name}' does not exist`);
         return (this.readFuncs[name] ?? this.readFuncs.default)(
             this.buffers[name], slotNum, this.blockSizes[name]
         );
-    }
+    };
 
     this.getBuffers = function() {
         return this.buffers;
-    }
+    };
 }

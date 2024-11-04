@@ -17,11 +17,12 @@ import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, g
 
 export const readCornerVals = (cornerValBuffer, nodePtr) => {
     return cornerValBuffer.slice(nodePtr * 8, (nodePtr + 1)* 8)
-}
+};
+
 
 export const writeCornerVals = (cornerValBuffer, nodePtr, cornerVals) => {
     cornerValBuffer.set(cornerVals, nodePtr*8);
-}
+};
 
 
 // corner values ======================================================================================
@@ -32,8 +33,7 @@ export const writeCornerVals = (cornerValBuffer, nodePtr, cornerVals) => {
 export const CornerValTypes = {
     SAMPLE: 1,
     POLYNOMIAL: 2,
-}
-
+};
 
 
 //           z   y   x
@@ -59,39 +59,18 @@ const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
         [leafBox.min[0], leafBox.max[1], leafBox.max[2]],
         leafBox.max,
     ];
-    // debugger;
     for (let i = 0; i < points.length; i++) {
         cornerVals[i] = sampleLeaf(dataObj, slotNum, leafNode, points[i]) ?? getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
     }
     
     return cornerVals;
-}
+};
+
 
 const getSampleCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rightPtr) => {
     var leftCorners = cornerValBuffer.slice(leftPtr*8, (leftPtr + 1)*8);
     var rightCorners = cornerValBuffer.slice(rightPtr*8, (rightPtr + 1)*8);
     var thisCorners = new Float32Array(8);
-
-
-    // thisCorners[0] = (17/20)*leftCorners[0] + (1/20)*(leftCorners[1] + leftCorners[2] + leftCorners[4]);
-    // thisCorners[1] = (17/20)*leftCorners[1] + (1/20)*(leftCorners[0] + leftCorners[3] + leftCorners[5]);
-    // thisCorners[2] = (17/20)*leftCorners[2] + (1/20)*(leftCorners[0] + leftCorners[3] + leftCorners[4]);
-    // thisCorners[3] = (17/20)*leftCorners[3] + (1/20)*(leftCorners[1] + leftCorners[2] + leftCorners[7]);
-
-    // thisCorners[4] = (17/20)*rightCorners[4] + (1/20)*(rightCorners[0] + rightCorners[5] + rightCorners[6]);
-    // thisCorners[5] = (17/20)*rightCorners[5] + (1/20)*(rightCorners[1] + rightCorners[4] + rightCorners[7]);
-    // thisCorners[6] = (17/20)*rightCorners[6] + (1/20)*(rightCorners[2] + rightCorners[4] + rightCorners[7]);
-    // thisCorners[7] = (17/20)*rightCorners[6] + (1/20)*(rightCorners[3] + rightCorners[5] + rightCorners[6]);
-    
-
-    // // perform averaging for low-pass effect
-    // for (let i = 0; i < 8; i++) {
-    //     if ((i >> splitDim & 1) == 1) {
-    //         thisCorners[i] = 0.5*rightCorners[i] + 0.5*leftCorners[i];
-    //     } else {
-    //         thisCorners[i] = 0.5*leftCorners[i] + 0.5*rightCorners[i];
-    //     }
-    // }
 
     // select which is coincident with the parent node's corners
     for (let i = 0; i < 8; i++) {
@@ -102,8 +81,7 @@ const getSampleCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rig
         }
     }
     return thisCorners;
-}
-
+};
 
 
 // creates an f32 buffer containg 8 values per node
@@ -124,7 +102,7 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
-    }
+    };
 
     // the boxes of all of the parents of the current node
     var currBoxes = [];
@@ -186,7 +164,8 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
     console.log("generating corner values took:", (performance.now() - start), "ms");
 
     return nodeCornerVals;
-}
+};
+
 
 // performs linear regression to fit cubic to a selection of the leafNode's verts
 const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox, sampleCount) => {
@@ -197,14 +176,10 @@ const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox, sampleCount)
     // vector of outputs
     var Y = [];
 
-    // debugger;
-
     // sample inside the leaf node
     for (let i = 0; i < pointCount; i++) {
         // sample at unique location
-
         let point = sampleLeafRandom(dataObj, slotNum, leafNode, leafBox, smoothStep);
-
 
         X[i] = [
             1, 
@@ -232,32 +207,22 @@ const getLeafPolyCornerVals = (dataObj, slotNum, leafNode, leafBox, sampleCount)
     }
 
     // all Y vals = 0 or couldn't find linear reg
-    return [0, 0, 0, 0, 0, 0, 0, 0];
-    
-}
+    return [0, 0, 0, 0, 0, 0, 0, 0];  
+};
+
 
 const evaluatePolynomial = (vals, p) => {
     return vals[0] + 
         vals[1] * p[0] + vals[2] * p[1] + vals[3] * p[2] + 
         vals[4] * p[0] * p[1] + vals[5] * p[0] * p[2] + vals[6] * p[1] * p[2] + 
         vals[7] * p[0] * p[1] * p[2];
-}
-
-    
+};
+  
 
 // computes the polynomial fit of a node given the polynomial fit of the children
 const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currNode, sampleCount) => {
     var leftCorners = readCornerVals(cornerValBuffer, currNode.leftPtr);
     var rightCorners = readCornerVals(cornerValBuffer, currNode.rightPtr);
-    var thisCorners = new Float32Array(8);
-
-
-    // simple averaging approach, doesn't work well as the children are only fitted within their own volumes
-    // for (let i = 0; i < 8; i++) {
-    //     thisCorners[i] = 0.5*(leftCorners[i] + rightCorners[i]);
-    // }
-    // return thisCorners;
-
 
     // resample and fit approach
     // get the bounding boxes of the two children nodes
@@ -311,11 +276,10 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currN
 
     // all Y vals = 0 or couldn't find linear reg
     return [0, 0, 0, 0, 0, 0, 0, 0];
-}
+};
 
 
 var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
-
     const sampleCount = 16;
     var start = performance.now();
     var treeNodes = dataObj.data.treeNodes;
@@ -324,7 +288,6 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
 
     // figure out the box of the current node
     var getThisBox = (currNode) => {
-        // console.log(currNode);
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
             return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
@@ -396,7 +359,7 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
     console.log("generating poly corner values took:", (performance.now() - start), "ms");
 
     return nodeCornerVals;
-}
+};
 
 
 // generates the corner values for the full node tree of the data set
@@ -408,7 +371,8 @@ export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
     } else {
         throw Error("Unrecognised corner value type");
     }
-}
+};
+
 
 // creates or modifies the dynamic corner values buffer 
 // agnostic to samples vs poly
@@ -431,7 +395,7 @@ export var createMatchedDynamicCornerValues = (dataObj, slotNum) => {
     dataObj.dynamicNodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
     
     return dataObj.dynamicNodeCache.getBuffers()[buffName];
-}
+};
 
 
 // node values ========================================================================================
@@ -454,7 +418,7 @@ export var createNodeValuesBuffer = (dataObj) => {
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
-    }
+    };
 
     // the boxes of all of the parents of the current node
     var currBoxes = [];
@@ -518,7 +482,7 @@ export var createNodeValuesBuffer = (dataObj) => {
     }
     console.log("generating node vals took:", (performance.now() - start), "ms");
     return nodeVals;
-}
+};
 
 
 export var addNodeValsToFullTree = (treeNodes, nodeVals) => {
@@ -538,4 +502,4 @@ export var addNodeValsToFullTree = (treeNodes, nodeVals) => {
             )
         }
     }
-}
+};

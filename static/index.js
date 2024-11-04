@@ -1,4 +1,6 @@
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, removeAllChildren} from "./core/utils.js";
+// index.js
+// the main js file for index.html
+import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims} from "./core/utils.js";
 
 import { dataManager, DataFormats } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
@@ -11,20 +13,21 @@ import { CornerValTypes } from "./core/data/treeNodeValues.js";
 import { VecMath } from "./core/VecMath.js"
 
 
-var setUpRayMarchOptions = (rayMarcher) => {
+const setUpRayMarchOptions = (rayMarcher) => {
     for (let elem of getClass("ray-march-opt")) {
         elem.checked = rayMarcher.getPassFlag(elem.name);
         elem.addEventListener("mousedown", (e) => {
             e.stopPropagation();
             return false;
-        })
+        });
         elem.addEventListener("click", (e) => {
             rayMarcher.setPassFlag(elem.name, elem.checked);
-        })
+        });
     }
-}
+};
 
-var populateDataOptions = (dataManager) => {
+
+const populateDataOptions = (dataManager) => {
     var dataOptions = get("data-select");
     for (let id in dataManager.configSet) {
         var elem = document.createElement("OPTION");
@@ -32,9 +35,10 @@ var populateDataOptions = (dataManager) => {
         elem.innerText = dataManager.configSet[id].name;
         dataOptions.appendChild(elem);
     }
-}
+};
 
-var populateKDTreeOptions = () => {
+
+const populateKDTreeOptions = () => {
     var kdTreeOptions = get("kd-tree-type-select");
     for (let type in KDTreeSplitTypes) {
         var elem = document.createElement("OPTION");
@@ -42,9 +46,10 @@ var populateKDTreeOptions = () => {
         elem.innerText = type;
         kdTreeOptions.appendChild(elem);
     }
-}
+};
 
-var populateCornerValOptions = () => {
+
+const populateCornerValOptions = () => {
     var cornerValOptions = get("corner-val-type-select");
     for (let type in CornerValTypes) {
         var elem = document.createElement("OPTION");
@@ -52,22 +57,10 @@ var populateCornerValOptions = () => {
         elem.innerText = type;
         cornerValOptions.appendChild(elem);
     }
-}
+};
 
 // define the main function
 async function main() {
-    // this matrix is rank 6 thus (ATA)-1 does not exist
-    var matA = [
-        [1, 19, 0, 2, 0,  38, 0, 0],
-        [1, 17, 0, 2, 0,  34, 0, 0],
-        [1, 19, 1, 1, 19, 19, 1, 19],
-        [1, 18, 0, 3, 0,  54, 0, 0],
-        [1, 18, 1, 1, 18, 18, 1, 18],
-        [1, 18, 1, 2, 18, 36, 2, 36],
-        [1, 17, 1, 1, 17, 17, 1, 17],
-        [1, 18, 0, 2, 0,  36, 0, 0]
-    ];
-
     var canvas = get("c");
     
     var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
@@ -81,7 +74,7 @@ async function main() {
         .catch((reason) => {
             console.error("Could not create rendering engine: " + reason);
             return null;
-        })
+        });
 
     
     var serverDatasetsPromise = fetch("/data/datasets.json")
@@ -116,18 +109,13 @@ async function main() {
         .catch((reason) => {
             console.error("Could not get datasets: " + reason);
             return null;
-        })
+        });
     
     var [renderEngine, allDatasets] = await Promise.all([renderEnginePromise, serverDatasetsPromise]);
     if (!renderEngine || !allDatasets) {
         console.error("Could not initialise program");
         return;
     }
-
-    // show/hide the correct options
-    get("data-select").addEventListener("change", (e) => {
-
-    });
     
     var camera = new Camera();
     // set the max views
@@ -171,7 +159,7 @@ async function main() {
 
         // hide the window
         hide(get("add-view-container")); 
-    })
+    });
 
     var cameraFollowPath = false;
 
@@ -492,5 +480,5 @@ async function main() {
     
     renderLoop();
 }
-// window.addEventListener("load", main);
+
 document.body.onload = main;

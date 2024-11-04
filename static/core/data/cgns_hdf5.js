@@ -44,6 +44,7 @@ export const ELEMENT_TYPES = [
     "HEXA_64"
 ];
 
+
 export const ELEMENT_VERTICES_COUNT = {
     "ElementTypeNull": undefined, 
     "ElementTypeUserDefined": undefined, 
@@ -87,6 +88,7 @@ export const ELEMENT_VERTICES_COUNT = {
     "HEXA_64": 64
 };
 
+
 // num edges for each element
 export const ELEMENT_EDGE_COUNT = [
     0, // ElementTypeNull
@@ -100,8 +102,7 @@ export const ELEMENT_EDGE_COUNT = [
     0, // QUAD_8
     0, // QUAD_9
     6, // TETRA_4
-]
-
+];
 
 
 // labels are not necessarily unique among children
@@ -112,9 +113,9 @@ export var getChildrenWithLabel = (parent, label) => {
         if (node?.attrs?.label?.value == label) children.push(node);
     }
     return children;
-}
+};
 
-//
+
 export var getGridCoordinatePositionsCart3D = (gridCoordsNode) => {
     
     var coordsXNode = gridCoordsNode.get("CoordinateX");
@@ -130,8 +131,6 @@ export var getGridCoordinatePositionsCart3D = (gridCoordsNode) => {
     var coordsX = coordsXNode.get(" data").value;
     var coordsY = coordsYNode.get(" data").value;
     var coordsZ = coordsZNode.get(" data").value;
-
-    // console.log(coordsX);
 
     var min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
     var max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
@@ -153,4 +152,4 @@ export var getGridCoordinatePositionsCart3D = (gridCoordsNode) => {
             max: max
         }
     };
-}
+};
