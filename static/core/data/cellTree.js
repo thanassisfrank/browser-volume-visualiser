@@ -31,6 +31,32 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 
 
 export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
+    let vertDupes = [new Set()];
+    let cellDupes = [new Set()];
+    const updateDuplicateCount = (dupeCounts, vertID) => {
+        for (let i = dupeCounts.length - 1 ; i >= 0; i--) {
+            if (dupeCounts[i].has(vertID)) {
+                // found in this list, remove
+                dupeCounts[i].delete(vertID);
+                // create new list if it doesn't exist
+                if (!dupeCounts[i + 1]) dupeCounts[i + 1] = new Set();
+                // add to the one above
+                dupeCounts[i + 1].add(vertID);
+                break;
+            } else if (0 == i) {
+                dupeCounts[0].add(vertID);
+                break;
+            }
+        }
+    };
+
+    const logDupes = (dupes, nameStr) => {
+        for (let i = 0; i < dupes.length; i++) {
+            if (0 == dupes[i].size) continue;
+            console.log(dupes[i].size + " " + nameStr +  " represented " + (i+1) + " times");
+        }
+    };
+
     var leafPositions = new Float32Array(blockSizes.positions * leafCount);
     var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
     var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
@@ -38,6 +64,11 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
     var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
 
     var fullToLeafIndexMap = new Map();
+
+    const emptyElems = {
+        positions: 0,
+        cellOffsets: 0,
+    };
 
     var currLeafIndex = 0;
 
@@ -83,15 +114,34 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
                     leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
                     // add to unique verts list
                     uniqueVerts.set(thisPointIndex, currVertIndex++);
+
+                    // update dupes counts
+                    updateDuplicateCount(vertDupes, thisPointIndex);
                 }
                 // add connectivity entry for vert position within the block
                 leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
             }  
+
+            updateDuplicateCount(cellDupes, cellID);
         }
+
+        emptyElems.positions += blockSizes.positions - 3 * uniqueVerts.size;
+        emptyElems.cellOffsets += blockSizes.cellOffsets - currNode.cellCount;
 
         // update index map to allow full node index -> leaf node index
         fullToLeafIndexMap.set(i, currLeafIndex++);
     }
+
+    // log information about the tree
+    // total empty space per buffer
+    console.log(Math.round(emptyElems.positions/leafPositions.length * 100) + "% of leaf positions empty");
+    console.log(Math.round(emptyElems.cellOffsets/leafCellOffsets.length * 100) + "% of leaf cell offsets empty");
+    
+    // duplicate information
+    logDupes(vertDupes, "vertices");
+    logDupes(cellDupes, "cells");
+    
+
 
     return {
         positions: leafPositions,
