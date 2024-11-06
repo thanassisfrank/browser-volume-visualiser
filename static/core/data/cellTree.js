@@ -30,10 +30,10 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 };
 
 
-export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
+export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=false) => {
     let vertDupes = [new Set()];
     let cellDupes = [new Set()];
-    const updateDuplicateCount = (dupeCounts, vertID) => {
+    const updateDuplicateCount = analysis ? (dupeCounts, vertID) => {
         for (let i = dupeCounts.length - 1 ; i >= 0; i--) {
             if (dupeCounts[i].has(vertID)) {
                 // found in this list, remove
@@ -48,7 +48,7 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
                 break;
             }
         }
-    };
+    } : (x, y) => {};
 
     const logDupes = (dupes, nameStr) => {
         for (let i = 0; i < dupes.length; i++) {
@@ -132,14 +132,17 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount) => {
         fullToLeafIndexMap.set(i, currLeafIndex++);
     }
 
-    // log information about the tree
-    // total empty space per buffer
-    console.log(Math.round(emptyElems.positions/leafPositions.length * 100) + "% of leaf positions empty");
-    console.log(Math.round(emptyElems.cellOffsets/leafCellOffsets.length * 100) + "% of leaf cell offsets empty");
-    
-    // duplicate information
-    logDupes(vertDupes, "vertices");
-    logDupes(cellDupes, "cells");
+    if (analysis) {
+        // log information about the tree
+        // total empty space per buffer
+        console.log(Math.round(emptyElems.positions/leafPositions.length * 100) + "% of leaf positions empty");
+        console.log(Math.round(emptyElems.cellOffsets/leafCellOffsets.length * 100) + "% of leaf cell offsets empty");
+        
+        // duplicate information
+        logDupes(vertDupes, "vertices");
+        logDupes(cellDupes, "cells");
+    }
+
     
 
 

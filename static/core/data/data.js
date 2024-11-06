@@ -348,7 +348,7 @@ const dataManager = {
     // converts the geometry buffers and generates a new buffer tracking the vertices for each leaf
     createLeafMeshData: function(dataObj, blockSizes, leafCount) {
         // create the new buffers
-        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
+        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount, true);
         for (let name of ["positions", "cellOffsets", "cellConnectivity"]) {
             console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
             console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
