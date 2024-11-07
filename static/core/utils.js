@@ -514,3 +514,43 @@ export function buildCellKDTree(points, dimensions, depth, cellConnectivity, cel
     // return the tree object
     return root;
 }
+
+// converts a 2D array into a csv formatted string
+export function toCSVStr(data, sep=",", endl="\r\n") {
+    let str = "";
+    for (let row of data) {
+        str += row.join(sep) + endl;
+    }
+    return str;
+}
+
+export function downloadCanvas(canvas, fileName, mimeType) {
+    try {
+        var dlElem = document.createElement('a');
+        
+        dlElem.download = fileName;
+        const image = canvas.toDataURL(mimeType);
+        dlElem.href = image;
+        dlElem.click();
+    
+        dlElem.remove();
+
+    } catch (e) {
+        console.error(`Unable to download canvas as ${fileName}: ${e}`);
+    }
+}
+
+export function downloadObject(obj, fileName, mimeType) {
+    try {
+        var dlElem = document.createElement('a');
+        
+        dlElem.download = fileName;
+        var blob = new Blob([obj], {type: mimeType});
+        dlElem.href = window.URL.createObjectURL(blob);
+        dlElem.click();
+    
+        dlElem.remove();
+    } catch (e) {
+        console.error(`Unable to download ${fileName}: ${e}`);
+    }
+}

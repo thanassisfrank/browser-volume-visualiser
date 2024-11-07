@@ -1,6 +1,6 @@
 // index.js
 // the main js file for index.html
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims} from "./core/utils.js";
+import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas} from "./core/utils.js";
 
 import { dataManager, DataFormats } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
@@ -206,6 +206,12 @@ async function main() {
                     break;
                 }
 
+                let cornerVals = dataObj.getFullCornerValues(0);
+                if (!cornerVals) {
+                    console.warn("no corner values present in slot 0");
+                    return;
+                }
+
                 // download the buffers
                 const filePrefix = [
                     dataObj.config.path.split("/")[1].split(".")[0],
@@ -218,14 +224,7 @@ async function main() {
 
                 const fileName = filePrefix + "_cornerVals.raw";
 
-                var dlElem = document.createElement('a');
-
-                dlElem.download = fileName;
-                var blob = new Blob([dataObj.getFullCornerValues(0)], {type: "octet/stream"});
-                dlElem.href = window.URL.createObjectURL(blob);
-                dlElem.click();
-
-                dlElem.remove();
+                downloadObject(cornerVals, fileName, "application/octet-stream");
 
                 // print the required json entry
                 var jsonEntry = {
@@ -270,19 +269,8 @@ async function main() {
                 const treeNodesName = filePrefix + "_treeNodes.raw";
                 const treeCellsName = filePrefix + "_treeCells.raw";
 
-                var dlElem = document.createElement('a');
-
-                dlElem.download = treeNodesName;
-                var blobNodes = new Blob([dataObj.data.treeNodes], {type: "octet/stream"});
-                dlElem.href = window.URL.createObjectURL(blobNodes);
-                dlElem.click();
-
-                dlElem.download = treeCellsName;
-                var blobCells = new Blob([dataObj.data.treeCells], {type: "octet/stream"});
-                dlElem.href = window.URL.createObjectURL(blobCells);
-                dlElem.click();
-
-                dlElem.remove();
+                downloadObject(dataObj.data.treeNodes, treeNodesName, "application/octet-stream");
+                downloadObject(dataObj.data.treeCells, treeCellsName, "application/octet-stream");
 
                 // print the required json entry
                 var jsonEntry = {
@@ -383,12 +371,7 @@ async function main() {
         "s": {
             description: "Save image on main canvas",
             f: function(e) {
-                const image = canvas.toDataURL('image/png');
-                var dlElem = document.createElement('a');
-                dlElem.download = 'canvas_image.png';
-                dlElem.href = image;
-                dlElem.click();
-                dlElem.remove();
+                downloadCanvas(canvas, "canvas_image.png", "image/png");
             }
         },
         "u": {
