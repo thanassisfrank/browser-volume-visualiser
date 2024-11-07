@@ -467,7 +467,7 @@ function Data(id) {
     this.meshBlockSizes;
 
     // any additional mesh geometry that is part of the dataset but not part of the mesh
-    this.geometry = {}
+    this.geometry = {};
 
     // information about the data files that have been pre-generated and are available to be laoded from the server
     this.preGeneratedInfo = {};
@@ -590,8 +590,9 @@ function Data(id) {
         for (let node of elementNodes) {
             if (cgns.ELEMENT_TYPES[node.get(" data").value[0]] != "TRI_3") continue
             var meshName = node.attrs.name.value;
-            // don't include the boundary planes
-            if (["symmetry", "downstream", "upstream", "side", "lower", "upper"].includes(meshName)) continue;
+            // don't show boundary planes by default
+            let showByDefault = true;
+            if (["symmetry", "downstream", "upstream", "side", "lower", "upper"].includes(meshName)) showByDefault = false;
 
             // we have a triangular mesh element node
             var indices = node.get("ElementConnectivity/ data").value;
@@ -607,7 +608,8 @@ function Data(id) {
             }
 
             this.geometry[node.attrs.name.value] = {
-                indices: indices
+                indices: indices,
+                showByDefault: showByDefault
             };
         }
 

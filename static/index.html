@@ -244,15 +244,18 @@
                                 </tr>
                             </table>
                         </details>
-                        <details>
+                        <details class="view-geometry-enable-container">
                             <summary>Geometry</summary>
-
                         </details>
                         <!-- Temporarily removed to prevent system lockup with large datasets -->
                         <!-- <label class="view-close view-info clickable">Close</label> -->
                     </div>
                 </div>
             </div>
+        </template>
+
+        <template id="geometry-enable-template">
+            <input type="checkbox" class="view-enable-geometry" data-geometry-name=""><label></label><br>
         </template>
 
         <script type="module" src="index.js"></script>

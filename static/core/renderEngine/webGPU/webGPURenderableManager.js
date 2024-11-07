@@ -13,7 +13,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
     // create the needed renderables for a scene object to be displayed as desired
     
     // take a scene object as input and creates its needed renderables
-    this.setupSceneObject = function(sceneObj) {
+    this.setupSceneObject = function(sceneObj, setupObj) {
         // get rid of any renderables already present
         for (let renderable of sceneObj.renderables) {
             this.destroyRenderable(renderable);
@@ -31,7 +31,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 this.setupMeshSceneObject(sceneObj);
                 break;
             case SceneObjectTypes.DATA:
-                this.setupDataSceneObject(sceneObj);
+                this.setupDataSceneObject(sceneObj, setupObj);
                 break; 
             case SceneObjectTypes.AXES:
                 this.setupAxesSceneObject(sceneObj);
@@ -54,6 +54,17 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 // propogate the threshold to its renderables
                 for (let renderable of sceneObj.renderables) {
                     renderable.passData.threshold = updateObj.threshold;
+                    if (renderable.type != RenderableTypes.MESH) continue;
+                    if (renderable.geometryName === undefined) continue;
+                    const enabled = updateObj.enabledGeometry[renderable.geometryName];
+                    if (enabled === undefined) continue;
+
+                    // show/hide geometry
+                    if (enabled) {
+                        renderable.renderMode = RenderableRenderModes.MESH_SURFACE;
+                    } else {
+                        renderable.renderMode = RenderableRenderModes.NONE;
+                    }
                 }
                 if (sceneObj.renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
                     this.rayMarcher.updateDataObj(sceneObj, updateObj);
@@ -149,7 +160,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
 
 
     // perform the setup needed depending on the data render mode
-    this.setupDataSceneObject = async function(data) {
+    this.setupDataSceneObject = async function(data, setupObj) {
         if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
             // create data points mesh renderable
             try {
@@ -185,21 +196,26 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         if (data.renderMode & SceneObjectRenderModes.DATA_MESH_GEOMETRY) {
             // setup the triangular geometry inside the dataset for rendering
             try {
-                this.setupDatasetMeshGeometry(data);
+                this.setupDatasetMeshGeometry(data, setupObj);
             } catch (e) {
                 console.error("Unable to setup data object for DATA_MESH_GEOMETRY render mode:", e);
             }
         }
     }
 
-    this.setupDatasetMeshGeometry = function(data) {
+    this.setupDatasetMeshGeometry = function(data, setupObj) {
         for (let meshName in data.geometry) {
+            let renderMode = RenderableRenderModes.NONE;
+            if (setupObj.enabledGeometry[meshName]) renderMode = RenderableRenderModes.MESH_SURFACE;
             var renderable = webGPU.meshRenderableFromArrays(
                 data.geometry[meshName].positions, 
                 null, 
                 data.geometry[meshName].indices, 
-                RenderableRenderModes.MESH_SURFACE
+                renderMode
             );
+
+            renderable.geometryName = meshName;
+
             var mag = 0.7;
             renderable.serialisedMaterials = webGPU.serialiseMaterials(
                 {
@@ -214,8 +230,6 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 }
             );
 
-            // renderable.highPriority = true;
-    
             data.renderables.push(renderable);
         }
     }

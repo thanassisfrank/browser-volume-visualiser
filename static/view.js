@@ -50,9 +50,9 @@ export var viewManager = {
 
     createViewDOM: function(id, view) {
         // clone the proto node
-        var viewContainer = get("view-container-template").content.cloneNode(true);
-        console.log(viewContainer.children[0]);
-        viewContainer.children[0].id = id;
+        var viewContainer = get("view-container-template").content.cloneNode(true).children[0];
+        console.log(viewContainer);
+        viewContainer.id = id;
 
         // look through the DOM to find the functional elements
         var slider =        viewContainer.querySelector(".view-threshold");
@@ -77,6 +77,7 @@ export var viewManager = {
 
         // add references to these in the view
         view.elems.container = viewContainer;
+
         view.elems.slider = slider;
         view.elems.frame = frame;
         view.elems.closeBtn = closeBtn;
@@ -95,6 +96,7 @@ export var viewManager = {
         view.elems.volCol = volCols;
         view.elems.volOp = volOps;
         view.elems.axesWidget = axesWidget;
+        view.elems.geometryCheck = [];
 
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
@@ -154,6 +156,23 @@ export var viewManager = {
 
         for (let elem of view.elems.volOp) {
             view.volumeTransferFunction.opacity[elem.dataset["transferIndex"]] = elem.value;
+        }
+
+
+        // initialise the geometry enable checkboxes
+        const geomEnableCont = viewContainer.querySelector(".view-geometry-enable-container");
+        for (let meshName in view.data.geometry) {
+            let meshEnableDocFrag = get("geometry-enable-template").content.cloneNode(true);
+            meshEnableDocFrag.querySelector("label").innerText = meshName;
+            const checkbox = meshEnableDocFrag.querySelector(".view-enable-geometry");
+            checkbox.dataset.geometryName = meshName;
+            checkbox.checked = view.data.geometry[meshName].showByDefault;
+
+            view.enabledGeometry[meshName] = view.data.geometry[meshName].showByDefault;
+
+            view.elems.geometryCheck.push(checkbox);
+            // create the event listener
+            geomEnableCont.appendChild(meshEnableDocFrag);
         }
     }, 
 
@@ -276,7 +295,13 @@ export var viewManager = {
             elem.addEventListener("change", (e) => {
                 view.volumeTransferFunction.opacity[e.target.dataset["transferIndex"]] = e.target.value;
             });
-        }       
+        }   
+        
+        for (let elem of view.elems.geometryCheck) {
+            elem.addEventListener("change", (e) => {
+                view.updateEnabledGeometry(e.target.dataset["geometryName"], e.target.checked);
+            })
+        }
     },
 
     appendDOM: function(view) {
@@ -323,6 +348,8 @@ function View(id, camera, data, renderMode) {
         opacity:[]
     };
 
+    this.enabledGeometry = {};
+
     this.renderMode = renderMode;
 
     this.updateDynamicTree = true;
@@ -355,8 +382,10 @@ function View(id, camera, data, renderMode) {
         this.sceneGraph.insertChild(this.data);
         
         // setup the renderables
+        const setupObj = {enabledGeometry: this.enabledGeometry};
+        console.log(setupObj);
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
-            renderEngine.setupSceneObject(sceneObj);
+            renderEngine.setupSceneObject(sceneObj, setupObj);
         }
         console.log(this.sceneGraph.activeCamera.getEyePos());
         this.update(0, renderEngine);
@@ -443,6 +472,10 @@ function View(id, camera, data, renderMode) {
         this.surfaceColSrc = {type: type, name: name, limits: limits, slotNum: slotNum};
     };
 
+    this.updateEnabledGeometry = function(name, enable) {
+        this.enabledGeometry[name] = enable;
+    };
+
     this.didThresholdChange = function() {
         var changed = this.thresholdChanged;
         this.thresholdChanged = false;
@@ -497,6 +530,7 @@ function View(id, camera, data, renderMode) {
             surfaceColSrc: this.surfaceColSrc,
             clippedDataBox: this.clippedDataExtentBox,
             volumeTransferFunction: this.volumeTransferFunction,
+            enabledGeometry: this.enabledGeometry,
         };
 
         // update the renderables for the objects in the scene

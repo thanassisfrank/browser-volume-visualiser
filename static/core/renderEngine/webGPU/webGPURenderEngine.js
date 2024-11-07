@@ -186,12 +186,12 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     };
 
     // calls the same function from the renderable manager to create the renderables needed
-    this.setupSceneObject = function(sceneObj) {
-        this.renderableManager.setupSceneObject(sceneObj);
+    this.setupSceneObject = function(...args) {
+        this.renderableManager.setupSceneObject(...args);
     };
 
-    this.updateSceneObject = function(dt, sceneObj, updateObj) {
-        this.renderableManager.updateSceneObject(dt, sceneObj, updateObj);
+    this.updateSceneObject = function(...args) {
+        this.renderableManager.updateSceneObject(...args);
     }
     
     this.cleanupSceneObj = function(sceneObj) {
