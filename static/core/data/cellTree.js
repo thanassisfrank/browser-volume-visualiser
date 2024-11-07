@@ -1,5 +1,6 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
+import { downloadObject, toCSVStr } from "../utils.js";
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer } from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
@@ -50,13 +51,6 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
         }
     } : (x, y) => {};
 
-    const logDupes = (dupes, nameStr) => {
-        for (let i = 0; i < dupes.length; i++) {
-            if (0 == dupes[i].size) continue;
-            console.log(dupes[i].size + " " + nameStr +  " represented " + (i+1) + " times");
-        }
-    };
-
     var leafPositions = new Float32Array(blockSizes.positions * leafCount);
     var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
     var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
@@ -65,9 +59,9 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
 
     var fullToLeafIndexMap = new Map();
 
-    const emptyElems = {
-        positions: 0,
-        cellOffsets: 0,
+    const fullSlots = {
+        verts: [],
+        cells: [],
     };
 
     var currLeafIndex = 0;
@@ -125,22 +119,27 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
             updateDuplicateCount(cellDupes, cellID);
         }
 
-        emptyElems.positions += blockSizes.positions - 3 * uniqueVerts.size;
-        emptyElems.cellOffsets += blockSizes.cellOffsets - currNode.cellCount;
+        fullSlots.verts.push(uniqueVerts.size);
+        fullSlots.cells.push(currNode.cellCount);
 
         // update index map to allow full node index -> leaf node index
         fullToLeafIndexMap.set(i, currLeafIndex++);
     }
 
     if (analysis) {
-        // log information about the tree
-        // total empty space per buffer
-        console.log(Math.round(emptyElems.positions/leafPositions.length * 100) + "% of leaf positions empty");
-        console.log(Math.round(emptyElems.cellOffsets/leafCellOffsets.length * 100) + "% of leaf cell offsets empty");
-        
-        // duplicate information
-        logDupes(vertDupes, "vertices");
-        logDupes(cellDupes, "cells");
+        // convert filled slot information into csv format
+        let filledArray = [["Vertices", "Cells"]];
+        for (let i = 0; i < Math.max(fullSlots.verts.length, fullSlots.cells.length); i++) {
+            filledArray[i + 1] = [fullSlots.verts[i] ?? "", fullSlots.cells[i] ?? ""]
+        }
+        downloadObject(toCSVStr(filledArray, ","), "filled_slots.csv", "text/csv");
+
+        // convert duplicate information into csv format
+        let dupesArray = [["Duplicates", "Vertices", "Cells"]];
+        for (let i = 0; i < Math.max(vertDupes.length, cellDupes.length); i++) {
+            dupesArray[i + 1] = [i, vertDupes[i]?.size ?? "", cellDupes[i]?.size ?? ""];
+        }
+        downloadObject(toCSVStr(dupesArray, ","), "primitive_duplicates.csv", "text/csv");
     }
 
     
