@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -50,22 +50,18 @@ const dataManager = {
         return newDataObj; 
     },
 
-    createData: async function(config, opts) {
+    getDataSource: async function(config, opts) {
         // create the data source object
         let dataSource;
-        let newDataFormat;
         switch (config.type) {
             case "function":
                 dataSource = new FunctionDataSource(config.name, config.f, xyzToA(config.size), xyzToA(config.cellSize));
-                newDataFormat = DataFormats.STRUCTURED;
                 break;
             case "raw":
                 dataSource = new RawDataSource(config.name, config.path, config.dataType, config.limits, xyzToA(config.size), xyzToA(config.cellSize));
-                newDataFormat = DataFormats.STRUCTURED;
                 break;
             case "cgns":
                 dataSource = new CGNSDataSource(config.name, config.path);
-                newDataFormat = DataFormats.UNSTRUCTURED;
                 break;
         }
 
@@ -74,8 +70,22 @@ const dataManager = {
             dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
         }
 
+        // convert struct -> unstruct if needed
+        if (opts.forceUnstruct) {
+            if (dataSource.format == DataFormats.STRUCTURED) {
+                dataSource = new UnstructFromStructDataSource(dataSource);
+            } else {
+                console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
+            }
+        }
+        await dataSource.init();
+        console.log(dataSource);
+        return dataSource;
+    },
+
+    createData: async function(config, opts) {
         const id = newId(this.datas);
-        var newData = new Data(id, dataSource, newDataFormat);
+        var newData = new Data(id, await this.getDataSource(config, opts));
         newData.opts = opts;
         console.log(config);
         console.log(opts);
@@ -87,13 +97,6 @@ const dataManager = {
             console.error("Unable to create dataset:", e);
             return undefined;
         }
-
-        // convert scruct -> unstruct if needed
-        if (opts.forceUnstruct) {
-            this.convertToUnstructured(newData);
-        }
-
-        console.log(newData.extentBox);
 
         // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
@@ -176,120 +179,6 @@ const dataManager = {
 
         this.datas[id] = newData;
         return newData;
-    },
-
-    convertToUnstructured: function(dataObj) {
-        if (dataObj.dataFormat != DataFormats.STRUCTURED) {
-            console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
-            return;
-        }
-
-        // change type and resolution mode
-        dataObj.dataFormat = DataFormats.UNSTRUCTURED;
-
-        // build the cell data
-        var dataSize = dataObj.getDataSize(); // the size in data points
-
-        var pointCount = dataSize[0] * dataSize[1] * dataSize[2];
-        var cubesCount = (dataSize[0] - 1)*(dataSize[1] - 1)*(dataSize[2] - 1);
-        var tetsCount = cubesCount * 5;
-        
-
-        dataObj.data.positions = new Float32Array(pointCount * 3);
-        dataObj.data.cellConnectivity = new Uint32Array(tetsCount * 4); // 5 tet per hex, 4 points per tet
-        dataObj.data.cellOffsets = new Uint32Array(tetsCount); // 5 tet per hex, 4 points per tet
-        dataObj.data.cellTypes = new Uint32Array(tetsCount); // 5 tet per hex, 4 points per tet
-        dataObj.data.cellTypes.fill(10); // all tets
-
-        var getIndex = (i, j, k) => {
-            return k * dataSize[0] * dataSize[1] + j * dataSize[0] + i;
-        }
-        var getHexCellIndex = (i, j, k) => {
-            return k * (dataSize[0] - 1) * (dataSize[1] - 1) + j * (dataSize[0] - 1) + i;
-        }
-        var writeTet = (cellIndex, coords) => {
-            var cellOffset = cellIndex * 4;
-            dataObj.data.cellOffsets[cellIndex] = cellOffset;
-            dataObj.data.cellConnectivity[cellOffset    ] = getIndex(...(coords[0]));
-            dataObj.data.cellConnectivity[cellOffset + 1] = getIndex(...(coords[1]));
-            dataObj.data.cellConnectivity[cellOffset + 2] = getIndex(...(coords[2]));
-            dataObj.data.cellConnectivity[cellOffset + 3] = getIndex(...(coords[3]));
-        }
-
-        var writePoint = (pointIndex, x, y, z) => {
-            dataObj.data.positions[3 * pointIndex    ] = x;
-            dataObj.data.positions[3 * pointIndex + 1] = y;
-            dataObj.data.positions[3 * pointIndex + 2] = z;
-        }
-        
-        // rip hexahedra
-        for (let k = 0; k < dataSize[2] - 1; k++) { // loop z
-            for (let j = 0; j < dataSize[1] - 1; j++) { // loop y
-                for (let i = 0; i < dataSize[0] - 1; i++) { // loop x
-                    var thisIndex = getHexCellIndex(i, j, k);        
-                    // tet 1
-                    writeTet(5 * thisIndex + 0, 
-                        [
-                            [i,     j,     k    ], 
-                            [i + 1, j,     k    ],
-                            [i,     j + 1, k    ],
-                            [i,     j,     k + 1],
-                        ]
-                    );
-
-                    // tet 2
-                    writeTet(5 * thisIndex + 1, 
-                        [
-                            [i + 1, j,     k    ],
-                            [i + 1, j + 1, k    ], 
-                            [i,     j + 1, k    ],
-                            [i + 1, j + 1, k + 1],
-                        ]
-                    );
-                        
-                    // tet 3
-                    writeTet(5 * thisIndex + 2, 
-                        [
-                            [i,     j,     k + 1],
-                            [i + 1, j + 1, k + 1],
-                            [i + 1, j,     k + 1],
-                            [i + 1, j,     k    ],
-                        ]
-                    );
-
-                    // tet 4
-                    writeTet(5 * thisIndex + 3, 
-                        [
-                            [i,     j,     k + 1],
-                            [i + 1, j + 1, k + 1],
-                            [i,     j + 1, k    ],
-                            [i,     j + 1, k + 1],
-                        ]
-                    );
-
-                    // tet 5
-                    writeTet(5 * thisIndex + 4, 
-                        [
-                            [i + 1, j,     k    ],
-                            [i,     j + 1, k    ],
-                            [i,     j,     k + 1],
-                            [i + 1, j + 1, k + 1], 
-                        ]
-                    );
-                }
-            }
-        }
-        
-        // write point positions
-        for (let k = 0; k < dataSize[2]; k++) { // loop z
-            for (let j = 0; j < dataSize[1]; j++) { // loop y
-                for (let i = 0; i < dataSize[0]; i++) { // loop x
-                    // write the position
-                    var thisIndex = getIndex(i, j, k);
-                    writePoint(thisIndex, i, j, k);
-                }
-            }
-        }
     },
 
     createUnstructuredTree: function(dataObj, cellsPerLeaf, maxDepth, treeType) {
@@ -380,7 +269,7 @@ const dataManager = {
     }
 }
 
-function Data(id, dataSource, dataFormat) {
+function Data(id, dataSource) {
     SceneObject.call(this, SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
     this.id = id;
     this.users = 0;
@@ -388,7 +277,7 @@ function Data(id, dataSource, dataFormat) {
     this.opts;
 
     // what format of mesh this represents
-    this.dataFormat = dataFormat
+    this.dataFormat = dataSource.format
     // how the data will be presented to the user
     this.resolutionMode = ResolutionModes.FULL;
 
@@ -463,14 +352,10 @@ function Data(id, dataSource, dataFormat) {
 
     this.createFromSource = async function() {
         // source must be initialised first
-        await this.dataSource.init();
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
 
-        if (
-            this.dataFormat == DataFormats.UNSTRUCTURED && 
-            this.dataSource.format == DataFormats.UNSTRUCTURED
-        ) {
+        if (this.dataFormat == DataFormats.UNSTRUCTURED) {
             // get the mesh buffers
             this.data.positions         = this.dataSource.mesh.positions;
             this.data.cellOffsets       = this.dataSource.mesh.cellOffsets;

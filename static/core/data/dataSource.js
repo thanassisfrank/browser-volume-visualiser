@@ -32,7 +32,21 @@ class EmptyTransformDataSource extends EmptyDataSource {
     constructor(dataSource) {
         super();
         this.dataSource = dataSource;
-        this.name = dataSource.name;
+    }
+
+    init() {
+        this.dataSource.init();
+        this.name = this.dataSource.name;
+        this.size = this.dataSource.size;
+        this.extentBox = this.dataSource.extentBox;
+    }
+
+    getAvailableDataArrays() {
+        return this.dataSource.getAvailableDataArrays();
+    }
+
+    async getDataArray(name) {
+        return this.dataSource.getDataArray(name);
     }
 }
 
@@ -287,11 +301,11 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
             min: this.dataSource.extentBox.min,
             max: this.size.map(v => v - 1)
         }
+        this.format = DataFormats.STRUCTURED;
+        this.name = dataSource.name;
     }
 
-    getAvailableDataArrays() {
-        return this.dataSource.getAvailableDataArrays();
-    }
+    init() {}
 
     async getDataArray(name) {
         const fullData = await this.dataSource.getDataArray(name);
@@ -320,6 +334,124 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
 }
 
 
-export class UnstructFromStructDataSource extends EmptyDataSource {
+export class UnstructFromStructDataSource extends EmptyTransformDataSource {
+    mesh = {
+        positions: null,
+        cellOffsets: null,
+        cellConnectivity: null,
+        cellTypes: null,
+    };
 
+    constructor(dataSource) {
+        if (dataSource.format != DataFormats.STRUCTURED) throw TypeError("Source data is not STRUCTURED");
+        super(dataSource);
+        this.format = DataFormats.UNSTRUCTURED;
+    }
+
+    // calculate the mesh
+    init() {
+        super.init();
+        const dataSize = this.dataSource.size;
+
+        const pointCount = dataSize[0] * dataSize[1] * dataSize[2];
+        const cubesCount = (dataSize[0] - 1)*(dataSize[1] - 1)*(dataSize[2] - 1);
+        const tetsCount = cubesCount * 5;
+        
+
+        this.mesh.positions = new Float32Array(pointCount * 3);
+        this.mesh.cellConnectivity = new Uint32Array(tetsCount * 4); // 5 tet per hex, 4 points per tet
+        this.mesh.cellOffsets = new Uint32Array(tetsCount); // 5 tet per hex, 4 points per tet
+        this.mesh.cellTypes = new Uint32Array(tetsCount); // 5 tet per hex, 4 points per tet
+        this.mesh.cellTypes.fill(10); // all tets
+
+        var getIndex = (i, j, k) => {
+            return k * dataSize[0] * dataSize[1] + j * dataSize[0] + i;
+        }
+        var getHexCellIndex = (i, j, k) => {
+            return k * (dataSize[0] - 1) * (dataSize[1] - 1) + j * (dataSize[0] - 1) + i;
+        }
+        var writeTet = (cellIndex, coords) => {
+            var cellOffset = cellIndex * 4;
+            this.mesh.cellOffsets[cellIndex] = cellOffset;
+            this.mesh.cellConnectivity[cellOffset    ] = getIndex(...(coords[0]));
+            this.mesh.cellConnectivity[cellOffset + 1] = getIndex(...(coords[1]));
+            this.mesh.cellConnectivity[cellOffset + 2] = getIndex(...(coords[2]));
+            this.mesh.cellConnectivity[cellOffset + 3] = getIndex(...(coords[3]));
+        }
+
+        var writePoint = (pointIndex, x, y, z) => {
+            this.mesh.positions[3 * pointIndex    ] = x;
+            this.mesh.positions[3 * pointIndex + 1] = y;
+            this.mesh.positions[3 * pointIndex + 2] = z;
+        }
+        
+        // rip hexahedra
+        for (let k = 0; k < dataSize[2] - 1; k++) { // loop z
+            for (let j = 0; j < dataSize[1] - 1; j++) { // loop y
+                for (let i = 0; i < dataSize[0] - 1; i++) { // loop x
+                    var thisIndex = getHexCellIndex(i, j, k);        
+                    // tet 1
+                    writeTet(5 * thisIndex + 0, 
+                        [
+                            [i,     j,     k    ], 
+                            [i + 1, j,     k    ],
+                            [i,     j + 1, k    ],
+                            [i,     j,     k + 1],
+                        ]
+                    );
+
+                    // tet 2
+                    writeTet(5 * thisIndex + 1, 
+                        [
+                            [i + 1, j,     k    ],
+                            [i + 1, j + 1, k    ], 
+                            [i,     j + 1, k    ],
+                            [i + 1, j + 1, k + 1],
+                        ]
+                    );
+                        
+                    // tet 3
+                    writeTet(5 * thisIndex + 2, 
+                        [
+                            [i,     j,     k + 1],
+                            [i + 1, j + 1, k + 1],
+                            [i + 1, j,     k + 1],
+                            [i + 1, j,     k    ],
+                        ]
+                    );
+
+                    // tet 4
+                    writeTet(5 * thisIndex + 3, 
+                        [
+                            [i,     j,     k + 1],
+                            [i + 1, j + 1, k + 1],
+                            [i,     j + 1, k    ],
+                            [i,     j + 1, k + 1],
+                        ]
+                    );
+
+                    // tet 5
+                    writeTet(5 * thisIndex + 4, 
+                        [
+                            [i + 1, j,     k    ],
+                            [i,     j + 1, k    ],
+                            [i,     j,     k + 1],
+                            [i + 1, j + 1, k + 1], 
+                        ]
+                    );
+                }
+            }
+        }
+        
+        // write point positions
+        for (let k = 0; k < dataSize[2]; k++) { // loop z
+            for (let j = 0; j < dataSize[1]; j++) { // loop y
+                for (let i = 0; i < dataSize[0]; i++) { // loop x
+                    // write the position
+                    var thisIndex = getIndex(i, j, k);
+                    writePoint(thisIndex, i, j, k);
+                }
+            }
+        }
+    }
 }
