@@ -1,7 +1,7 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
 import { downloadObject, toCSVStr } from "../utils.js";
-import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer } from "./cellTreeUtils.js";
+import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer, traverseNodeBufferDepthBox, pointInAABB } from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
     VERT_MEDIAN:    1,
@@ -32,25 +32,6 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 
 
 export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=false) => {
-    let vertDupes = [new Set()];
-    let cellDupes = [new Set()];
-    const updateDuplicateCount = analysis ? (dupeCounts, vertID) => {
-        for (let i = dupeCounts.length - 1 ; i >= 0; i--) {
-            if (dupeCounts[i].has(vertID)) {
-                // found in this list, remove
-                dupeCounts[i].delete(vertID);
-                // create new list if it doesn't exist
-                if (!dupeCounts[i + 1]) dupeCounts[i + 1] = new Set();
-                // add to the one above
-                dupeCounts[i + 1].add(vertID);
-                break;
-            } else if (0 == i) {
-                dupeCounts[0].add(vertID);
-                break;
-            }
-        }
-    } : (x, y) => {};
-
     var leafPositions = new Float32Array(blockSizes.positions * leafCount);
     var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
     var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
@@ -58,11 +39,6 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
     var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
 
     var fullToLeafIndexMap = new Map();
-
-    const fullSlots = {
-        verts: [],
-        cells: [],
-    };
 
     var currLeafIndex = 0;
 
@@ -80,6 +56,7 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
         let currVertIndex = 0;
         const uniqueVerts = new Map();
         var cellsPtr = currNode.leftPtr;
+
 
         // iterate through all cells in this leaf node
         for (let i = 0; i < currNode.cellCount; i++) {
@@ -108,9 +85,115 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
                     leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = dataObj.data.positions[3 * thisPointIndex + 2];
                     // add to unique verts list
                     uniqueVerts.set(thisPointIndex, currVertIndex++);
+                }
+                // add connectivity entry for vert position within the block
+                leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
+            }  
+        }
+        // update index map to allow full node index -> leaf node index
+        fullToLeafIndexMap.set(i, currLeafIndex++);
+    } 
+
+    return {
+        positions: leafPositions,
+        cellOffsets: leafCellOffsets,
+        cellConnectivity: leafCellConnectivity,
+        leafVerts: leafVerts,
+        indexMap: fullToLeafIndexMap
+    };
+};
+
+
+// transforms the mesh buffers to block mesh and outputs some analysis of the result
+// traverses the tree depth first and works out the node boxes
+export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
+    let vertDupes = [new Set()];
+    let cellDupes = [new Set()];
+    const updateDuplicateCount = (dupeCounts, vertID) => {
+        for (let i = dupeCounts.length - 1 ; i >= 0; i--) {
+            if (dupeCounts[i].has(vertID)) {
+                // found in this list, remove
+                dupeCounts[i].delete(vertID);
+                // create new list if it doesn't exist
+                if (!dupeCounts[i + 1]) dupeCounts[i + 1] = new Set();
+                // add to the one above
+                dupeCounts[i + 1].add(vertID);
+                break;
+            } else if (0 == i) {
+                dupeCounts[0].add(vertID);
+                break;
+            }
+        }
+    };
+
+    const leafInfo = {
+        fullVerts: [],
+        fullCells: [],
+        interiorVerts: []
+    };
+
+    var leafPositions = new Float32Array(blockSizes.positions * leafCount);
+    var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
+    var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
+
+    var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
+
+    var fullToLeafIndexMap = new Map();
+
+    let currLeafIndex = 0;
+
+    traverseNodeBufferDepthBox(dataObj.data.treeNodes, dataObj.extentBox, ()=>{}, (currNode, currBox, currDepth) => {
+        // This is needed to be able to properly address a leaf node's cells
+        writeNodeToBuffer(dataObj.data.treeNodes, currNode.thisPtr * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
+
+        // this is a leaf node, generate the mesh segments for it
+        let currOffsetIndex = 0;
+        let currConnectivityIndex = 0;
+        let currVertIndex = 0;
+        const uniqueVerts = new Map();
+        let cellsPtr = currNode.leftPtr;
+
+        // track the vertices that are actually inside of this 
+        let interiorVertsCount = 0;
+
+        // iterate through all cells in this leaf node
+        for (let i = 0; i < currNode.cellCount; i++) {
+            // go through and check all the contained cells
+            var cellID = dataObj.data.treeCells[cellsPtr + i];
+            var pointsOffset = dataObj.data.cellOffsets[cellID];
+            // add a new entry into cell offsets (4 more than last as all tets)
+            leafCellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
+
+            // iterate through the cell vertices
+            for (let j = 0; j < 4; j++) {
+                let thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                let thisPointBlockIndex;
+                // check if the offset points to a vert already pulled in
+                if (uniqueVerts.has(thisPointIndex)) {
+                    // get the local block-level position
+                    thisPointBlockIndex = uniqueVerts.get(thisPointIndex);
+                } else {
+                    // its position is the next free space
+                    thisPointBlockIndex = currVertIndex;
+                    // add to list of verts in this leaf
+                    leafVerts[currLeafIndex * blockSizes.positions/3 + currVertIndex] = thisPointIndex;
+                    // pull in vert into next free vert slot
+                    const pos = [
+                        dataObj.data.positions[3 * thisPointIndex + 0],
+                        dataObj.data.positions[3 * thisPointIndex + 1],
+                        dataObj.data.positions[3 * thisPointIndex + 2],
+                    ];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 0] = pos[0];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 1] = pos[1];
+                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = pos[2];
+                    // add to unique verts list
+                    uniqueVerts.set(thisPointIndex, currVertIndex++);
 
                     // update dupes counts
                     updateDuplicateCount(vertDupes, thisPointIndex);
+
+                    // check if the vertex is inside of the leaf node
+                    if (pointInAABB(pos, currBox)) interiorVertsCount++;
                 }
                 // add connectivity entry for vert position within the block
                 leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
@@ -119,31 +202,28 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
             updateDuplicateCount(cellDupes, cellID);
         }
 
-        fullSlots.verts.push(uniqueVerts.size);
-        fullSlots.cells.push(currNode.cellCount);
+        leafInfo.fullVerts.push(uniqueVerts.size);
+        leafInfo.fullCells.push(currNode.cellCount);
+        leafInfo.interiorVerts.push(interiorVertsCount);
 
         // update index map to allow full node index -> leaf node index
-        fullToLeafIndexMap.set(i, currLeafIndex++);
+        fullToLeafIndexMap.set(currNode.thisPtr, currLeafIndex++);
+    }, () => {})
+
+
+    // convert filled slot information into csv format
+    let filledArray = [["Full Vertices", "Full Cells", "Interior Verts"]];
+    for (let i = 0; i < leafInfo.fullVerts.length; i++) {
+        filledArray[i + 1] = [leafInfo.fullVerts[i] ?? "", leafInfo.fullCells[i] ?? "", leafInfo.interiorVerts[i] ?? ""]
     }
+    downloadObject(toCSVStr(filledArray, ","), "filled_slots.csv", "text/csv");
 
-    if (analysis) {
-        // convert filled slot information into csv format
-        let filledArray = [["Vertices", "Cells"]];
-        for (let i = 0; i < Math.max(fullSlots.verts.length, fullSlots.cells.length); i++) {
-            filledArray[i + 1] = [fullSlots.verts[i] ?? "", fullSlots.cells[i] ?? ""]
-        }
-        downloadObject(toCSVStr(filledArray, ","), "filled_slots.csv", "text/csv");
-
-        // convert duplicate information into csv format
-        let dupesArray = [["Duplicates", "Vertices", "Cells"]];
-        for (let i = 0; i < Math.max(vertDupes.length, cellDupes.length); i++) {
-            dupesArray[i + 1] = [i, vertDupes[i]?.size ?? "", cellDupes[i]?.size ?? ""];
-        }
-        downloadObject(toCSVStr(dupesArray, ","), "primitive_duplicates.csv", "text/csv");
+    // convert duplicate information into csv format
+    let dupesArray = [["Duplicates", "Vertices", "Cells"]];
+    for (let i = 0; i < Math.max(vertDupes.length, cellDupes.length); i++) {
+        dupesArray[i + 1] = [i, vertDupes[i]?.size ?? "", cellDupes[i]?.size ?? ""];
     }
-
-    
-
+    downloadObject(toCSVStr(dupesArray, ","), "primitive_duplicates.csv", "text/csv");
 
     return {
         positions: leafPositions,

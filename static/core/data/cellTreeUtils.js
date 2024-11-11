@@ -85,7 +85,7 @@ export var forEachBreadth = (tree, alwaysFunc, leafFunc, branchFunc) => {
 };
 
 
-// simplified traversal 
+// function to allow simple traversal through a node buffer
 export const traverseNodeBufferDepth = (buff, alwaysFunc, leafFunc, branchFunc) => {
     var nodeQueue = [readNodeFromBuffer(buff, 0)];
     while (nodeQueue.length > 0) {
@@ -101,6 +101,37 @@ export const traverseNodeBufferDepth = (buff, alwaysFunc, leafFunc, branchFunc) 
                 readNodeFromBuffer(buff, currNode.leftPtr * NODE_BYTE_LENGTH), 
                 readNodeFromBuffer(buff, currNode.rightPtr * NODE_BYTE_LENGTH),
             );
+        }
+    }
+};
+
+// same as above but finds the box for each node too
+export const traverseNodeBufferDepthBox = (buff, fullBox, alwaysFunc, leafFunc, branchFunc) => {
+    let nodeQueue = [readNodeFromBuffer(buff, 0)];
+    let depthQueue = [0];
+    let boxQueue = [fullBox];
+    while (nodeQueue.length > 0) {
+        const currNode = nodeQueue.pop();
+        const currDepth = depthQueue.pop();
+        const currBox = boxQueue.pop();
+        alwaysFunc(currNode, currBox, currDepth);
+        if (0 == currNode.rightPtr) {
+            // got to leaf
+            leafFunc(currNode, currBox, currDepth);
+        } else {
+            // continue down the tree
+            branchFunc(currNode, currBox, currDepth);
+            nodeQueue.push(
+                readNodeFromBuffer(buff, currNode.leftPtr * NODE_BYTE_LENGTH), 
+                readNodeFromBuffer(buff, currNode.rightPtr * NODE_BYTE_LENGTH),
+            );
+            depthQueue.push(currDepth + 1, currDepth + 1);
+            const leftBox = {min: [...currBox.min], max: [...currBox.max]};
+            leftBox.max[currDepth % 3] = currNode.splitVal;
+            const rightBox = {min: [...currBox.min], max: [...currBox.max]};
+            rightBox.min[currDepth % 3] = currNode.splitVal;
+
+            boxQueue.push(leftBox, rightBox);
         }
     }
 };
@@ -160,7 +191,7 @@ export var pivot = (a) => {
 
 
 // test if a given point is within an AABB
-var pointInAABB = (p, box) => {
+export const pointInAABB = (p, box) => {
     if (p[0] < box.min[0] || p[1] < box.min[1] || p[2] < box.min[2]) {
         return false;
     }

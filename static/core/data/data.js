@@ -3,7 +3,7 @@
 
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId, DATA_TYPES} from "../utils.js";
-import { getCellTreeBuffers, getLeafMeshBuffers, KDTreeSplitTypes } from "./cellTree.js";
+import { getCellTreeBuffers, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes } from "./cellTree.js";
 import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
@@ -348,7 +348,8 @@ const dataManager = {
     // converts the geometry buffers and generates a new buffer tracking the vertices for each leaf
     createLeafMeshData: function(dataObj, blockSizes, leafCount) {
         // create the new buffers
-        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount, true);
+        // const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
+        const leafMeshBuffers = getLeafMeshBuffersAnalyse(dataObj, blockSizes, leafCount);
         for (let name of ["positions", "cellOffsets", "cellConnectivity"]) {
             console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
             console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
