@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, EmptyDataSource, DataFormats } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -69,6 +69,11 @@ const dataManager = {
                 break;
         }
 
+        // add downsampling transform if required
+        if (opts.downSample > 1 && dataSource.format == DataFormats.STRUCTURED) {
+            dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
+        }
+
         const id = newId(this.datas);
         var newData = new Data(id, dataSource, newDataFormat);
         newData.opts = opts;
@@ -81,11 +86,6 @@ const dataManager = {
         } catch (e) {
             console.error("Unable to create dataset:", e);
             return undefined;
-        }
-
-        // downsample if required and possible
-        if (opts.downSample > 1 && newData.dataFormat == DataFormats.STRUCTURED) {
-            this.downsampleStructured(newData, opts.downSample);
         }
 
         // convert scruct -> unstruct if needed
@@ -176,31 +176,6 @@ const dataManager = {
 
         this.datas[id] = newData;
         return newData;
-    },
-
-    downsampleStructured: function(dataObj, scale) {
-        var fullDataSize = dataObj.getDataSize(); // the size in data points
-        var dataSize = [
-            Math.floor((fullDataSize[0] - 1)/scale), 
-            Math.floor((fullDataSize[1] - 1)/scale), 
-            Math.floor((fullDataSize[2] - 1)/scale), 
-        ];
-        dataObj.setDataSize(dataSize);
-        
-        var temp = new Float32Array(dataSize[0]*dataSize[1]*dataSize[2]);
-        // write values
-        let thisIndex;
-        let thisFullIndex;
-        for (let k = 0; k < dataSize[2]; k++) { // loop z
-            for (let j = 0; j < dataSize[1]; j++) { // loop y
-                for (let i = 0; i < dataSize[0]; i++) { // loop x
-                    thisIndex = k * dataSize[0] * dataSize[1] + j * dataSize[0] + i;
-                    thisFullIndex = (k * fullDataSize[0] * fullDataSize[1] + j * fullDataSize[0] + i) * scale;
-                    temp[thisIndex] = dataObj.data.values[thisFullIndex];
-                }
-            }
-        }
-        dataObj.data.values = temp;
     },
 
     convertToUnstructured: function(dataObj) {

@@ -16,7 +16,7 @@ export const DataFormats = {
     UNSTRUCTURED:    "unstructured",  // data points have a value and position, supplemental connectivity information
 };
 
-export class EmptyDataSource {
+class EmptyDataSource {
     name = "";
     format = DataFormats.EMPTY;
     extentBox = {min: [0, 0, 0], max: [0, 0, 0]};
@@ -28,6 +28,17 @@ export class EmptyDataSource {
     getDataArray(name) {}
 }
 
+class EmptyTransformDataSource extends EmptyDataSource {
+    constructor(dataSource) {
+        super();
+        this.dataSource = dataSource;
+        this.name = dataSource.name;
+    }
+}
+
+
+// base data sources
+
 export class FunctionDataSource extends EmptyDataSource {
     format = DataFormats.STRUCTURED;
     // any initialisation
@@ -37,7 +48,7 @@ export class FunctionDataSource extends EmptyDataSource {
         this.size = size;
         this.extentBox = {
             min: [0, 0, 0],
-            max: [...size]
+            max: size.map(v => v - 1)
         };
         this.dataTransformMat = mat4.fromScaling(
             mat4.create(), [cellSize.z || 1, cellSize.y || 1, cellSize.x || 1]
@@ -81,7 +92,7 @@ export class RawDataSource extends EmptyDataSource {
         this.size = size;
         this.extentBox = {
             min: [0, 0, 0],
-            max: [...size]
+            max: size.map(v => v - 1)
         };
         this.dataTransformMat = mat4.fromScaling(
             mat4.create(), 
@@ -261,4 +272,54 @@ export class CGNSDataSource extends EmptyDataSource {
             limits,
         };
     }
+}
+
+
+// transforming data sources
+
+// simple downsampling transform
+export class DownsampleStructDataSource extends EmptyTransformDataSource {
+    constructor(dataSource, scale) {
+        super(dataSource);
+        this.scale = scale;
+        this.size = this.dataSource.size.map(length => Math.floor(length/scale));
+        this.extentBox = {
+            min: this.dataSource.extentBox.min,
+            max: this.size.map(v => v - 1)
+        }
+    }
+
+    getAvailableDataArrays() {
+        return this.dataSource.getAvailableDataArrays();
+    }
+
+    async getDataArray(name) {
+        const fullData = await this.dataSource.getDataArray(name);
+        if (!fullData) return;
+        
+        const downSampData = new Float32Array(this.size[0]*this.size[1]*this.size[2]);
+        // write values
+        let thisIndex;
+        let thisFullIndex;
+        for (let k = 0; k < this.size[2]; k++) { // loop z
+            for (let j = 0; j < this.size[1]; j++) { // loop y
+                for (let i = 0; i < this.size[0]; i++) { // loop x
+                    thisIndex = k * this.size[0] * this.size[1] + j * this.size[0] + i;
+                    thisFullIndex = (k * this.dataSource.size[0] * this.dataSource.size[1] + j * this.dataSource.size[0] + i) * this.scale;
+                    downSampData[thisIndex] = fullData.data[thisFullIndex];
+                }
+            }
+        }
+
+        return {
+            name: fullData.name,
+            data: downSampData,
+            limits: fullData.limits,
+        };
+    }
+}
+
+
+export class UnstructFromStructDataSource extends EmptyDataSource {
+
 }
