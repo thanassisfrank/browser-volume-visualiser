@@ -1,38 +1,27 @@
 // data.js
 // handles the storing of the data object, normals etc
 
+import { FunctionDataSource, RawDataSource, CGNSDataSource, EmptyDataSource, DataFormats } from "./dataSource.js";
+
+import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
-import { newId, DATA_TYPES} from "../utils.js";
+import { newId } from "../utils.js";
 import { getCellTreeBuffers, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes } from "./cellTree.js";
 import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
-import h5wasm from "../h5wasm/hdf5_hl.js";
-import * as cgns from "./cgns_hdf5.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 
 export {dataManager};
 
-export const DataFormats = {
-    EMPTY:           0,  // undefined/empty
-    STRUCTURED:      1,  // data points are arranged as a contiguous texture
-    STRUCTURED_GRID: 2,  // data is arranged as a contiguous 3d texture, each point has a sumplemental position
-    UNSTRUCTURED:    4,  // data points have a value and position, supplemental connectivity information
-}
-
 // these act as bit masks to create the full resolution mode
 export const ResolutionModes = {
     FULL:          0b00, // resolution is fixed at the maximum 
     DYNAMIC_NODES: 0b01, // the resolution is variable
     DYNAMIC_CELLS: 0b10, // cell and vertex data are arranged per-leaf
-}
+};
 
-export const DataFileTypes = {
-    NONE: 0,
-    RAW:  1,
-    CGNS: 2,
-}
 
 // object in charge of creating, transforming and deleting data objects
 const dataManager = {
@@ -62,26 +51,33 @@ const dataManager = {
     },
 
     createData: async function(config, opts) {
+        // create the data source object
+        let dataSource;
+        let newDataFormat;
+        switch (config.type) {
+            case "function":
+                dataSource = new FunctionDataSource(config.name, config.f, xyzToA(config.size), xyzToA(config.cellSize));
+                newDataFormat = DataFormats.STRUCTURED;
+                break;
+            case "raw":
+                dataSource = new RawDataSource(config.name, config.path, config.dataType, config.limits, xyzToA(config.size), xyzToA(config.cellSize));
+                newDataFormat = DataFormats.STRUCTURED;
+                break;
+            case "cgns":
+                dataSource = new CGNSDataSource(config.name, config.path);
+                newDataFormat = DataFormats.UNSTRUCTURED;
+                break;
+        }
+
         const id = newId(this.datas);
-        var newData = new Data(id);
-        newData.dataName = config.name;
+        var newData = new Data(id, dataSource, newDataFormat);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
         
         // first, create the dataset from the config
         try {
-            switch (config.type) {
-                case "function":
-                    newData.createFromFunction(config);
-                    break;
-                case "raw":
-                    newData.createFromRaw(config);
-                    break;
-                case "cgns":
-                    await newData.createFromCGNS(config);
-                    break;
-            }
+            await newData.createFromSource();
         } catch (e) {
             console.error("Unable to create dataset:", e);
             return undefined;
@@ -409,27 +405,27 @@ const dataManager = {
     }
 }
 
-function Data(id) {
+function Data(id, dataSource, dataFormat) {
     SceneObject.call(this, SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
     this.id = id;
     this.users = 0;
     this.config;
     this.opts;
 
-    // what kind of data file this contains
-    this.dataFormat = DataFormats.EMPTY;
+    // what format of mesh this represents
+    this.dataFormat = dataFormat
     // how the data will be presented to the user
     this.resolutionMode = ResolutionModes.FULL;
-    // the file type underlying this data object
-    this.fileType = DataFileTypes.NONE;
 
     // what this.data represents
-    this.dataName = "";
+    this.dataName = dataSource.name;
     
+    // where any extra data that is needed is pulled from
+    this.dataSource = dataSource;
+
     // the actual data store of the object
     // all entries should be typedarray objects
     this.data = {
-        
         // the data values
         values: [
             // {name: null, data: null, cornerValues: null, limits: [null, null]},
@@ -475,8 +471,6 @@ function Data(id) {
 
     this.cornerValType = null;
 
-    this.flowSolutionNode = null;
-
     this.valueCounts = [];
 
     // supplemental attributes
@@ -492,176 +486,50 @@ function Data(id) {
     // includes scaling of the grid
     this.dataTransformMat = mat4.create();
 
+    this.createFromSource = async function() {
+        // source must be initialised first
+        await this.dataSource.init();
+        this.size = this.dataSource.size;
+        this.extentBox = this.dataSource.extentBox;
 
-    this.createFromFunction = function(config) {
-        this.config = config;
-        this.dataFormat = DataFormats.STRUCTURED;
-        this.fileType = DataFileTypes.NONE;
+        if (
+            this.dataFormat == DataFormats.UNSTRUCTURED && 
+            this.dataSource.format == DataFormats.UNSTRUCTURED
+        ) {
+            // get the mesh buffers
+            this.data.positions         = this.dataSource.mesh.positions;
+            this.data.cellOffsets       = this.dataSource.mesh.cellOffsets;
+            this.data.cellConnectivity  = this.dataSource.mesh.cellConnectivity;
+            this.data.cellTypes         = this.dataSource.mesh.cellTypes;
 
-        this.size = [config.size.z, config.size.y, config.size.x];
-        this.extentBox.min = [0, 0, 0];
-        this.extentBox.max = this.size;
-        this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x]);
-        
-        this.initialised = true;
-    };
-
-    this.createFromRaw = function(config) {
-        this.config = config;
-        this.dataFormat = DataFormats.STRUCTURED;
-        this.fileType = DataFileTypes.RAW;
-
-        this.size = [config.size.z, config.size.y, config.size.x];
-        this.extentBox.min = [0, 0, 0];
-        this.extentBox.max = this.size;
-        this.dataTransformMat = mat4.fromScaling(mat4.create(), [config.cellSize.z, config.cellSize.y, config.cellSize.x])
-        
-        this.initialised = true;
-    };
-
-    this.createFromCGNS = async function(config) {
-        this.config = config;
-        // test hdf5
-        // the WASM loads asychronously, and you can get the module like this:
-        const { FS } = await h5wasm.ready;
-
-        const responseBuffer = await fetch(config.path).then(resp => resp.arrayBuffer());
-
-        FS.writeFile("yf17_hdf5.cgns", new Uint8Array(responseBuffer));
-        // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
-        let f = new h5wasm.File("yf17_hdf5.cgns", "r");
-
-        var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
-        var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
-        var zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
-        
-        // only unstructured zones are currently supported
-        var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
-        if (zoneTypeStr != "Unstructured") {
-            throw "Unsupported ZoneType of '" + zoneTypeStr + "'";
+            this.geometry = this.dataSource.geometry;
         }
-
-        this.dataFormat = DataFormats.UNSTRUCTURED;
-        this.fileType = DataFileTypes.CGNS;
-
-        // get vertex positions
-        var coordsNode = cgns.getChildrenWithLabel(CGNSZoneNode, "GridCoordinates_t")[0];
-        var coords = cgns.getGridCoordinatePositionsCart3D(coordsNode);
-        this.data.positions = coords.positions;
-        this.extentBox = coords.extentBox;
-        
-        // get connectivity information for an element node of this zone
-        var gridElementsNode = CGNSZoneNode.get("GridElements");
-
-        var elementTypeInt = gridElementsNode.get(" data").value[0];
-        var elementRange = gridElementsNode.get("ElementRange/ data").value;
-        var connectivityNode = gridElementsNode.get("ElementConnectivity");
-        
-        var elementCount = elementRange[1] - elementRange[0] + 1;
-        
-        // create cell type array
-        this.data.cellTypes = new Uint32Array(elementCount).fill(elementTypeInt);
-        console.log("elemenent type:", cgns.ELEMENT_TYPES[elementTypeInt]);
-
-        // get cell connectivity
-        this.data.cellConnectivity = connectivityNode.get(" data").value;
-        // convert to zero based indexing
-        for (let i = 0; i < this.data.cellConnectivity.length; i++) {
-            this.data.cellConnectivity[i]--;
-        }
-
-        // build the cell offsets array
-        var pointsPerElement = cgns.ELEMENT_VERTICES_COUNT[cgns.ELEMENT_TYPES[elementTypeInt]];
-        this.data.cellOffsets = new Uint32Array(elementCount);
-        for (let i = 0; i < elementCount; i++) {
-            this.data.cellOffsets[i] = i * pointsPerElement;
-        }
-
-        // get vertex-centred data
-        this.flowSolutionNode = cgns.getChildrenWithLabel(CGNSZoneNode, "FlowSolution_t")[0];
-
-
-        // extract any mesh elements for structures/boundaries etc
-        // look for element nodes where the type is TRI_3 = 5
-        // the indices all reference this.geometry.positions
-        var elementNodes = cgns.getChildrenWithLabel(CGNSZoneNode, "Elements_t");
-        // keeps a track of the vertices already pulled in to the geometry positions buffer
-        let uniqueVerts = new Map();
-        let currVertIndex = 0;
-        for (let node of elementNodes) {
-            if (cgns.ELEMENT_TYPES[node.get(" data").value[0]] != "TRI_3") continue
-            var meshName = node.attrs.name.value;
-            // don't show boundary planes by default
-            let showByDefault = true;
-            if (["symmetry", "downstream", "upstream", "side", "lower", "upper"].includes(meshName)) showByDefault = false;
-
-            // we have a triangular mesh element node
-            var indices = node.get("ElementConnectivity/ data").value;
-            for (let i = 0; i < indices.length; i++) {
-                indices[i]--; // convert from 1-based -> 0-based
-                // check if this vertex has already been seen
-                if (uniqueVerts.has(indices[i])) {
-                    indices[i] = uniqueVerts.get(indices[i]);
-                } else {
-                    uniqueVerts.set(indices[i], currVertIndex);
-                    indices[i] = currVertIndex++;
-                }
-            }
-
-            this.geometry[node.attrs.name.value] = {
-                indices: indices,
-                showByDefault: showByDefault
-            };
-        }
-
-        // get the extracted positions buffer
-        const pos = new Float32Array(currVertIndex * 3);
-        uniqueVerts.forEach((v, k) => {
-            pos[3 * v + 0] = this.data.positions[3 * k + 0];
-            pos[3 * v + 1] = this.data.positions[3 * k + 1];
-            pos[3 * v + 2] = this.data.positions[3 * k + 2];
-        });
-        for (let meshName in this.geometry) {
-            this.geometry[meshName].positions = pos;
-        }
-
-        console.log(this.geometry);
     };
 
     this.getAvailableDataArrays = function() {
-        var dataArrayNames = [];
-        switch (this.fileType) {
-            case DataFileTypes.NONE:
-            case DataFileTypes.RAW:
-                dataArrayNames.push("Default");
-                break;
-            case DataFileTypes.CGNS:
-                var dataNodes = cgns.getChildrenWithLabel(this.flowSolutionNode, "DataArray_t");
-                // console.log(dataNodes);
-                let potentialVecs = {};
-                for (let node of dataNodes) {
-                    const name = node.attrs.name.value;
-                    dataArrayNames.push(name);
+        // all the arrays that come straight from the data source
+        const sourceArrayNames = this.dataSource.getAvailableDataArrays();
 
-                    // detect vector data quantities
-                    if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
-                    const vecName = name.substring(0, name.length - 1);
-                    const thisDir = name.at(-1);
-                    if (!potentialVecs[vecName]) {
-                        potentialVecs[vecName] = {};
-                    } 
-
-                    potentialVecs[vecName][thisDir] = true;
-
-                    if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
-                        dataArrayNames.push(vecName)
-                    }
-                }
-
-                
-                break;
+        // all arrays that could be selected, including vec->scal mapped
+        let dataArrayNames = [];
+        let potentialVecs = {};
+        for (let name of sourceArrayNames) {
+            dataArrayNames.push(name);
+            // detect vector data quantities
+            if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
+            const vecName = name.substring(0, name.length - 1);
+            const thisDir = name.at(-1);
+            if (!potentialVecs[vecName]) {
+                potentialVecs[vecName] = {};
+            } 
+    
+            potentialVecs[vecName][thisDir] = true;
+    
+            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
+                dataArrayNames.push(vecName)
+            }       
         }
-        
+
         return dataArrayNames;
     };
 
@@ -669,39 +537,13 @@ function Data(id) {
     // if it already is loaded, return its slot number
     this.loadDataArray = async function(name, binCount) {
         // check if already loaded
-        var loadedIndex = this.data.values.findIndex(elem => elem.name == name);
+        let loadedIndex = this.data.values.findIndex(elem => elem.name == name);
         if (loadedIndex != -1) return loadedIndex;
 
-        var newSlotNum;
+        let newSlotNum;
         try {
-            switch (this.fileType) {
-                case DataFileTypes.NONE:
-                    this.data.values[0] = this.generateData(this.config);
-                    newSlotNum = 0;
-                    break;
-                case DataFileTypes.RAW:
-                    const responseBuffer = await fetch(this.config.path).then(resp => resp.arrayBuffer());
-
-                    // load data
-                    newSlotNum = this.data.values.push({
-                        name: "Default",
-                        data: new DATA_TYPES[this.config.dataType](responseBuffer),
-                        limits: this.config.limits,
-                    }) - 1;
-                    console.log("loaded raw data");
-                    break;
-                case DataFileTypes.CGNS:
-                    var data = this.flowSolutionNode.get(name + "/ data").value;
-                    var limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-                    for (let i = 0; i < data.length; i++) {
-                        limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
-                    }
-
-                    newSlotNum = this.data.values.push({name: name, data: data, limits: limits}) - 1;
-                    break;
-                default:
-                    throw Error("dataset has unsupported file type");
-            }            
+            this.data.values.push(await this.dataSource.getDataArray(name));
+            newSlotNum = this.data.values.length - 1;   
         } catch (e) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
@@ -814,31 +656,6 @@ function Data(id) {
 
     this.createDynamicBlockValues = function(slotNum) {
         this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
-    };
-
-    this.generateData = function(config) {
-        const x = config.size.x;
-        const y = config.size.y;
-        const z = config.size.z;
-        const f = config.f;
-        let v = 0.0;
-        var data = new Float32Array(x * y * z);
-        var limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-        for (let i = 0; i < x; i++) {
-            for (let j = 0; j < y; j++) {
-                for (let k = 0; k < z; k++) {
-                    // values are clamped to >= 0
-                    v = Math.max(0, f(i, j, k));
-                    limits = [Math.min(limits[0], v), Math.max(limits[1], v)];
-                    data[i * y * z + j * z + k] = v;
-                }
-            }
-        }
-        return {
-            name: "Default",
-            data: data,
-            limits: limits
-        }
     };
 
     // returns the byte length of the values array
@@ -981,7 +798,7 @@ function Data(id) {
     };
     
     this.getName = function() {
-        return this?.config?.name || "Unnamed data";
+        return this.dataName ?? "Unnamed data";
     };
 
     // returns a mat4 encoding object space -> data space

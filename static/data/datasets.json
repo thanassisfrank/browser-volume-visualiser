@@ -31,14 +31,14 @@
 		"type": "raw",
 		"complexAvailable": true,
 		"size": {
-			"x": 128,
+			"x": 256,
 			"y": 256,
-			"z": 256
+			"z": 128
 		},
 		"blocksSize": {
-			"x": 32,
+			"x": 64,
 			"y": 64,
-			"z": 64
+			"z": 32
 		},
 		"cellSize": {
 			"x": 1,
@@ -80,14 +80,14 @@
 		"type": "raw",
 		"complexAvailable": true,
 		"size": {
-			"x": 34,
+			"x": 98,
 			"y": 34,
-			"z": 98
+			"z": 34
 		},
 		"blocksSize": {
-			"x": 9,
+			"x": 25,
 			"y": 9,
-			"z": 25
+			"z": 9
 		},
 		"cellSize": {
 			"x": 1,
@@ -100,9 +100,9 @@
 		],
 		"dataType": "uint8",
 		"origin": [
+			48.5,
 			16.5,
-			16.5,
-			48.5
+			16.5
 		],
 		"availableUnstructuredTrees": [
 			{
@@ -199,14 +199,14 @@
 			2421
 		],
 		"size": {
-			"x": 512,
+			"x": 240,
 			"y": 512,
-			"z": 240
+			"z": 512
 		},
 		"blocksSize": {
-			"x": 128,
+			"x": 60,
 			"y": 128,
-			"z": 60
+			"z": 128
 		},
 		"cellSize": {
 			"x": 1,
@@ -244,9 +244,9 @@
 			255
 		],
 		"size": {
-			"x": 512,
+			"x": 64,
 			"y": 64,
-			"z": 64
+			"z": 512
 		},
 		"cellSize": {
 			"x": 1,
