@@ -637,10 +637,28 @@ function Data(id) {
                 break;
             case DataFileTypes.CGNS:
                 var dataNodes = cgns.getChildrenWithLabel(this.flowSolutionNode, "DataArray_t");
-                console.log(dataNodes);
+                // console.log(dataNodes);
+                let potentialVecs = {};
                 for (let node of dataNodes) {
-                    dataArrayNames.push(node.attrs.name.value);
+                    const name = node.attrs.name.value;
+                    dataArrayNames.push(name);
+
+                    // detect vector data quantities
+                    if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
+                    const vecName = name.substring(0, name.length - 1);
+                    const thisDir = name.at(-1);
+                    if (!potentialVecs[vecName]) {
+                        potentialVecs[vecName] = {};
+                    } 
+
+                    potentialVecs[vecName][thisDir] = true;
+
+                    if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
+                        dataArrayNames.push(vecName)
+                    }
                 }
+
+                
                 break;
         }
         
