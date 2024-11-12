@@ -12,6 +12,7 @@ import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerV
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
+import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 
 export {dataManager};
 
@@ -367,30 +368,9 @@ function Data(id, dataSource) {
     };
 
     this.getAvailableDataArrays = function() {
-        // all the arrays that come straight from the data source
-        const sourceArrayNames = this.dataSource.getAvailableDataArrays();
-
-        // all arrays that could be selected, including vec->scal mapped
-        let dataArrayNames = [];
-        let potentialVecs = {};
-        for (let name of sourceArrayNames) {
-            dataArrayNames.push(name);
-            // detect vector data quantities
-            if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
-            const vecName = name.substring(0, name.length - 1);
-            const thisDir = name.at(-1);
-            if (!potentialVecs[vecName]) {
-                potentialVecs[vecName] = {};
-            } 
-    
-            potentialVecs[vecName][thisDir] = true;
-    
-            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
-                dataArrayNames.push(vecName)
-            }       
-        }
-
-        return dataArrayNames;
+        return this.dataSource.getAvailableDataArrays().map(v => {
+            return {...v, type: DataSrcTypes.ARRAY}
+        })
     };
 
     // returns the slot number that was written to

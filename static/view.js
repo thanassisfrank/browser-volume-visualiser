@@ -7,11 +7,13 @@ import { VecMath } from "./core/VecMath.js";
 import { dataManager, ResolutionModes } from "./core/data/data.js";
 import { updateDynamicDataset } from "./core/data/dynamicTree.js";
 
+import { DataSrcSelectElem } from "./viewElems.js";
+
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 
 import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 import { SceneGraph } from "./core/renderEngine/sceneObjects.js";
-import { ColourScales } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
+import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 const BINCOUNT = 100;
 
@@ -86,8 +88,6 @@ export var viewManager = {
         view.elems.threshVal = threshVal;
         view.elems.densityGraph = densityGraph;
         // view.elems.nodeScores = nodeScores;
-        view.elems.isoSurfaceSrc = isoSurfaceSrc;
-        view.elems.surfaceColSrc = surfaceColSrc;
         view.elems.colScale = colScale;
         view.elems.clip = {
             min: [clipMinX, clipMinY, clipMinZ],
@@ -98,6 +98,13 @@ export var viewManager = {
         view.elems.axesWidget = axesWidget;
         view.elems.geometryCheck = [];
 
+        const dataArrays = view.data.getAvailableDataArrays();
+
+        view.elemHandlers = {
+            isoSurfaceSrc: new DataSrcSelectElem(isoSurfaceSrc, view, dataArrays, DataSrcUses.ISO_SURFACE),
+            surfaceColSrc: new DataSrcSelectElem(surfaceColSrc, view, dataArrays, DataSrcUses.SURFACE_COL),
+        }
+
         // populate dataset info
         if (dataName) dataName.innerText = view.data.getName();
         if (dataSize) dataSize.innerText = view.data.getDataSizeString();
@@ -105,20 +112,6 @@ export var viewManager = {
         if (slider) {
             slider.style.width = "210px";
         } 
-
-        for (let dataSrcType of Object.values(DataSrcTypes)) {
-            var names = [""];
-            if (dataSrcType == "Axis") names = ["x", "y", "z"];
-            if (dataSrcType == "Data") names = view.data.getAvailableDataArrays();
-            for (let dataSrcName of names) {
-                var elem = document.createElement("OPTION");
-                elem.dataset.dataSrcType = dataSrcType;     
-                elem.dataset.dataSrcName = dataSrcName;   
-                elem.innerText = dataSrcType + " " + dataSrcName;
-                if (isoSurfaceSrc) isoSurfaceSrc.appendChild(elem.cloneNode(true));
-                if (surfaceColSrc) surfaceColSrc.appendChild(elem);
-            }
-        }
 
         if (colScale) {
             for (let scale in ColourScales) {
@@ -250,19 +243,7 @@ export var viewManager = {
 
         view.elems.slider.addEventListener("input", (e) => {
             view.updateThreshold(parseFloat(e.target.value), false);
-        });
-
-        view.elems.isoSurfaceSrc.addEventListener("change", (e) => {
-            var elem = e.target;
-            var selected = elem.options[elem.selectedIndex];
-            view.updateIsoSurfaceSrc(selected.dataset.dataSrcType, selected.dataset.dataSrcName);
-        });
-
-        view.elems.surfaceColSrc.addEventListener("change", (e) => {
-            var elem = e.target;
-            var selected = elem.options[elem.selectedIndex];
-            view.updateSurfaceColSrc(selected.dataset.dataSrcType, selected.dataset.dataSrcName);
-        });
+        });        
 
         view.elems.colScale.addEventListener("change", (e) => {
             this.updateColScale(e.target.value, renderEngine);
@@ -421,20 +402,20 @@ function View(id, camera, data, renderMode) {
     };
 
     // called when
-    this.updateIsoSurfaceSrc = async function(type, name) {
-        console.log("iso " + type + " " + name);
+    this.updateIsoSurfaceSrc = async function(desc) {
+        console.log("iso " + desc.type + " " + desc.name);
         var limits = [0, 0];
         var slotNum = null;
-        switch (type) {
+        switch (desc.type) {
             case DataSrcTypes.AXIS:
-                if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
-                if (name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
-                if (name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
+                if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
+                if (desc.name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
+                if (desc.name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
                 hide(this.elems.densityGraph);
                 break;
-            case DataSrcTypes.DATA:
+            case DataSrcTypes.ARRAY:
                 // load data
-                slotNum = await this.data.loadDataArray(name, BINCOUNT);
+                slotNum = await this.data.loadDataArray(desc, BINCOUNT);
                 console.log("slotnum is " + slotNum);
                 if (slotNum == -1) return;
                 // update the limits of slider
@@ -448,29 +429,40 @@ function View(id, camera, data, renderMode) {
         }
         this.updateSlider(limits);
         // change the source
-        this.isoSurfaceSrc = {type: type, name: name, limits: limits, slotNum: slotNum};
+        this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits: limits, slotNum: slotNum};
     };
     
-    this.updateSurfaceColSrc = async function(type, name) {
-        console.log("col " + type + " " + name);
+    this.updateSurfaceColSrc = async function(desc) {
+        console.log("col " + desc.type + " " + desc.name);
         // load the data array
         var limits = [0, 0];
         var slotNum = null;
-        switch (type) {
+        switch (desc.type) {
             case DataSrcTypes.AXIS:
-                if (name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
-                if (name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
-                if (name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
+                if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
+                if (desc.name == "y") limits = [this.data.extentBox.min[1], this.data.extentBox.max[1]];
+                if (desc.name == "z") limits = [this.data.extentBox.min[2], this.data.extentBox.max[2]];
                 break;
-            case DataSrcTypes.DATA:
+            case DataSrcTypes.ARRAY:
                 // load data
-                slotNum = await this.data.loadDataArray(name, BINCOUNT);
+                slotNum = await this.data.loadDataArray(desc, BINCOUNT);
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
         }
         // change the source
-        this.surfaceColSrc = {type: type, name: name, limits: limits, slotNum: slotNum};
+        this.surfaceColSrc = {type: desc.type, name: desc.name, limits: limits, slotNum: slotNum};
     };
+
+    this.updateDataSrc = async function(use, desc) {
+        if (DataSrcUses.ISO_SURFACE == use) {
+            return await this.updateIsoSurfaceSrc(desc);
+        } else if (DataSrcUses.SURFACE_COL == use) {
+            return await this.updateSurfaceColSrc(desc);
+        } else {
+            console.warn("unrecognised data source use")
+            return;
+        }
+    }
 
     this.updateEnabledGeometry = function(name, enable) {
         this.enabledGeometry[name] = enable;

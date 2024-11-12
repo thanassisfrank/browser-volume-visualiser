@@ -16,6 +16,15 @@ export const DataFormats = {
     UNSTRUCTURED:    "unstructured",  // data points have a value and position, supplemental connectivity information
 };
 
+export const DataArrayTypes = {
+    NONE:           "none",
+    DATA:           "data",
+    CALC:           "calculated"
+};
+
+
+// base data sources
+
 class EmptyDataSource {
     name = "";
     format = DataFormats.EMPTY;
@@ -28,30 +37,6 @@ class EmptyDataSource {
     getDataArray(name) {}
 }
 
-class EmptyTransformDataSource extends EmptyDataSource {
-    constructor(dataSource) {
-        super();
-        this.dataSource = dataSource;
-    }
-
-    init() {
-        this.dataSource.init();
-        this.name = this.dataSource.name;
-        this.size = this.dataSource.size;
-        this.extentBox = this.dataSource.extentBox;
-    }
-
-    getAvailableDataArrays() {
-        return this.dataSource.getAvailableDataArrays();
-    }
-
-    async getDataArray(name) {
-        return this.dataSource.getDataArray(name);
-    }
-}
-
-
-// base data sources
 
 export class FunctionDataSource extends EmptyDataSource {
     format = DataFormats.STRUCTURED;
@@ -71,12 +56,12 @@ export class FunctionDataSource extends EmptyDataSource {
 
     // get the available data array desciptors
     getAvailableDataArrays() {
-        return [DEFAULT_ARRAY_NAME]
+        return [{name: DEFAULT_ARRAY_NAME, arrayType: DataArrayTypes.DATA}]
     }
 
     // load the data array
-    getDataArray(name) {
-        if (name != DEFAULT_ARRAY_NAME) return;
+    getDataArray(desc) {
+        if (desc.name != DEFAULT_ARRAY_NAME) return;
 
         let v = 0.0;
         var data = new Float32Array(x * y * z);
@@ -94,6 +79,7 @@ export class FunctionDataSource extends EmptyDataSource {
         return {name: DEFAULT_ARRAY_NAME, data, limits};
     }
 }
+
 
 export class RawDataSource extends EmptyDataSource {
     format = DataFormats.STRUCTURED;
@@ -115,11 +101,11 @@ export class RawDataSource extends EmptyDataSource {
     }
 
     getAvailableDataArrays() {
-        return [DEFAULT_ARRAY_NAME];
+        return [{name: DEFAULT_ARRAY_NAME, arrayType: DataArrayTypes.DATA}];
     }
 
-    async getDataArray(name) {
-        if (name != DEFAULT_ARRAY_NAME) return;
+    async getDataArray(desc) {
+        if (desc.name != DEFAULT_ARRAY_NAME) return;
         const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
 
         // load data
@@ -130,6 +116,7 @@ export class RawDataSource extends EmptyDataSource {
         };
     }
 }
+
 
 export class CGNSDataSource extends EmptyDataSource {
     // public attributes
@@ -270,18 +257,21 @@ export class CGNSDataSource extends EmptyDataSource {
     getAvailableDataArrays() {
         var dataNodes = cgns.getChildrenWithLabel(this.flowSolutionNode, "DataArray_t");
 
-        return dataNodes.map(node => node.attrs.name.value);
+        return dataNodes.map(node => {
+            return {name: node.attrs.name.value, arrayType: DataArrayTypes.DATA};
+        });
     }
 
-    getDataArray(name) {
-        const data = this.flowSolutionNode.get(name + "/ data").value;
+    getDataArray(desc) {
+        const data = this.flowSolutionNode.get(desc.name + "/ data")?.value;
+        if (!data) return;
         let limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
         for (let i = 0; i < data.length; i++) {
             limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
         }
 
         return {
-            name,
+            name: desc.name,
             data,
             limits,
         };
@@ -290,6 +280,29 @@ export class CGNSDataSource extends EmptyDataSource {
 
 
 // transforming data sources
+
+class EmptyTransformDataSource extends EmptyDataSource {
+    constructor(dataSource) {
+        super();
+        this.dataSource = dataSource;
+    }
+
+    init() {
+        this.dataSource.init();
+        this.name = this.dataSource.name;
+        this.size = this.dataSource.size;
+        this.extentBox = this.dataSource.extentBox;
+    }
+
+    getAvailableDataArrays() {
+        return this.dataSource.getAvailableDataArrays();
+    }
+
+    async getDataArray(name) {
+        return this.dataSource.getDataArray(name);
+    }
+}
+
 
 // simple downsampling transform
 export class DownsampleStructDataSource extends EmptyTransformDataSource {
@@ -334,6 +347,7 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
 }
 
 
+// conversion from structured to unstructured
 export class UnstructFromStructDataSource extends EmptyTransformDataSource {
     mesh = {
         positions: null,
@@ -453,5 +467,54 @@ export class UnstructFromStructDataSource extends EmptyTransformDataSource {
                 }
             }
         }
+    }
+}
+
+
+// handles the calculations of mappings from a vector of data arrays to a single scalar
+// e.g. vector magnitude, q criterion, mach number
+export class CalcVectArraysDataSource extends EmptyTransformDataSource {
+    constructor(dataSource) {
+        super(dataSource)
+    }
+
+    init() {
+        super.init()
+        this.format = this.dataSource.format;
+        if (DataFormats.UNSTRUCTURED == this.format) {
+            this.mesh = this.dataSource.mesh;
+        }
+    }
+
+    getAvailableDataArrays() {
+        const sourceArrayNames = this.dataSource.getAvailableDataArrays();
+
+        // all arrays that could be selected, including vec->scal mapped
+        let dataArrayNames = [];
+        let potentialVecs = {};
+        for (let name of sourceArrayNames) {
+            dataArrayNames.push(name);
+            // detect vector data quantities
+            if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
+            const vecName = name.substring(0, name.length - 1);
+            const thisDir = name.at(-1);
+            if (!potentialVecs[vecName]) {
+                potentialVecs[vecName] = {};
+            } 
+    
+            potentialVecs[vecName][thisDir] = true;
+    
+            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
+                dataArrayNames.push(vecName)
+            }       
+        }
+    }
+
+    loadDataArray(desc) {
+        if (DataArrayTypes.CALC != desc.arrayType) {
+            return this.dataSource.loadDataArray(desc);
+        }
+
+        // try and calculate 
     }
 }

@@ -5,9 +5,9 @@ import { WebGPUBase } from "./webGPU/webGPUBase.js";
 import { mat4 } from '../../core/gl-matrix.js';
 
 export const DataSrcTypes = {
-    NONE: "None",
-    AXIS: "Axis",
-    DATA: "Data" 
+    NONE:  "none",
+    AXIS:  "axis",
+    ARRAY: "array" 
 }
 
 export const DataSrcNames = {}
