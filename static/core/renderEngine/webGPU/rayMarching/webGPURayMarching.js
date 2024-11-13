@@ -765,7 +765,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                         newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);
                     }
                     
-                    passData.dataCache.updateBlockWithTag(dataSrc.name, newData);
+                    passData.dataCache.updateBlockAt(
+                        passData.dataCache.getTagSlotNum(dataSrc.name),newData
+                    );
                 }
             }
         }

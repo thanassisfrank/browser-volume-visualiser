@@ -4,7 +4,7 @@
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
-import { AssociativeCache } from "./cache.js";
+import { AssociativeCache, RandAssociativeCache } from "./cache.js";
 import { ResolutionModes } from "./data.js";
 
 
@@ -200,7 +200,7 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
                 if (-1 == meshBlockIndex) {
                     // the mesh data for this leaf is not currently loaded, load it
                     const leafMesh = dataObj.getNodeMeshBlock(childNode.thisPtr, activeValueSlots);
-                    const loadResult = dataObj.dynamicMeshCache.insertNewBlockRand(childNode.thisPtr, leafMesh);
+                    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(childNode.thisPtr, leafMesh);
                     meshBlockIndex = loadResult.slot;
                     // check if the evicted block is currently loaded in the dynamic node cache
                     if (undefined != loadResult.evicted) {
@@ -361,7 +361,7 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 
 // dynamic mesh data ======================================================================================
 export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
-    const dynamicMeshCache = new AssociativeCache(leafBlockCount);
+    const dynamicMeshCache = new RandAssociativeCache(leafBlockCount);
 
     // mesh buffers
     dynamicMeshCache.createBuffer("positions", Float32Array, blockSizes.positions);
