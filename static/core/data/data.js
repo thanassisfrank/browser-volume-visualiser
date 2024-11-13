@@ -209,7 +209,7 @@ const dataManager = {
     createLeafMeshData: function(dataObj, blockSizes, leafCount) {
         // create the new buffers
         // const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
-        const leafMeshBuffers = getLeafMeshBuffersAnalyse(dataObj, blockSizes, leafCount);
+        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
         for (let name of ["positions", "cellOffsets", "cellConnectivity"]) {
             console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
             console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
