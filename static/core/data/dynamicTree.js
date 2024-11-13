@@ -4,7 +4,7 @@
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
-import { AssociativeCache, RandAssociativeCache } from "./cache.js";
+import { AssociativeCache, RandAssociativeCache, ScoredAssociativeCache } from "./cache.js";
 import { ResolutionModes } from "./data.js";
 
 
@@ -98,6 +98,20 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
     return scores;
 };
 
+
+function updateMeshCacheScores(dataObj, scores) {
+    // create a map from full pointer -> node score
+    const fullPtrScoreMap = new Map();
+    for (let node of scores) {
+        fullPtrScoreMap.set(node.thisFullPtr, node.score);
+    }
+    // update the mesh cache with the node scores
+    // if a node is not in the dynamic tree and thus the scores list, the score is set to -inf
+    debugger;
+    dataObj.dynamicMeshCache.syncScores(fullPtr => 
+        fullPtrScoreMap.get(fullPtr) ?? Number.NEGATIVE_INFINITY
+    );
+}
 
 // takes the full scores list and returns a list of nodes to split and a list to merge
 // these will have length equal to count
@@ -200,7 +214,10 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
                 if (-1 == meshBlockIndex) {
                     // the mesh data for this leaf is not currently loaded, load it
                     const leafMesh = dataObj.getNodeMeshBlock(childNode.thisPtr, activeValueSlots);
-                    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(childNode.thisPtr, leafMesh);
+
+                    // TODO: calculate the score for this new node
+
+                    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(thisNode.score, childNode.thisPtr, leafMesh);
                     meshBlockIndex = loadResult.slot;
                     // check if the evicted block is currently loaded in the dynamic node cache
                     if (undefined != loadResult.evicted) {
@@ -235,16 +252,7 @@ export const updateDynamicDataset = (dataObj, focusCoords, camCoords, activeValu
         const scores = getNodeScores(dataObj, focusCoords, camCoords);
 
         if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            // create a map from full pointer -> node score
-            const fullPtrScoreMap = new Map();
-            for (let node of scores) {
-                fullPtrScoreMap.set(node.fullPtr, node.score);
-            }
-            // update the mesh cache with the node scores
-            // if a node is not in the dynamic tree and thus the scores list, the score is set to -inf
-            dataObj.dynamicMeshCache.syncBuffer("scores", fullPtr => 
-                [fullPtrScoreMap.get(fullPtr) ?? Number.NEGATIVE_INFINITY]
-            );
+            updateMeshCacheScores(dataObj, scores);
         }
         scores.sort((a, b) => a.score - b.score);
         const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
@@ -361,15 +369,13 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 
 // dynamic mesh data ======================================================================================
 export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
-    const dynamicMeshCache = new RandAssociativeCache(leafBlockCount);
+    const dynamicMeshCache = new ScoredAssociativeCache(leafBlockCount);
 
+    console.log(blockSizes);
     // mesh buffers
     dynamicMeshCache.createBuffer("positions", Float32Array, blockSizes.positions);
     dynamicMeshCache.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
     dynamicMeshCache.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
-    
-    // mesh score information
-    dynamicMeshCache.createBuffer("scores", Float32Array, 1);
 
     return dynamicMeshCache;
 };
