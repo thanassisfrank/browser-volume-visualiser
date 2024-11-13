@@ -193,7 +193,7 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
                 }
             };
 
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS && 0 == childNode.rightPtr) {
+            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT && 0 == childNode.rightPtr) {
                 // this new node is a true leaf, check if the mesh data is already cached
                 // console.log("new leaf");
                 var meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
@@ -230,9 +230,22 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
 // updates the dynamic dataset based on camera location
 // this handles updating the dynamic nodes and dynamic mesh
 export const updateDynamicDataset = (dataObj, focusCoords, camCoords, activeValueSlots) => {
-    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
-        // get the node scores, n lowest highest
+    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
+        // get a list of all nodes in the dynamic node tree with their scores
         const scores = getNodeScores(dataObj, focusCoords, camCoords);
+
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            // create a map from full pointer -> node score
+            const fullPtrScoreMap = new Map();
+            for (let node of scores) {
+                fullPtrScoreMap.set(node.fullPtr, node.score);
+            }
+            // update the mesh cache with the node scores
+            // if a node is not in the dynamic tree and thus the scores list, the score is set to -inf
+            dataObj.dynamicMeshCache.syncBuffer("scores", fullPtr => 
+                [fullPtrScoreMap.get(fullPtr) ?? Number.NEGATIVE_INFINITY]
+            );
+        }
         scores.sort((a, b) => a.score - b.score);
         const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
         
@@ -349,9 +362,14 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 // dynamic mesh data ======================================================================================
 export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
     const dynamicMeshCache = new AssociativeCache(leafBlockCount);
+
+    // mesh buffers
     dynamicMeshCache.createBuffer("positions", Float32Array, blockSizes.positions);
     dynamicMeshCache.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
     dynamicMeshCache.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
+    
+    // mesh score information
+    dynamicMeshCache.createBuffer("scores", Float32Array, 1);
 
     return dynamicMeshCache;
 };

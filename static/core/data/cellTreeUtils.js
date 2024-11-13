@@ -349,7 +349,7 @@ function* iterateLeafCells(dataObj, leafNode, slotNum) {
     // check the cells in the leaf node found
     for (let i = 0; i < leafNode.cellCount; i++) {
         // go through and check all the contained cells
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             yield getCellAtIndexBlockMesh(dataObj, leafNode, i, slotNum);
         } else {
             yield getCellAtIndex(dataObj, leafNode, i, slotNum);
@@ -451,7 +451,7 @@ export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
     // console.log(leafNode.thisPtr);
     const cellIndex = Math.floor(Math.random()*leafNode.cellCount);
     let cell;
-    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
         cell = getCellAtIndexBlockMesh(dataObj, leafNode, index, slotNum);
     } else {
         cell = getCellAtIndex(dataObj, leafNode, cellIndex, slotNum);

@@ -17,9 +17,9 @@ export {dataManager};
 
 // these act as bit masks to create the full resolution mode
 export const ResolutionModes = {
-    FULL:          0b00, // resolution is fixed at the maximum 
-    DYNAMIC_NODES: 0b01, // the resolution is variable
-    DYNAMIC_CELLS: 0b10, // cell and vertex data are arranged per-leaf
+    FULL:              0b00, // resolution is fixed at the maximum 
+    DYNAMIC_NODES_BIT: 0b01, // the resolution is variable
+    DYNAMIC_CELLS_BIT: 0b10, // cell and vertex data are arranged per-leaf
 };
 
 
@@ -142,7 +142,7 @@ const dataManager = {
         if (opts.dynamicNodes) {
             try {
                 this.createDynamicTree(newData, opts.dynamicNodeCount);
-                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES;
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
             } catch (e) {
                 console.error("Could not create dataset with dynamic node set:", e)
             }
@@ -170,7 +170,7 @@ const dataManager = {
                 };
                 this.createLeafMeshData(newData, newData.meshBlockSizes, leafCount);
                 this.createDynamicMeshCache(newData, newData.meshBlockSizes, leafCount, opts.dynamicMeshBlockCount);
-                newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS;
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
                 console.error("Could not create dataset with dynamic cells data:", e)
@@ -413,7 +413,7 @@ function Data(id, dataSource) {
             this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
         }
 
-        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) {
+        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             // if the data is in the normal mesh format, reformat to block mesh
             this.convertValuesToBlockMesh(newSlotNum);
             console.log("converted values");
@@ -428,7 +428,7 @@ function Data(id, dataSource) {
             console.log("created corner vals");
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
-        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) {
+        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
             console.log("created dynamic corners")
         }
@@ -611,7 +611,7 @@ function Data(id, dataSource) {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return this.getDataSize().join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
-            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 return this.data.totalCellCount.toLocaleString() + "u";
             } else {
                 return this.data.cellOffsets.length.toLocaleString() + "u";
@@ -631,7 +631,7 @@ function Data(id, dataSource) {
 
 
     this.getValues = function(slotNum) {
-        if (ResolutionModes.DYNAMIC_CELLS & this.resolutionMode) return this.getDynamicValues(slotNum);
+        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) return this.getDynamicValues(slotNum);
         return this.getFullValues(slotNum);
     };
 

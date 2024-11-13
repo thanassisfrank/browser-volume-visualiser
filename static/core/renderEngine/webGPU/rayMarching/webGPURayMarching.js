@@ -410,7 +410,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         passData.dMatInv = dataObj.getdMatInv();
         passData.cornerValType = dataObj.cornerValType;
 
-        passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS;
+        passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT;
         passData.blockSizes = {
             positions: dataObj.meshBlockSizes?.positions ?? 0,
             cellOffsets: dataObj.meshBlockSizes?.cellOffsets ?? 0,
@@ -469,13 +469,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
         // write the tree buffer
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
         } else {
             renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
         }
         
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             renderData.buffers.treeCells = webGPU.makeBuffer(0, usage, "empty tree cells");
             renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.dynamicPositions, usage, "data dynamic vert positions");
             renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellConnectivity, usage, "data dynamic cell connectivity");
@@ -737,14 +737,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             valueBufferCreated |= colLoadResult.created;
 
             // update any dynamic buffers
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 // write updated mesh data to the GPU
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
             }
 
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES) {
+            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
                 // update the nodes buffer
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
             }
@@ -761,10 +761,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     let newData = {
                         "cornerValues": dataObj.getDynamicCornerValues(dataSrc.slotNum),
                     };
-                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS) {
+                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                         newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);
                     }
-                                        
+                    
                     passData.dataCache.updateBlockWithTag(dataSrc.name, newData);
                 }
             }
