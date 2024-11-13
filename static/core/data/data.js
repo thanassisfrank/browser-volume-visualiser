@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, CalcVectArraysDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -70,6 +70,9 @@ const dataManager = {
         if (opts.downSample > 1 && dataSource.format == DataFormats.STRUCTURED) {
             dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
         }
+
+        // add a data source that will calculate additional data values
+        dataSource = new CalcVectArraysDataSource(dataSource);
 
         // convert struct -> unstruct if needed
         if (opts.forceUnstruct) {

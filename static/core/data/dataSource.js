@@ -4,6 +4,7 @@ import {mat4} from "../gl-matrix.js";
 import { DATA_TYPES } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
+import { VectorMappingHandler } from "./vectorDataArray.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
@@ -287,8 +288,8 @@ class EmptyTransformDataSource extends EmptyDataSource {
         this.dataSource = dataSource;
     }
 
-    init() {
-        this.dataSource.init();
+    async init() {
+        await this.dataSource.init();
         this.name = this.dataSource.name;
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
@@ -471,15 +472,19 @@ export class UnstructFromStructDataSource extends EmptyTransformDataSource {
 }
 
 
+// tiling transformation that copies data the required number of times in the x, y and z directions
+
+
 // handles the calculations of mappings from a vector of data arrays to a single scalar
 // e.g. vector magnitude, q criterion, mach number
 export class CalcVectArraysDataSource extends EmptyTransformDataSource {
     constructor(dataSource) {
         super(dataSource)
+        this.mappingHandler = new VectorMappingHandler();
     }
 
-    init() {
-        super.init()
+    async init() {
+        await super.init()
         this.format = this.dataSource.format;
         if (DataFormats.UNSTRUCTURED == this.format) {
             this.mesh = this.dataSource.mesh;
@@ -487,27 +492,19 @@ export class CalcVectArraysDataSource extends EmptyTransformDataSource {
     }
 
     getAvailableDataArrays() {
-        const sourceArrayNames = this.dataSource.getAvailableDataArrays();
+        const sourceArrayDescriptors = this.dataSource.getAvailableDataArrays();
 
-        // all arrays that could be selected, including vec->scal mapped
-        let dataArrayNames = [];
-        let potentialVecs = {};
-        for (let name of sourceArrayNames) {
-            dataArrayNames.push(name);
-            // detect vector data quantities
-            if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
-            const vecName = name.substring(0, name.length - 1);
-            const thisDir = name.at(-1);
-            if (!potentialVecs[vecName]) {
-                potentialVecs[vecName] = {};
-            } 
-    
-            potentialVecs[vecName][thisDir] = true;
-    
-            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
-                dataArrayNames.push(vecName)
-            }       
-        }
+        // find the possible calculable data arrays given the source data
+        const mappingOutputNames = this.mappingHandler.getPossibleMappings(sourceArrayDescriptors);
+        const calcArrayDescriptors = mappingOutputNames.map(v => {
+            return {name: v, arrayType: DataArrayTypes.CALC}
+        });
+
+        // return the combination of the two
+        return [
+            ...sourceArrayDescriptors,
+            ...calcArrayDescriptors
+        ];
     }
 
     loadDataArray(desc) {
@@ -515,6 +512,21 @@ export class CalcVectArraysDataSource extends EmptyTransformDataSource {
             return this.dataSource.loadDataArray(desc);
         }
 
+        // check if this is a valid mapping output
+        const inputs = this.mappingHandler.getRequiredInputs(desc.name);
+        if (!inputs) return;
+        const mapFunc = this.mappingHandler.getMappingFunction(desc.name);
+        if (!mapFunc) return;
+
+        // try to load all of the input arrays
+        // these are not modified with derivatives at this point
+        const inputArrays = inputs.map(v => this.dataSource.loadDataArray({name: v.name}));
+
+        // check if they could all be loaded
+        if (!inputArrays.every(a => a)) return;
+
         // try and calculate 
+        // iterate through all vertices and 
+
     }
 }
