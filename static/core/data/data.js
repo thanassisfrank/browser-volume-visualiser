@@ -269,27 +269,24 @@ const dataManager = {
     }
 }
 
-function Data(id, dataSource) {
-    SceneObject.call(this, SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
-    this.id = id;
-    this.users = 0;
-    this.config;
-    this.opts;
 
-    // what format of mesh this represents
-    this.dataFormat = dataSource.format
+
+
+
+
+class Data extends SceneObject {
+    users = 0;
+    config;
+    opts;
+
     // how the data will be presented to the user
-    this.resolutionMode = ResolutionModes.FULL;
-
-    // what this.data represents
-    this.dataName = dataSource.name;
+    resolutionMode = ResolutionModes.FULL;
     
-    // where any extra data that is needed is pulled from
-    this.dataSource = dataSource;
+    
 
     // the actual data store of the object
     // all entries should be typedarray objects
-    this.data = {
+    data = {
         // the data values
         values: [
             // {name: null, data: null, cornerValues: null, limits: [null, null]},
@@ -321,52 +318,64 @@ function Data(id, dataSource) {
     };
 
     // objects that handle the state of the dynamic node, corner values and mesh buffers
-    this.dynamicNodeCache;
-    this.dynamicMeshCache;
+    dynamicNodeCache;
+    dynamicMeshCache;
 
     // the lengths of the blocks in the mesh buffers if a block mesh is being used
-    this.meshBlockSizes;
+    meshBlockSizes;
 
     // any additional mesh geometry that is part of the dataset but not part of the mesh
-    this.geometry = {};
+    geometry = {};
 
     // information about the data files that have been pre-generated and are available to be laoded from the server
-    this.preGeneratedInfo = {};
+    preGeneratedInfo = {};
 
-    this.cornerValType = null;
+    cornerValType = null;
 
-    this.valueCounts = [];
+    valueCounts = [];
 
     // supplemental attributes
     // the dimensions in data space
-    this.size = [0, 0, 0];
+    size = [0, 0, 0];
     // axis aligned (data space) maximum extent
-    this.extentBox = {
+    extentBox = {
         min: [0, 0, 0],
         max: [0, 0, 0]
     };
 
     // matrix that captures data space -> object space
     // includes scaling of the grid
-    this.dataTransformMat = mat4.create();
+    dataTransformMat = mat4.create();
+    
+    constructor(id, dataSource) {
+        super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
+        this.id = id;
 
-    this.createFromSource = async function() {
+        // where data to be stored here is pulled from
+        this.dataSource = dataSource;
+        // what format of mesh this represents
+        this.dataFormat = dataSource.format;
+        // what this.data represents
+        this.dataName = dataSource.name;
+    }
+
+    async createFromSource() {
         // source must be initialised first
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
 
         if (this.dataFormat == DataFormats.UNSTRUCTURED) {
             // get the mesh buffers
-            this.data.positions         = this.dataSource.mesh.positions;
-            this.data.cellOffsets       = this.dataSource.mesh.cellOffsets;
-            this.data.cellConnectivity  = this.dataSource.mesh.cellConnectivity;
-            this.data.cellTypes         = this.dataSource.mesh.cellTypes;
+            this.data.positions = this.dataSource.mesh.positions;
+            this.data.cellOffsets = this.dataSource.mesh.cellOffsets;
+            this.data.cellConnectivity = this.dataSource.mesh.cellConnectivity;
+            this.data.cellTypes = this.dataSource.mesh.cellTypes;
 
             this.geometry = this.dataSource.geometry;
         }
     };
 
-    this.getAvailableDataArrays = function() {
+    getAvailableDataArrays() {
         // all the arrays that come straight from the data source
         const sourceArrayNames = this.dataSource.getAvailableDataArrays();
 
@@ -381,13 +390,13 @@ function Data(id, dataSource) {
             const thisDir = name.at(-1);
             if (!potentialVecs[vecName]) {
                 potentialVecs[vecName] = {};
-            } 
-    
+            }
+
             potentialVecs[vecName][thisDir] = true;
-    
-            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]){
-                dataArrayNames.push(vecName)
-            }       
+
+            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]) {
+                dataArrayNames.push(vecName);
+            }
         }
 
         return dataArrayNames;
@@ -395,7 +404,7 @@ function Data(id, dataSource) {
 
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
-    this.loadDataArray = async function(name, binCount) {
+    async loadDataArray(name, binCount) {
         // check if already loaded
         let loadedIndex = this.data.values.findIndex(elem => elem.name == name);
         if (loadedIndex != -1) return loadedIndex;
@@ -403,7 +412,7 @@ function Data(id, dataSource) {
         let newSlotNum;
         try {
             this.data.values.push(await this.dataSource.getDataArray(name));
-            newSlotNum = this.data.values.length - 1;   
+            newSlotNum = this.data.values.length - 1;
         } catch (e) {
             console.warn("Unable to load data array " + name + ": " + e);
             return -1;
@@ -419,18 +428,18 @@ function Data(id, dataSource) {
             console.log("converted values");
             // create new entry in the dynamic mesh cache object
             this.createDynamicBlockValues(newSlotNum);
-            console.log("created dynamic values")
+            console.log("created dynamic values");
         }
 
         // if this is dynamic, load corner values too
         if (ResolutionModes.FULL != this.resolutionMode) {
-            await this.createCornerValues(newSlotNum)
+            await this.createCornerValues(newSlotNum);
             console.log("created corner vals");
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
         if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
-            console.log("created dynamic corners")
+            console.log("created dynamic corners");
         }
 
 
@@ -439,19 +448,19 @@ function Data(id, dataSource) {
 
     // gets the data describing the mesh geometry and values for the mesh of this node
     // if this node is not a leaf, returns undefined
-    this.getNodeMeshBlock = function(nodeIndex, valueSlots) {
+    getNodeMeshBlock(nodeIndex, valueSlots) {
         if (!this.fullToLeafIndexMap.has(nodeIndex)) return;
         const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
         // slice the mesh geometry buffers
         let buffers = {
             positions: this.data.positions.slice(
-                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions 
+                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions
             ),
             cellOffsets: this.data.cellOffsets.slice(
-                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets 
+                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets
             ),
             cellConnectivity: this.data.cellConnectivity.slice(
-                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity 
+                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity
             )
         };
 
@@ -460,7 +469,7 @@ function Data(id, dataSource) {
             const values = this.getFullValues(slotNum);
             if (!values) continue;
             buffers["values" + slotNum] = values.slice(
-                leafIndex * this.meshBlockSizes.positions/3, (leafIndex + 1) * this.meshBlockSizes.positions/3
+                leafIndex * this.meshBlockSizes.positions / 3, (leafIndex + 1) * this.meshBlockSizes.positions / 3
             );
         }
 
@@ -468,12 +477,12 @@ function Data(id, dataSource) {
         return buffers;
     };
 
-    this.setCornerValType = function(type) {
+    setCornerValType(type) {
         this.cornerValType = type;
     };
 
     // creates the full corner values buffer for the full tree, using the data in the specified value slot
-    this.createCornerValues = async function(slotNum) {
+    async createCornerValues(slotNum) {
         // first, check if the corner values are available on the server
         var found = false;
 
@@ -496,16 +505,16 @@ function Data(id, dataSource) {
         }
         if (found) return;
         console.log("generating corner vals");
-        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType); 
+        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType);
     };
 
     // creates the dynamic corner values buffer from scratch
     // matches the nodes currently loaded in dynamic tree
-    this.createDynamicCornerValues = function(slotNum) {
+    createDynamicCornerValues(slotNum) {
         this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
     };
 
-    this.convertValuesToBlockMesh = function(slotNum) {
+    convertValuesToBlockMesh(slotNum) {
         // create new buffer to re-write values into
         // if vert count < block length, value of vert 0 will be written
         const blockVals = new Float32Array(this.data.leafVerts.length);
@@ -514,34 +523,34 @@ function Data(id, dataSource) {
         this.data.values[slotNum].data = blockVals;
     };
 
-    this.createDynamicBlockValues = function(slotNum) {
+    createDynamicBlockValues(slotNum) {
         this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
     };
 
     // returns the byte length of the values array
-    this.getValuesByteLength = function(slotNum) {
+    getValuesByteLength(slotNum) {
         return this.getValues(slotNum).byteLength;
     };
 
-    this.getLimits = function(slotNum) {
+    getLimits(slotNum) {
         return this.data.values[slotNum]?.limits;
     };
 
     // returns the positions of the boundary points
-    this.getBoundaryPoints = function() {
+    getBoundaryPoints() {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             var size = this.getDataSize();
             // extent is size -1
             var e = [size[0] - 1, size[1] - 1, size[2] - 1];
             var points = new Float32Array([
-                0,    0,    0,    // 0
-                e[0], 0,    0,    // 1
-                0,    e[1], 0,    // 2
-                e[0], e[1], 0,    // 3
-                0,    0,    e[2], // 4
-                e[0], 0,    e[2], // 5
-                0,    e[1], e[2], // 6
-                e[0], e[1], e[2]  // 7
+                0, 0, 0, // 0
+                e[0], 0, 0, // 1
+                0, e[1], 0, // 2
+                e[0], e[1], 0, // 3
+                0, 0, e[2], // 4
+                e[0], 0, e[2], // 5
+                0, e[1], e[2], // 6
+                e[0], e[1], e[2] // 7
             ]);
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
             var a = this.extentBox.min;
@@ -554,42 +563,42 @@ function Data(id, dataSource) {
                 a[0], a[1], b[2], // 4
                 b[0], a[1], b[2], // 5
                 a[0], b[1], b[2], // 6
-                b[0], b[1], b[2]  // 7
+                b[0], b[1], b[2] // 7
             ]);
         } else {
             var points = new Float32Array(24);
         }
-        
+
         var transformedPoint = [0, 0, 0, 0];
         for (let i = 0; i < points.length; i += 3) {
             vec4.transformMat4(
-                transformedPoint, 
+                transformedPoint,
                 [points[i], points[i + 1], points[i + 2], 1],
                 this.dataTransformMat
-            )
+            );
             points.set([
                 transformedPoint[0],
                 transformedPoint[1],
                 transformedPoint[2]
             ], i);
-        } 
+        }
 
         return points;
     };
 
-    this.getMidPoint = function() {
+    getMidPoint() {
         var points = this.getBoundaryPoints();
         var min = points.slice(0, 3);
         var max = points.slice(21, 24);
 
         return [
-            (min[0] + max[0])/2,
-            (min[1] + max[1])/2,
-            (min[2] + max[2])/2,
+            (min[0] + max[0]) / 2,
+            (min[1] + max[1]) / 2,
+            (min[2] + max[2]) / 2,
         ];
     };
 
-    this.getMaxLength = function() {
+    getMaxLength() {
         var points = this.getBoundaryPoints();
         var min = points.slice(0, 3);
         var max = points.slice(21, 24);
@@ -602,12 +611,12 @@ function Data(id, dataSource) {
     };
 
     // for structured formats, this returns the dimensions of the data grid in # data points
-    this.getDataSize = function() {
+    getDataSize() {
         return this.size ?? [0, 0, 0];
     };
 
     // returns a string which indicates the size of the dataset for the user
-    this.getDataSizeString = function() {
+    getDataSizeString() {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return this.getDataSize().join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
@@ -620,50 +629,50 @@ function Data(id, dataSource) {
         return "";
     };
 
-    this.setDataSize = function(size) {
+    setDataSize(size) {
         this.extentBox.max = size;
         this.size = size;
     };
 
-    this.getDynamicNodeCount = function() {
+    getDynamicNodeCount() {
         return this.data.dynamicNodeCount;
     };
 
 
-    this.getValues = function(slotNum) {
+    getValues(slotNum) {
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) return this.getDynamicValues(slotNum);
         return this.getFullValues(slotNum);
     };
 
-    this.getFullValues = function(slotNum) {
+    getFullValues(slotNum) {
         return this.data.values?.[slotNum]?.data;
     };
 
-    this.getDynamicValues = function(slotNum) {
+    getDynamicValues(slotNum) {
         return this.data.values?.[slotNum]?.dynamicData;
     };
 
     // fetching the corner values buffers
-    this.getCornerValues = function(slotNum) {
-        if (ResolutionModes.DYNAMIC_NODES & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+    getCornerValues(slotNum) {
+        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
         return this.getFullCornerValues(slotNum);
     };
 
-    this.getFullCornerValues = function(slotNum) {
+    getFullCornerValues(slotNum) {
         return this.data.values?.[slotNum]?.cornerValues;
     };
 
-    this.getDynamicCornerValues = function(slotNum) {
+    getDynamicCornerValues(slotNum) {
         return this.data.values?.[slotNum]?.dynamicCornerValues;
     };
-    
-    this.getName = function() {
+
+    getName() {
         return this.dataName ?? "Unnamed data";
     };
 
     // returns a mat4 encoding object space -> data space
     // includes 
-    this.getdMatInv = function() {
+    getdMatInv() {
         var dMatInv = mat4.create();
         mat4.invert(dMatInv, this.dataTransformMat);
         return dMatInv;
@@ -671,15 +680,15 @@ function Data(id, dataSource) {
 
     // returns the number of values within this.data.values that fall into a number of bins
     // bins are in the range this.limits and there are binCount number
-    this.getValueCounts = function(slotNum, binCount) {
+    getValueCounts(slotNum, binCount) {
         if (this.valueCounts?.[slotNum]?.counts.length == binCount) return this.valueCounts[slotNum];
         var counts = new Uint32Array(binCount);
         var max = 0;
         var index;
         var limits = this.getLimits(slotNum);
         for (let val of this.getFullValues(slotNum)) {
-            index = Math.floor((val - limits[0]) * (binCount-1)/(limits[1] - limits[0]));
-            max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount-1))]);
+            index = Math.floor((val - limits[0]) * (binCount - 1) / (limits[1] - limits[0]));
+            max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount - 1))]);
         }
         return {
             counts: counts,
