@@ -1079,10 +1079,17 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.getRayLengthAt = async function(x, y) {
         const texSrc = this.offsetOptimisationTextureOld;
+        if (!texSrc) return;
+
+        const rounded = {
+            x: Math.round(x),
+            y: Math.round(y),
+        }
 
         // ensure x, y are inside image
-        if (x < 0 || x >= texSrc.width) return;
-        if (y < 0 || y >= texSrc.height) return;
+        if (rounded.x < 0 || rounded.x >= texSrc.width) return;
+        if (rounded.y < 0 || rounded.y >= texSrc.height) return;
+
 
         // the target width and height of the region to get from the depth texture
         const targetRegionSize = 8;
@@ -1094,8 +1101,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         const regionHeight = targetRegionSize;
 
         const minCorner = [
-            clamp(x - targetRegionSize/2, 0, texSrc.width - regionWidth), 
-            clamp(y - targetRegionSize/2, 0, texSrc.height - regionHeight), 
+            clamp(rounded.x - targetRegionSize/2, 0, texSrc.width - regionWidth), 
+            clamp(rounded.y - targetRegionSize/2, 0, texSrc.height - regionHeight), 
             0
         ];
         const clipBox = {
@@ -1117,7 +1124,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         
-        const centerDepth = tex.readTexel(x - clipBox.min[0], y - clipBox.min[1])[1];
+        const centerDepth = tex.readTexel(rounded.x - clipBox.min[0], rounded.y - clipBox.min[1])[1];
 
         return centerDepth;
     }

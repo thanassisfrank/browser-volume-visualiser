@@ -164,18 +164,26 @@ async function main() {
 
     var cameraFollowPath = false;
 
+    const mousePos = {
+        x: 0, y: 0
+    };
+    document.body.addEventListener("mousemove", (e) => {
+        mousePos.x = e.clientX; 
+        mousePos.y = e.clientY;
+    });
+
     // shortcuts
     const shortcuts = {
         " ": {
             description: "Print the camera position and threshold val",
-            f: function(e) {
+            f: function (e) {
                 camera.printVals();
                 console.log("threshold", Object.values(viewManager.views)[0].threshold);
             }
         },
         "a": {
             description: "Save generated corner values in slot 0",
-            f: function(e) {
+            f: function (e) {
                 var currView = Object.values(viewManager.views)[0];
                 if (!currView) {
                     console.warn("no view loaded");
@@ -239,7 +247,7 @@ async function main() {
         },
         "b": {
             description: "Save generated unstructured tree",
-            f: function(e) {
+            f: function (e) {
                 var currView = Object.values(viewManager.views)[0];
                 if (!currView) {
                     console.warn("no view loaded");
@@ -288,14 +296,14 @@ async function main() {
         },
         "c": {
             description: "Copy frametime samples to clipboard",
-            f: function(e) {
+            f: function (e) {
                 frameTimeGraph.copySamples();
                 console.log("Samples copied");
             }
         },
         "d": {
             description: "Get the current ray length texture from the ray marcher",
-            f: function(e) {
+            f: function (e) {
                 renderEngine.rayMarcher.getCenterRayLength()
                 .then(depth => {
                     console.log(depth);
@@ -317,7 +325,7 @@ async function main() {
         },
         "f": {
             description: "Print average frametime",
-            f: function(e) {
+            f: function (e) {
                 const avg = frameTimeGraph.getAverage();
                 console.log("avg ft ", frameTimeGraph.historyLength, "samples:", avg, "ms");
                 alert(avg + "ms");
@@ -325,13 +333,13 @@ async function main() {
         },
         "g": {
             description: "Display GPU memory usage",
-            f: function(e) {
+            f: function (e) {
                 console.log(renderEngine.getWebGPU().getResourcesString());
             }
         },
         "h": {
             description: "Help",
-            f: function(e) {
+            f: function (e) {
                 for (let key in shortcuts) {
                     if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
                 }
@@ -339,19 +347,19 @@ async function main() {
         },
         "l": {
             description: "Print last frametime sample",
-            f: function(e) {
+            f: function (e) {
                 console.log(frameTimeGraph.lastSamples[0]);
             }
         },
         "m": {
             description: "Toggle camera auto-move",
-            f: function(e) {
+            f: function (e) {
                 cameraFollowPath = !cameraFollowPath;
             }
         },
         "o": {
             description: "Reset offset optimisation",
-            f: function(e) {
+            f: function (e) {
                 renderEngine.canvasResized = true;
                 renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
             }
@@ -365,25 +373,41 @@ async function main() {
         },
         "r": {
             description: "Move camera to initial position",
-            f: function(e) {
+            f: function (e) {
                 camera.moveToStart();
             }
         },
         "s": {
             description: "Save image on main canvas",
-            f: function(e) {
+            f: function (e) {
                 downloadCanvas(canvas, "canvas_image.png", "image/png");
+            }
+        },
+        "t": {
+            description: "move focus point",
+            f: async function (e) {
+                const d = await renderEngine.rayMarcher.getRayLengthAt(mousePos.x, mousePos.y);
+                if (!d) return;
+                const tex = renderEngine.rayMarcher.offsetOptimisationTextureOld;
+                const camCoords = {x: mousePos.x/tex.width * 2 - 1, y: mousePos.y/tex.height * 2 - 1};
+                const camera = Object.values(viewManager.views)[0].camera;
+                const newTarget = camera.getWorldSpaceFromClipAndDist(camCoords.x, camCoords.y, d);
+
+                camera.setTarget(newTarget);
+
+                console.log(camCoords.x, camCoords.y, d);
+                console.log(newTarget);
             }
         },
         "u": {
             description: "Update view",
-            f: function(e) {
+            f: function (e) {
                 Object.values(viewManager.views)?.[0].update(0, renderEngine);
             }
         },
         "v": {
             description: "Toggle visiblity of overlay elements",
-            f: function(e) {
+            f: function (e) {
                 for (let elem of [...getClass("view-bottom-bar"), get("ray-march-opts-container"), get("frame-info")]) {
                     if (isVisible(elem)) {
                         hide(elem);
@@ -394,13 +418,13 @@ async function main() {
             }
         },
         "Alt": {
-            f: function(e) {
+            f: function (e) {
                 e.preventDefault();
             }
         },
         "ArrowUp": {
             description: "Increase ray-marching step size",
-            f: function(e) {
+            f: function (e) {
                 var oldStep = renderEngine.rayMarcher.getStepSize();
                 var newStep = oldStep * 2;
                 console.log("inc step size:", newStep);
@@ -409,7 +433,7 @@ async function main() {
         },
         "ArrowDown": {
             description: "Decrease ray-marchng step size",
-            f: function(e) {
+            f: function (e) {
                 var oldStep = renderEngine.rayMarcher.getStepSize();
                 var newStep = oldStep * 0.5;
                 console.log("dec step size:", newStep);

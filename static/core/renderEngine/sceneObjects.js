@@ -232,28 +232,55 @@ export class Camera extends SceneObject {
         super(SceneObjectTypes.CAMERA);
     }
 
+    // x and y are mapped as 0 at centre, +1 is right and bottom edge
+    getWorldSpaceFromClipAndDist(x, y, d) {
+        const viewMat = this.getViewMat();
+
+        const fwd = this.getForwardVec();
+        const up = VecMath.normalise(this.getUpVecFromViewMat(viewMat));
+        const right = VecMath.normalise(this.getRightVecFromViewMat(viewMat));
+
+        // calculate the ray direction
+        const aspect = this.fovX / this.fovY;
+        const unormRay = VecMath.vecAdd(
+            fwd,
+            VecMath.scalMult(x * Math.tan(this.fovY / 2) * aspect, right),
+            VecMath.scalMult(-y * Math.tan(this.fovY / 2), up)
+        );
+
+        const eyeToPoint =  VecMath.scalMult(d, VecMath.normalise(unormRay));
+
+        return VecMath.vecAdd(this.getEyePos(), eyeToPoint);
+    }
+
     // returns the camera variables in a float32array
     // consistent with the Camera struct in WGSL
     serialise() {
         // get the forward and up vectors from the view matrix
         // assumes the projection matrix is axis aligned
-        var viewMat = this.getViewMat();
-        var fwd = this.getForwardVec();
-
-        var up = [viewMat[1], viewMat[5], viewMat[9]];
-        var right = [viewMat[0], viewMat[4], viewMat[8]];
+        const viewMat = this.getViewMat();
+        
         return new Float32Array([
             ...this.projMat, // projection matrix
-            ...this.getViewMat(), // view matrix
+            ...viewMat, // view matrix
             ...this.getEyePos(), 0, // camera location
-            ...up, 0, // up vector
-            ...right, 0, // right vector
+            ...this.getUpVecFromViewMat(viewMat), 0, // up vector
+            ...this.getRightVecFromViewMat(viewMat), 0, // right vector
             toRads(this.fovY), toRads(this.fovX), 0, 0 // fovs
         ]);
     };
     getForwardVec() {
         return VecMath.normalise(VecMath.vecMinus(this.target, this.getEyePos()));
     };
+
+    getUpVecFromViewMat(viewMat) {
+        return [viewMat[1], viewMat[5], viewMat[9]];
+    }
+
+    getRightVecFromViewMat(viewMat) {
+        return [viewMat[0], viewMat[4], viewMat[8]];
+    }
+
     // sets the aspect ratio for the camera, recalc proj mat
     setAspectRatio(aspect) {
         this.aspect = aspect;

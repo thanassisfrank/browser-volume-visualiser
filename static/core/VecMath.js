@@ -10,12 +10,17 @@ export const VecMath = {
 	//  [3, 4, 5], and  1,
 	//  [6, 7, 8]]      2]
 
-	vecAdd: function(vec, vec1) {
-		var newX = vec[0] + vec1[0];
-		var newY = vec[1] + vec1[1];
-		var newZ = vec[2] + vec1[2];
+	vecAdd: function(...vecs) {
+		if (!vecs.every((v, i, a) => v.length === a[0].length)) return;
+
+		let vecSum = vecs[0].map(v => 0);
+		for (let vec of vecs) {
+			for (let i = 0; i < vec.length; i++) {
+				vecSum[i] += vec[i];
+			}
+		}
 		
-		return [newX, newY, newZ];
+		return vecSum;
 	},
 	vecMinus: function(vec, vec1) {
 		var newX = vec[0] - vec1[0];

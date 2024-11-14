@@ -190,9 +190,14 @@ export var viewManager = {
             });
         }
 
+        view.elems.frame.onclick = async (e) => {
+            console.log("click");
+        }
+
         // set event listeners for the elements
         const shiftFac = 0.5;
-        view.elems.frame.addEventListener("mousedown", (e) => {
+        view.elems.frame.addEventListener("mousedown", async (e) => {
+            
             if (view.elems.frame.requestPointerLock) {
                 view.elems.frame.requestPointerLock()
                     .catch(e => console.log("couldn't lock pointer"));
