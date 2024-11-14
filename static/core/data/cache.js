@@ -130,24 +130,64 @@ export class AssociativeCache {
 }
 
 
+// cache managers which control how blocks are inserted
+class EmptyCacheManager {
+    #cache;
+    constructor(cache) {
+        this.#cache = cache;
+    }
+
+    get cache() {
+        return this.#cache;
+    }
+
+    get blockSizes() {
+        return this.#cache.blockSizes;
+    }
+
+    // TODO: create better structure within the cache objects to avoid this
+
+    getTagSlotNum(...args) {
+        return this.#cache.getTagSlotNum(...args);
+    }
+
+    createBuffer(...args) {
+        return this.#cache.createBuffer(...args);
+    }
+
+    syncBuffer(...args) {
+        return this.#cache.syncBuffer(...args);
+    }
+
+    getBuffers(...args) {
+        return this.#cache.getBuffers(...args);
+    }
+}
+
+
 // extends the associative cache with support for random block
-export class RandAssociativeCache extends AssociativeCache{
+export class RandCacheManager extends EmptyCacheManager {
     // insert new block into random position
     insertNewBlock(newTag, newData = {}) {
-        const newSlot = Math.floor(Math.random()*this.slotCount);
-        return this.insertNewBlockAt(newSlot, newTag, newData);        
+        const newSlot = Math.floor(Math.random()*this.cache.slotCount);
+        return this.cache.insertNewBlockAt(newSlot, newTag, newData);        
     }
 }
 
 // a cache which maintains 
-export class ScoredAssociativeCache extends AssociativeCache {
+export class ScoredCacheManager extends EmptyCacheManager {
     #scores;
     #worstScore;
     #bestScore;
     #reversed;
-    constructor(slotNum, reversed = false) {
-        super(slotNum);
-        this.#scores = Array(slotNum);
+
+    #currentWorstScore = {
+        valid: false
+    };
+
+    constructor(cache, reversed = false) {
+        super(cache);
+        this.#scores = Array(cache.slotCount);
         this.#reversed = reversed;
         if (!reversed) {
             this.#worstScore = Number.NEGATIVE_INFINITY;
@@ -167,51 +207,59 @@ export class ScoredAssociativeCache extends AssociativeCache {
 
     syncScores(getScoresFunc) {
         for (let i = 0; i < this.#scores.length; i++) {
-            if (!this.tags[i]) {
+            if (!this.cache.tags[i]) {
                 // empty slots
                 this.#scores[i] = this.#worstScore;
             } else {
-                this.#scores[i] = getScoresFunc(this.tags[i])
+                this.#scores[i] = getScoresFunc(this.cache.tags[i])
             }
         }
+        this.#currentWorstScore.valid = false;
     }
 
-    // insert new block to replace
-    insertNewBlock(newScore, newTag, newData = {}) {
-        debugger;
-        // find the block to replace
-        // search through blocks until -inf 
-        let newSlot = -1;
-
+    // find what teh worst score is in the cache at the moment
+    // used externally to decide whether to write to cache
+    // used internally to decide where to write to cache
+    getWorstScore() {
         const worstScoreFound = {
             val: this.#bestScore,
             index: 0
         };
 
         for (let i = 0; i < this.#scores.length; i++) {
-            if (this.#scores[i] == this.#worstScore) {
-                newSlot = i;
-                break;
-            }
-            if (this.better(worstScoreFound.val, this.#scores[i])) {
-                // found a new worse score
-                worstScoreFound.val = this.#scores[i];
-                worstScoreFound.index = i;
-            }
-        }
-        // fallback to the worst scoring slot found
-        if (newSlot == -1) newSlot = worstScoreFound.index
+            if (this.better(this.#scores[i], worstScoreFound.val)) continue
+            // found a new worse score
+            worstScoreFound.val = this.#scores[i];
+            worstScoreFound.index = i;
 
-        // update the cache
-        return this.insertNewBlockAt(newSlot, newScore, newTag, newData);
+            // check if equal to the worst possible score
+            if (this.#scores[i] == this.#worstScore) break;
+        }
+
+        this.#currentWorstScore.val = worstScoreFound.val;
+        this.#currentWorstScore.index = worstScoreFound.index;
+        this.#currentWorstScore.valid = true;
+
+        return worstScoreFound;
     }
 
-    insertNewBlockAt(newSlot, newScore, newTag, newData = {}) {
+    // insert new block to replace
+    insertNewBlock(newScore, newTag, newData = {}) {
+        let newSlot;
+        if (!this.#currentWorstScore.valid) this.getWorstScore();
+        newSlot = this.#currentWorstScore.index;
+
+        // update the cache
+        return this.#insertNewBlockAt(newSlot, newScore, newTag, newData);
+    }
+
+    #insertNewBlockAt(newSlot, newScore, newTag, newData = {}) {
+        this.#currentWorstScore.valid = false;
         if (undefined == newSlot) return;
         if (newSlot >= this.slotCount || newSlot < 0) return;
         // update score
         this.#scores[newSlot] = newScore;
         // update data
-        return super.insertNewBlockAt(newSlot, newTag, newData);
+        return this.cache.insertNewBlockAt(newSlot, newTag, newData);
     }
 }

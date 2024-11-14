@@ -4,7 +4,7 @@
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
-import { AssociativeCache, RandAssociativeCache, ScoredAssociativeCache } from "./cache.js";
+import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { ResolutionModes } from "./data.js";
 
 
@@ -107,7 +107,6 @@ function updateMeshCacheScores(dataObj, scores) {
     }
     // update the mesh cache with the node scores
     // if a node is not in the dynamic tree and thus the scores list, the score is set to -inf
-    debugger;
     dataObj.dynamicMeshCache.syncScores(fullPtr => 
         fullPtrScoreMap.get(fullPtr) ?? Number.NEGATIVE_INFINITY
     );
@@ -168,6 +167,36 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     };
 };
 
+// returns the index of this mesh block
+// if it is not in the cache and wasnt loaded, returns -1
+function loadTrueLeafNodeMesh(dataObj, childNode, activeValueSlots) {
+    let meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
+    if (-1 != meshBlockIndex) return meshBlockIndex;
+
+    // the mesh data for this leaf is not currently loaded
+    // see if the score is high enough to load
+    const worstScore = dataObj.dynamicMeshCache.getWorstScore().val;
+    // score too low, dont load
+    if (worstScore > childNode.score) return -1;
+
+    // get mesh data
+    const leafMesh = dataObj.getNodeMeshBlock(childNode.thisPtr, activeValueSlots);
+
+    // load new mesh data
+    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(childNode.score, childNode.thisPtr, leafMesh);
+    meshBlockIndex = loadResult.slot;
+    // check if the evicted block is currently loaded in the dynamic node cache
+    if (undefined != loadResult.evicted) {
+        const evictedTagNodeSlot = dataObj.dynamicNodeCache.getTagSlotNum(loadResult.evicted);
+        if (-1 != evictedTagNodeSlot) {
+            // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
+            dataObj.dynamicNodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
+        }
+    }
+
+    return meshBlockIndex;        
+}
+
 
 const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
     // find the amount of changes we can now make
@@ -207,32 +236,16 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
                 }
             };
 
+            // TODO: move before dynamic nodes updates
             if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT && 0 == childNode.rightPtr) {
-                // this new node is a true leaf, check if the mesh data is already cached
-                // console.log("new leaf");
-                var meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisPtr);
-                if (-1 == meshBlockIndex) {
-                    // the mesh data for this leaf is not currently loaded, load it
-                    const leafMesh = dataObj.getNodeMeshBlock(childNode.thisPtr, activeValueSlots);
-
-                    // TODO: calculate the score for this new node
-
-                    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(thisNode.score, childNode.thisPtr, leafMesh);
-                    meshBlockIndex = loadResult.slot;
-                    // check if the evicted block is currently loaded in the dynamic node cache
-                    if (undefined != loadResult.evicted) {
-                        const evictedTagNodeSlot = dataObj.dynamicNodeCache.getTagSlotNum(loadResult.evicted);
-                        if (-1 != evictedTagNodeSlot) {
-                            // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
-                            dataObj.dynamicNodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
-                        }
-                    }
-                }
-
-                // mark as a full leaf
-                newData["nodes"].leftPtr = meshBlockIndex;
-                newData["nodes"].cellCount = childNode.cellCount;
+                // TEMP: set score equal to parent
+                childNode.score = thisNode.score;
+                const blockIndex = loadTrueLeafNodeMesh(dataObj, childNode, activeValueSlots);
+                newData["nodes"].leftPtr = blockIndex;
+                // if block not present, mark as pruned leaf
+                if (-1 == blockIndex) newData["nodes"].cellCount = 0;
             }
+            
 
             for (let slotNum of activeValueSlots) {
                 newData["corners" + slotNum] = readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr);
@@ -369,15 +382,15 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 
 // dynamic mesh data ======================================================================================
 export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
-    const dynamicMeshCache = new ScoredAssociativeCache(leafBlockCount);
+    const cacheObj = new AssociativeCache(leafBlockCount);
 
     console.log(blockSizes);
     // mesh buffers
-    dynamicMeshCache.createBuffer("positions", Float32Array, blockSizes.positions);
-    dynamicMeshCache.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
-    dynamicMeshCache.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
+    cacheObj.createBuffer("positions", Float32Array, blockSizes.positions);
+    cacheObj.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
+    cacheObj.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
 
-    return dynamicMeshCache;
+    return new ScoredCacheManager(cacheObj);
 };
 
 // run when a new data array is selected
