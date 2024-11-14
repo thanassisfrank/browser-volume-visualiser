@@ -73,6 +73,10 @@ export var toRads = (deg) => {
 	return deg*Math.PI/180
 };
 
+export const clamp = (x, min, max) => {
+    return Math.min(Math.max(x, min), max);
+};
+
 // takes 1d array and its 3d dimensions and returns 3d array
 export var to3dArray = (a, d) => {
     let a3 = []

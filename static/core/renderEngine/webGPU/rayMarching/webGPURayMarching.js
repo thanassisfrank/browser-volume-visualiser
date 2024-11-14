@@ -4,7 +4,7 @@
 import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats } from "../../../data/dataSource.js";
 import { ResolutionModes } from "../../../data/data.js";
-import { boxesEqual, clampBox } from "../../../utils.js";
+import { boxesEqual, clamp, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
 
@@ -1074,10 +1074,15 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         if (!texSrc) return;
 
         // find where the center pixel is in the image
-        const texSrcCenter = {
-            x: Math.round(texSrc.width/2),
-            y: Math.round(texSrc.height/2)
-        }
+        return await this.getRayLengthAt(Math.round(texSrc.width/2), Math.round(texSrc.height/2));
+    };
+
+    this.getRayLengthAt = async function(x, y) {
+        const texSrc = this.offsetOptimisationTextureOld;
+
+        // ensure x, y are inside image
+        if (x < 0 || x >= texSrc.width) return;
+        if (y < 0 || y >= texSrc.height) return;
 
         // the target width and height of the region to get from the depth texture
         const targetRegionSize = 8;
@@ -1085,12 +1090,19 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // work out the smallest box around the centre of the image that can be taken
         // the restriction is bytesPerRow must be multiple of 256
         const widthAlign = BYTES_PER_ROW_ALIGN/GPUTexelByteLength[texSrc.format];
-        const minCorner = [texSrcCenter.x - targetRegionSize/2, texSrcCenter.y - targetRegionSize/2, 0];
+        const regionWidth = widthAlign * Math.ceil(targetRegionSize/widthAlign);
+        const regionHeight = targetRegionSize;
+
+        const minCorner = [
+            clamp(x - targetRegionSize/2, 0, texSrc.width - regionWidth), 
+            clamp(y - targetRegionSize/2, 0, texSrc.height - regionHeight), 
+            0
+        ];
         const clipBox = {
             min: minCorner,
             max: [
-                minCorner[0] + widthAlign * Math.ceil(targetRegionSize/widthAlign),
-                minCorner[1] + targetRegionSize,
+                minCorner[0] + regionWidth,
+                minCorner[1] + regionHeight,
                 1
             ]
         };
@@ -1105,8 +1117,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         
-        const centerDepth = tex.readTexel(texSrcCenter.x - clipBox.min[0], texSrcCenter.y - clipBox.min[1])[1];
+        const centerDepth = tex.readTexel(x - clipBox.min[0], y - clipBox.min[1])[1];
 
         return centerDepth;
-    };
+    }
 }
