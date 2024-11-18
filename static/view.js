@@ -246,7 +246,9 @@ export var viewManager = {
 
         view.elems.frame.addEventListener("wheel", (e) => {
             e.preventDefault();
-            view.camera.changeDist(e.deltaY);
+            view.camera.startMove(0, 0, 0, "orbit");
+            view.camera.move(0, 0, e.deltaY, "orbit");
+            view.camera.endMove();
         });
 
         view.elems.slider.addEventListener("mousedown", (e) => {
@@ -367,7 +369,6 @@ function View(id, camera, data, renderMode) {
 
     this.init = function(renderEngine) {
         // setup camera position
-        camera.setProjMat();
         camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
 
         this.updateIsoSurfaceSrc(this.isoSurfaceSrc.type, this.isoSurfaceSrc.name);
@@ -375,7 +376,7 @@ function View(id, camera, data, renderMode) {
 
         switch (data.dataName) {
             case "YF17":
-                camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
+                // camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
                 break;
         }
 
@@ -495,7 +496,7 @@ function View(id, camera, data, renderMode) {
             }
         }
         
-        this.axesWidget?.update(this.camera.getViewMat());
+        this.axesWidget?.update(this.camera.viewMat);
         
         this.data.threshold = this.threshold;
         this.data.isoSurfaceSrc = this.isoSurfaceSrc;

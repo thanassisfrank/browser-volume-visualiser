@@ -3,7 +3,7 @@
 // a scenegraph 
 
 import {mat4, vec3} from "../gl-matrix.js";
-import {toRads, newId} from "../utils.js";
+import {toRads, newId, clamp} from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
 // Scene graph ==================================================================================
@@ -193,10 +193,7 @@ export class Vector extends SceneObject {
 }
 
 export class Camera extends SceneObject {
-    // horizontal angle
-    th = 0;
-    // vertical angle
-    phi = 0;
+    eye = [0, 0, 0];
 
     initialPosition = {
         dist: 0,
@@ -214,9 +211,9 @@ export class Camera extends SceneObject {
     zNear = 1;
     zFar = 2000;
 
-    viewMat;
+    #viewMat;
     projMat;
-    viewMatValid = false;
+    #viewMatValid = false;
     mouseStart = [0, 0, 0];
     startTh = 0;
     startPhi = 0;
@@ -228,17 +225,37 @@ export class Camera extends SceneObject {
     // can be : pan, orbit or undefined when not moving
     mode;
 
-    constructor() {
+    #moved = true;
+
+    constructor(aspect) {
         super(SceneObjectTypes.CAMERA);
+        this.setAspectRatio(aspect);
     }
+
+    get viewMat() {
+        if (!this.#viewMatValid) {
+            this.#viewMat = mat4.create();
+            mat4.lookAt(this.#viewMat, this.eye, this.target, [0, 1, 0]);
+            this.#viewMatValid = true;
+        }
+        return this.#viewMat;
+    }
+
+    // sets the aspect ratio for the camera, recalc proj mat
+    setAspectRatio(aspect) {
+        this.aspect = aspect;
+        this.fovX = this.fovY * this.aspect;
+        let projMat = mat4.create();
+
+        mat4.perspective(projMat, toRads(this.fovY), this.aspect, this.zNear, this.zFar);
+        this.projMat = projMat;
+    };
 
     // x and y are mapped as 0 at centre, +1 is right and bottom edge
     getWorldSpaceFromClipAndDist(x, y, d) {
-        const viewMat = this.getViewMat();
-
         const fwd = this.getForwardVec();
-        const up = VecMath.normalise(this.getUpVecFromViewMat(viewMat));
-        const right = VecMath.normalise(this.getRightVecFromViewMat(viewMat));
+        const up = this.getUpVec();
+        const right = this.getRightVec();
 
         // calculate the ray direction
         const aspect = this.fovX / this.fovY;
@@ -251,95 +268,61 @@ export class Camera extends SceneObject {
         const eyeToPoint =  VecMath.scalMult(d, VecMath.normalise(unormRay));
 
         return VecMath.vecAdd(this.getEyePos(), eyeToPoint);
-    }
+    };
 
     // returns the camera variables in a float32array
     // consistent with the Camera struct in WGSL
     serialise() {
         // get the forward and up vectors from the view matrix
         // assumes the projection matrix is axis aligned
-        const viewMat = this.getViewMat();
-        
         return new Float32Array([
             ...this.projMat, // projection matrix
-            ...viewMat, // view matrix
+            ...this.viewMat, // view matrix
             ...this.getEyePos(), 0, // camera location
-            ...this.getUpVecFromViewMat(viewMat), 0, // up vector
-            ...this.getRightVecFromViewMat(viewMat), 0, // right vector
+            ...this.getUpVec(), 0, // up vector
+            ...this.getRightVec(), 0, // right vector
             toRads(this.fovY), toRads(this.fovX), 0, 0 // fovs
         ]);
     };
+
     getForwardVec() {
-        return VecMath.normalise(VecMath.vecMinus(this.target, this.getEyePos()));
+        return VecMath.normalise(VecMath.vecMinus(this.target, this.eye));
     };
 
-    getUpVecFromViewMat(viewMat) {
-        return [viewMat[1], viewMat[5], viewMat[9]];
+    getUpVec() {
+        return [this.viewMat[1], this.viewMat[5], this.viewMat[9]];
+    }
+    
+    getRightVec() {
+        return [this.viewMat[0], this.viewMat[4], this.viewMat[8]];
+    }
+    moveAboutTargetSph(dr, del, daz) {
+        const currSph = VecMath.getSphericalVals(VecMath.vecMinus(this.eye, this.target));
+        const newRelEye = VecMath.fromSphericalVals({
+            r: Math.max(0.1, currSph.r + dr),
+            el: clamp(currSph.el + del, -Math.PI*0.45, Math.PI*0.45),
+            az: currSph.az + daz
+        });
+        this.setEyePos(VecMath.vecAdd(newRelEye, this.target));
+    }
+    setEyePos(vec) {
+        this.eye = vec;
+        this.#viewMatValid = false;
+        this.#moved = true;
     }
 
-    getRightVecFromViewMat(viewMat) {
-        return [viewMat[0], viewMat[4], viewMat[8]];
-    }
-
-    // sets the aspect ratio for the camera, recalc proj mat
-    setAspectRatio(aspect) {
-        this.aspect = aspect;
-        this.fovX = this.fovY * this.aspect;
-        this.setProjMat();
-    };
-    setProjMat() {
-        let projMat = mat4.create();
-
-        mat4.perspective(projMat, toRads(this.fovY), this.aspect, this.zNear, this.zFar);
-        this.projMat = projMat;
-    };
     getEyePos() {
-        var vec = [0, 0, this.dist];
-        vec3.rotateX(vec, vec, [0, 0, 0], toRads(this.phi));
-        vec3.rotateY(vec, vec, [0, 0, 0], toRads(-this.th));
-        vec = VecMath.vecAdd(this.target, vec);
-        return vec;
-    };
+        return this.eye;
+    }
+
     getTarget() {
         return this.target;
-    };
-    getViewMat() {
-        this.viewMat = mat4.create();
-        mat4.lookAt(this.viewMat, this.getEyePos(), this.target, [0, 1, 0]);
-        return this.viewMat;
-    };
-    setDist(dist) {
-        this.dist = Math.min(dist, this.zFar);
-        this.viewMatValid = false;
-    };
-    getDist() {
-        return this.dist;
-    };
-    addToDist(dist) {
-        this.setDist(this.dist + dist);
-        this.viewMatValid = false;
-    };
-    setTh(th) {
-        this.th = th;
-        this.viewMatValid = false;
-    };
-    addToTh(th) {
-        this.th += th;
-        this.viewMatValid = false;
-    };
-    setPhi(phi) {
-        this.phi = phi;
-        this.viewMatValid = false;
-    };
-    addToPhi(phi) {
-        this.phi = Math.max(Math.min(this.phi + phi, 89), -89);
-        this.viewMatValid = false;
-    };
+    }
+    
     startMove(x, y, z, mode) {
         this.mouseStart = [x, y, z];
         this.mouseDown = true;
-        this.startTh = this.th;
-        this.startPhi = this.phi;
+        this.startEye = this.eye;
         this.startTarget = this.target;
         this.mode = mode;
     };
@@ -351,66 +334,63 @@ export class Camera extends SceneObject {
                 // reset start position
                 this.startMove(x, y, z, mode);
             }
-            const diffX = x; // - this.mouseStart[0];
-            const diffY = y; // - this.mouseStart[1];
-            const diffZ = z; // - this.mouseStart[2];
             if (mode == "pan" || mode == "dolly") {
-                var vec = [-diffX / 10, diffY / 10, diffZ / 10];
-                vec3.rotateX(vec, vec, [0, 0, 0], toRads(this.phi));
-                vec3.rotateY(vec, vec, [0, 0, 0], toRads(-this.th));
-                this.addToTarget(vec);
+                const transVec = VecMath.vecAdd(
+                    VecMath.scalMult(-x/10, this.getRightVec()),
+                    VecMath.scalMult(y/10, this.getUpVec()),
+                    VecMath.scalMult(z/10, this.getForwardVec())
+                );
+                // var vec = [-x / 10, y / 10, z / 10];
+                // vec3.rotateX(vec, vec, [0, 0, 0], toRads(this.phi));
+                // vec3.rotateY(vec, vec, [0, 0, 0], toRads(-this.th));
+                this.translateEyeAndTarget(transVec);
+
             } else if (mode == "orbit") {
-                this.addToTh(diffX / 4);
-                this.addToPhi(-diffY / 4);
+                this.moveAboutTargetSph(z/10, y/(4*60), -x/(4*60));
             }
         }
     };
-    // translates the camera in the direction of vec
-    // vec is relative to the camera's current facing direction
+    // only moves the 
     setTarget(vec) {
         this.target = vec;
-        this.viewMatValid = false;
+        this.#viewMatValid = false;
+        this.#moved = true;
     };
-    addToTarget(vec) {
-        this.target = VecMath.vecAdd(this.target, vec);
-        this.viewMatValid = false;
+    translateEyeAndTarget(vec) {
+        this.setTarget(VecMath.vecAdd(this.target, vec));
+        this.setEyePos(VecMath.vecAdd(this.eye, vec));
     };
     endMove() {
         this.mouseDown = false;
         this.mode = undefined;
     };
-    changeDist(d) {
-        this.setDist(Math.max(0.1, this.dist + (d) / 10));
-    };
     moveToStart() {
         this.endMove();
         this.setTarget(this.initialPosition.target);
-        this.setDist(this.initialPosition.dist);
-        this.setTh(this.initialPosition.th);
-        this.setPhi(this.initialPosition.phi);
+        this.setEyePos(this.initialPosition.eye);
         this.endMove();
     };
 
-    setStartPosition(target, dist, th, phi) {
+    setStartPosition(target, dist, el, az) {
         this.initialPosition = {
             target: target,
-            dist: dist,
-            th: th,
-            phi: phi
+            eye: VecMath.vecAdd(target, VecMath.fromSphericalVals({r: dist, el: toRads(el), az: toRads(az)}))
         };
     };
 
     // returns a bool indicating if camera moved since last time this was called
     didThisMove() {
-        var moved = !this.viewMatValid;
-        this.viewMatValid = true;
+        var moved = this.#moved;
+        this.#moved = false;
         return moved;
     };
 
     printVals() {
-        console.log("th", this.th);
-        console.log("phi", this.phi);
-        console.log("dist", this.dist);
+        const {r, el, az} = VecMath.getSphericalVals(this.eye);
+        console.log("th", el);
+        console.log("phi", az);
+        console.log("dist", r);
+        console.log("eye", this.eye);
         console.log("target", this.target);
     };
 }

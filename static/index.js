@@ -118,7 +118,7 @@ async function main() {
         return;
     }
     
-    var camera = new Camera();
+    var camera = new Camera(canvas.width/canvas.height);
     // set the max views
     viewManager.maxViews = 1;
 
@@ -394,9 +394,6 @@ async function main() {
                 const newTarget = camera.getWorldSpaceFromClipAndDist(camCoords.x, camCoords.y, d);
 
                 camera.setTarget(newTarget);
-
-                console.log(camCoords.x, camCoords.y, d);
-                console.log(newTarget);
             }
         },
         "u": {
