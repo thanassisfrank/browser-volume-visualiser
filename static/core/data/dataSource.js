@@ -493,6 +493,7 @@ export class CalcVectArraysDataSource extends EmptyTransformDataSource {
         this.format = this.dataSource.format;
         if (DataFormats.UNSTRUCTURED == this.format) {
             this.mesh = this.dataSource.mesh;
+            this.geometry = this.dataSource.geometry;
         }
     }
 
@@ -518,7 +519,7 @@ export class CalcVectArraysDataSource extends EmptyTransformDataSource {
     getDataArray(desc) {
         // debugger;
         if (DataArrayTypes.CALC != desc.arrayType) {
-            return this.dataSource.loadDataArray(desc);
+            return this.dataSource.getDataArray(desc);
         }
         
         // check if the vertex iterator was created properly
