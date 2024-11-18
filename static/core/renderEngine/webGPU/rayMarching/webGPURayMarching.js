@@ -645,7 +645,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         const dataUints = [DataSrcUints.VALUE_A, DataSrcUints.VALUE_B];
         let created = false;
 
-        if (thisSrc.type != DataSrcTypes.DATA) {
+        if (thisSrc.type != DataSrcTypes.ARRAY) {
             // not data, return the uint
             return {uint:this.getDataSrcUint(thisSrc.type, thisSrc.name), created: false};
         } 
@@ -754,7 +754,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 const doneNames = new Set();
                 
                 for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
-                    if (dataSrc.type != DataSrcTypes.DATA) continue;
+                    if (dataSrc.type != DataSrcTypes.ARRAY) continue;
                     if (doneNames.has(dataSrc.name)) continue;
                     doneNames.add(dataSrc.name);
 

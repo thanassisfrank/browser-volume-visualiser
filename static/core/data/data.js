@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, CalcVectArraysDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -12,6 +12,7 @@ import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerV
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
+import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 
 export {dataManager};
 
@@ -69,6 +70,9 @@ const dataManager = {
         if (opts.downSample > 1 && dataSource.format == DataFormats.STRUCTURED) {
             dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
         }
+
+        // add a data source that will calculate additional data values
+        dataSource = new CalcVectArraysDataSource(dataSource);
 
         // convert struct -> unstruct if needed
         if (opts.forceUnstruct) {
@@ -376,45 +380,24 @@ class Data extends SceneObject {
     };
 
     getAvailableDataArrays() {
-        // all the arrays that come straight from the data source
-        const sourceArrayNames = this.dataSource.getAvailableDataArrays();
-
-        // all arrays that could be selected, including vec->scal mapped
-        let dataArrayNames = [];
-        let potentialVecs = {};
-        for (let name of sourceArrayNames) {
-            dataArrayNames.push(name);
-            // detect vector data quantities
-            if (!["X", "Y", "Z"].includes(name.at(-1))) continue;
-            const vecName = name.substring(0, name.length - 1);
-            const thisDir = name.at(-1);
-            if (!potentialVecs[vecName]) {
-                potentialVecs[vecName] = {};
-            }
-
-            potentialVecs[vecName][thisDir] = true;
-
-            if (potentialVecs[vecName]["X"] && potentialVecs[vecName]["Y"] && potentialVecs[vecName]["Z"]) {
-                dataArrayNames.push(vecName);
-            }
-        }
-
-        return dataArrayNames;
+        return this.dataSource.getAvailableDataArrays().map(v => {
+            return {...v, type: DataSrcTypes.ARRAY}
+        })
     };
 
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
-    async loadDataArray(name, binCount) {
+    async loadDataArray(desc, binCount) {
         // check if already loaded
-        let loadedIndex = this.data.values.findIndex(elem => elem.name == name);
+        let loadedIndex = this.data.values.findIndex(elem => elem.name == desc.name);
         if (loadedIndex != -1) return loadedIndex;
 
         let newSlotNum;
         try {
-            this.data.values.push(await this.dataSource.getDataArray(name));
-            newSlotNum = this.data.values.length - 1;
+            this.data.values.push(await this.dataSource.getDataArray(desc));
+            newSlotNum = this.data.values.length - 1;   
         } catch (e) {
-            console.warn("Unable to load data array " + name + ": " + e);
+            console.warn("Unable to load data array " + desc.name + ": " + e);
             return -1;
         }
         // get the histogram if required
