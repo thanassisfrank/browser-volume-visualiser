@@ -365,8 +365,8 @@ export class UnstructFromStructDataSource extends EmptyTransformDataSource {
     }
 
     // calculate the mesh
-    init() {
-        super.init();
+    async init() {
+        await super.init();
         const dataSize = this.dataSource.size;
 
         const pointCount = dataSize[0] * dataSize[1] * dataSize[2];
@@ -484,13 +484,13 @@ export class CalcVectArraysDataSource extends EmptyTransformDataSource {
 
     constructor(dataSource) {
         super(dataSource)
+        this.format = this.dataSource.format;
         this.#mappingHandler = new VectorMappingHandler();
         this.#vertexIterator = createVertexIterator(dataSource);
     }
 
     async init() {
         await super.init()
-        this.format = this.dataSource.format;
         if (DataFormats.UNSTRUCTURED == this.format) {
             this.mesh = this.dataSource.mesh;
             this.geometry = this.dataSource.geometry;
