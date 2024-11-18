@@ -500,6 +500,8 @@ function View(id, camera, data, renderMode) {
 
         // calculate the estimated actual focus point every 100ms
         var cam = this.sceneGraph.activeCamera;
+        let focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
+        let focusMoveDist = 0;
         if ((this.timeSinceFocusAdjusted += dt) > 500) {
             this.timeSinceFocusAdjusted = 0;
             const depth = await renderEngine.rayMarcher.getCenterRayLength();
@@ -508,12 +510,18 @@ function View(id, camera, data, renderMode) {
             } else {
                 this.adjustedFocusPoint = VecMath.vecAdd(cam.getEyePos(), VecMath.scalMult(depth, cam.getForwardVec()));
             }
+            let newFocusPoint = this.adjustedFocusPoint ?? cam.getTarget();
+            focusMoveDist = VecMath.magnitude(VecMath.vecMinus(newFocusPoint, focusPoint));
+            focusPoint = newFocusPoint;
         }
-        var focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
+
+        // tracks if the camera or adjusted focus point moved to restart the tree modifications
+        let cameraChanged = cam.didThisMove("dynamic nodes") || focusMoveDist > 1;
 
         // need to find the camera position in world space
         if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
             updateDynamicDataset(
+                cameraChanged,
                 this.data, 
                 focusPoint,  
                 this.sceneGraph.activeCamera.getEyePos(),

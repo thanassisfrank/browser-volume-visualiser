@@ -8,6 +8,13 @@ import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { ResolutionModes } from "./data.js";
 
 
+const NodeStates = {
+    NONE: 0,
+    MERGED: 1,
+    SPLIT: 2,
+};
+
+
 
 // calculates a score for the box
 // high score -> too big -> split
@@ -57,6 +64,7 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
         if (currNode.rightPtr == 0) {
             // this is a leaf node, get its score
             currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
+            currNode.state = dataObj.dynamicNodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
             scores.push(currNode);
         } else {
             // get the ptr to the children in the full buffer
@@ -123,8 +131,8 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     var splitList = [];
 
     // dual thresholding for hysteresis
-    const splitThreshold = 0.5;
-    const mergeThreshold = -0.5;
+    const splitThreshold = 0;
+    const mergeThreshold = -0;
 
     let currNode, currFullNode;
 
@@ -137,6 +145,8 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
         currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
         // can't be split if its a true leaf
         if (currFullNode.rightPtr == 0) continue;
+        // can't be split if previously merged
+        if (NodeStates.MERGED == currNode.state) continue;
 
         // passed all checks
         splitList.push(currNode);
@@ -155,9 +165,11 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
         if (!currNode.bothSiblingsLeaves) continue;
         // check if sibling is in split list
         // check if the same parent appears there
-        if (!splitList.every(x => x.parentPtr != currNode.parentPtr)) continue;
+        if (splitList.some(x => x.parentPtr == currNode.parentPtr)) continue;
         // check if sibling is already in merge list
-        if (!mergeList.every(x => x.parentPtr != currNode.parentPtr)) continue;
+        if (mergeList.some(x => x.parentPtr == currNode.parentPtr)) continue;
+        // can't be merged if previously split
+        if (NodeStates.SPLIT == currNode.state) continue;
 
         // passed all checks
         mergeList.push(currNode);
@@ -236,7 +248,8 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
         freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
         // convert the parentNode to a pruned leaf
         dataObj.dynamicNodeCache.updateBlockAt(scores.merge[i].parentPtr, {
-            "nodes": {leftPtr: 0, rightPtr: 0}
+            "nodes": {leftPtr: 0, rightPtr: 0},
+            "state": [NodeStates.MERGED]
         });
     }
 
@@ -260,7 +273,8 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
                     parentPtr: thisNode.thisPtr, 
                     leftPtr: 0, 
                     rightPtr: 0
-                }
+                },
+                "state": NodeStates.SPLIT
             };
             
             for (let slotNum of activeValueSlots) {
@@ -275,7 +289,12 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
 
 // updates the dynamic dataset based on camera location
 // this handles updating the dynamic nodes and dynamic mesh
-export const updateDynamicDataset = (dataObj, focusCoords, camCoords, activeValueSlots) => {
+export const updateDynamicDataset = (cameraChanged, dataObj, focusCoords, camCoords, activeValueSlots) => {
+    if (cameraChanged) {
+        // reset the record of modifications to nodes
+        dataObj.dynamicNodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
+    }
+
     if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
         // get a list of all nodes in the dynamic node tree with their scores
         const scores = getNodeScores(dataObj, focusCoords, camCoords);
@@ -308,6 +327,7 @@ export var createDynamicNodeCache = (dataObj, maxNodes) => {
 
     // set up the cache object for the dynamic nodes
     var dynamicNodeCache = new AssociativeCache(maxNodes);
+    dynamicNodeCache.createBuffer("state", Uint8Array, 1);
     dynamicNodeCache.createBuffer("nodes", ArrayBuffer, NODE_BYTE_LENGTH);
     dynamicNodeCache.setReadFunc("nodes", (buff, slotNum, blockSize) => {
         return readNodeFromBuffer(buff, slotNum * blockSize);
