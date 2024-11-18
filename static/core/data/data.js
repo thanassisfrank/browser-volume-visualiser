@@ -378,17 +378,18 @@ function Data(id, dataSource) {
 
     // returns the slot number that was written to
     // if it already is loaded, return its slot number
-    this.loadDataArray = async function(name, binCount) {
+    this.loadDataArray = async function(desc, binCount) {
         // check if already loaded
-        let loadedIndex = this.data.values.findIndex(elem => elem.name == name);
+        debugger;
+        let loadedIndex = this.data.values.findIndex(elem => elem.name == desc.name);
         if (loadedIndex != -1) return loadedIndex;
 
         let newSlotNum;
         try {
-            this.data.values.push(await this.dataSource.getDataArray(name));
+            this.data.values.push(await this.dataSource.getDataArray(desc));
             newSlotNum = this.data.values.length - 1;   
         } catch (e) {
-            console.warn("Unable to load data array " + name + ": " + e);
+            console.warn("Unable to load data array " + desc.name + ": " + e);
             return -1;
         }
         // get the histogram if required
