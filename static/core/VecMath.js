@@ -3,14 +3,11 @@
 import {sin30, cos30, toRads} from "./utils.js";
 
 export const VecMath = {
-	
-	// All of these functions expect vectors of three dimensions and
-	// three by three matricies
 	// [[0, 1, 2],     [0,
 	//  [3, 4, 5], and  1,
 	//  [6, 7, 8]]      2]
 
-	vecAdd: function(...vecs) {
+	vecAdd: function (...vecs) {
 		if (!vecs.every((v, i, a) => v.length === a[0].length)) return;
 
 		let vecSum = vecs[0].map(v => 0);
@@ -22,26 +19,19 @@ export const VecMath = {
 		
 		return vecSum;
 	},
-	vecMinus: function(vec, vec1) {
-		var newX = vec[0] - vec1[0];
-		var newY = vec[1] - vec1[1];
-		var newZ = vec[2] - vec1[2];
-		
-		return [newX, newY, newZ];
+	vecMinus: function (vec0, vec1) {
+		if (vec0.length != vec1.length) return;
+		return vec0.map((v, i) => v - vec1[i]);
 	},
-	vecMult: function(vec, vec1) {
-		return [vec[0]*vec1[0], vec[1]*vec1[1], vec[2]*vec1[2]]
+	vecMult: function (vec0, vec1) {
+		if (vec0.length != vec1.length) return;
+		return vec0.map((v, i) => v * vec1[i]);
 	},
-	scalMult: function(scal, vec) {
+	scalMult: function (scal, vec) {
 		return vec.map(x => x * scal);
-	// 	const newX = vec[0] * scal;
-	// 	const newY = vec[1] * scal;
-	// 	const newZ = vec[2] * scal;
-		
-	// 	return [newX, newY, newZ];
 	},
 	// multiply a matrix and column vector
-	matrixVecMult: function(matrix, vec) {
+	matrixVecMult: function (matrix, vec) {
 		if (matrix[0].length != vec.length) return;
 		var result = [];
 
@@ -53,14 +43,8 @@ export const VecMath = {
 		}
 
 		return result;
-
-		// var newX = vec[0] * matrix[0][0] + vec[1] * matrix[0][1] + vec[2] * matrix[0][2];
-		// var newY = vec[0] * matrix[1][0] + vec[1] * matrix[1][1] + vec[2] * matrix[1][2];
-		// var newZ = vec[0] * matrix[2][0] + vec[1] * matrix[2][1] + vec[2] * matrix[2][2];
-		
-		// return [newX, newY, newZ];
 	},
-	dot: function(vec, vec1) {
+	dot: function (vec, vec1) {
 		if (vec.length != vec1.length) return;
 		var total = 0;
 		for (let i = 0; i < vec.length; i++) {
@@ -68,14 +52,33 @@ export const VecMath = {
 		}
 		return total;
 	},
-	cross: function(vec1, vec2) {
+	cross: function (vec1, vec2) {
 		const newX = vec1[1]*vec2[2] - vec1[2]*vec2[1];
 		const newY = vec1[2]*vec2[0] - vec1[0]*vec2[2];
 		const newZ = vec1[0]*vec2[1] - vec1[1]*vec2[0];
 		
 		return [newX, newY, newZ];
 	},
-	translate: function(vec, matrix) {
+	// returns the length (r), elevation (el) and azimuth (az) of a cartesian vector
+	// el > 0 when y > 0
+	// az measured from x axis in xz plane
+	getSphericalVals: function (vec) {
+		const r = this.magnitude(vec);
+		const norm = this.normalise(vec);
+		const el = Math.asin(this.dot([0, 1, 0], norm));
+		const az = Math.atan2(vec[0], vec[2]);
+
+		return {r, el, az};
+	},
+	// converts polar coordinates (r, el, az) to a cartesian vector
+	fromSphericalVals: function(sph) {
+		return VecMath.scalMult(sph.r, [
+			Math.cos(sph.el) * Math.sin(sph.az),
+			Math.sin(sph.el),
+			Math.cos(sph.el) * Math.cos(sph.az),
+		]);
+	},
+	translate: function (vec, matrix) {
 		var newMatrix = matrix;
 		for(var i = 0; i < 3; i++) {
 			for(var j = 0; j < 3; j++) {
@@ -85,56 +88,33 @@ export const VecMath = {
 		
 		return newMatrix;
 	},
-	getRotatedIso: function(ang) {
-		switch(ang) {
-			// case 0:
-			// 	return isoMatrix;
-			// 	break;
-			// case 90:
-			// 	return [[cos30, cos30,  0 ],
-			// 	        [sin30, -sin30, -1],
-			// 			[0,     0,      0 ]];
-			// 	break;
-			// case 180:
-			// 	return [[cos30,  -cos30, 0 ],
-			// 	        [-sin30, -sin30, -1],
-			// 			[0,     0,       0 ]];
-			// 	break;
-			// case 270:
-			// 	return [[-cos30, -cos30,  0 ],
-			// 	        [-sin30, sin30, -1],
-			// 			[0,      0,      0 ]];
-			// 	break;
-			default:
-				var newMatrix = [[0, 0, 0], [0, 0, -1], [0, 0, 0]];
-				var cosA = Math.cos(toRads(ang));
-				var sinA = Math.sin(toRads(ang));
-				newMatrix[0][0] = cos30*(sinA - cosA);
-				newMatrix[0][1] = cos30*(cosA + sinA);
-				newMatrix[1][0] = sin30*(cosA + sinA);
-				newMatrix[1][1] = sin30*(cosA - sinA);
-				newMatrix[2][0] = -cos30*(Math.sin(toRads(ang+45)));
-				newMatrix[2][1] = -cos30*(Math.cos(toRads(ang+45)));
-				newMatrix[2][2] = -sin30;
-				
-				return newMatrix;
-				break;
-				
-		};
+	getRotatedIso: function (ang) {
+		var newMatrix = [[0, 0, 0], [0, 0, -1], [0, 0, 0]];
+		var cosA = Math.cos(toRads(ang));
+		var sinA = Math.sin(toRads(ang));
+		newMatrix[0][0] = cos30*(sinA - cosA);
+		newMatrix[0][1] = cos30*(cosA + sinA);
+		newMatrix[1][0] = sin30*(cosA + sinA);
+		newMatrix[1][1] = sin30*(cosA - sinA);
+		newMatrix[2][0] = -cos30*(Math.sin(toRads(ang+45)));
+		newMatrix[2][1] = -cos30*(Math.cos(toRads(ang+45)));
+		newMatrix[2][2] = -sin30;
+		
+		return newMatrix;
 	},
-	magnitude: function(vec) {
+	magnitude: function (vec) {
 		return Math.sqrt(vec.reduce((acc, e) => acc + e**2, 0));
 	},
-	normalise: function(vec) {
+	normalise: function (vec) {
 		return this.scalMult(1/this.magnitude(vec) || 0, vec)
 	},
 	// returns nxn identity matrix
-	createIdenMat: function(order) {
+	createIdenMat: function (order) {
 	},
 	// calculates the inverse of an arbitrary nxn matrix
 	// based on Gauss-Jordan elimination
 	// src hhttps://gist.github.com/mqnc/bef8d090fdb7e531398ef68342ffe177
-	matInverse: function(M) {
+	matInverse: function (M) {
 		// I use Guassian Elimination to calculate the inverse:
 		// (1) 'augment' the matrix (left) by the identity (on the right)
 		// (2) Turn the matrix on the left into the identity by elemetry row ops
@@ -230,7 +210,7 @@ export const VecMath = {
 		//matrix I should be the inverse:
 		return I;
 	},
-	matTranspose: function(mat) {
+	matTranspose: function (mat) {
 		var result = [];
 		for (let i = 0; i < mat[0].length; i++) {
 			result[i] = [];
@@ -241,7 +221,7 @@ export const VecMath = {
 
 		return result;
 	},
-	matMult: function(mat1, mat2) {
+	matMult: function (mat1, mat2) {
 		// check cols of mat1 == rows of mat2
 		if (mat1[0].length != mat2.length) return;
 		var result = [];
@@ -262,7 +242,7 @@ export const VecMath = {
 		return result;
 	},
 	// finds (MT M)-1 MT
-	pseudoInverse: function(mat) {
+	pseudoInverse: function (mat) {
 		var matT = this.matTranspose(mat);
 		if (!matT) return;
 		const mult = this.matMult(matT, mat)
@@ -272,7 +252,7 @@ export const VecMath = {
 
 		return this.matMult(inv, matT);
 	},
-	matStringify: function(mat) {
+	matStringify: function (mat) {
 		var str = "";
 		for (let row of mat) {
 			str += row.join(" ") + "\n"
