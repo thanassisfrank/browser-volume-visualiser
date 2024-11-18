@@ -225,7 +225,9 @@ export class Camera extends SceneObject {
     // can be : pan, orbit or undefined when not moving
     mode;
 
-    #moved = true;
+    #moveTrackers = {
+        "default": true,
+    }
 
     constructor(aspect) {
         super(SceneObjectTypes.CAMERA);
@@ -240,6 +242,24 @@ export class Camera extends SceneObject {
         }
         return this.#viewMat;
     }
+
+    // these two functions actually move the camera and invalidate the view matrix
+    setEyePos(vec) {
+        this.eye = vec;
+        this.#viewMatValid = false;
+        for (let id in this.#moveTrackers) {
+            this.#moveTrackers[id] = true;
+        }
+    }
+
+    // only moves the 
+    setTarget(vec) {
+        this.target = vec;
+        this.#viewMatValid = false;
+        for (let id in this.#moveTrackers) {
+            this.#moveTrackers[id] = true;
+        }
+    };
 
     // sets the aspect ratio for the camera, recalc proj mat
     setAspectRatio(aspect) {
@@ -305,11 +325,7 @@ export class Camera extends SceneObject {
         });
         this.setEyePos(VecMath.vecAdd(newRelEye, this.target));
     }
-    setEyePos(vec) {
-        this.eye = vec;
-        this.#viewMatValid = false;
-        this.#moved = true;
-    }
+    
 
     getEyePos() {
         return this.eye;
@@ -350,12 +366,7 @@ export class Camera extends SceneObject {
             }
         }
     };
-    // only moves the 
-    setTarget(vec) {
-        this.target = vec;
-        this.#viewMatValid = false;
-        this.#moved = true;
-    };
+    
     translateEyeAndTarget(vec) {
         this.setTarget(VecMath.vecAdd(this.target, vec));
         this.setEyePos(VecMath.vecAdd(this.eye, vec));
@@ -378,11 +389,11 @@ export class Camera extends SceneObject {
         };
     };
 
-    // returns a bool indicating if camera moved since last time this was called
-    didThisMove() {
-        var moved = this.#moved;
-        this.#moved = false;
-        return moved;
+    // returns a bool indicating if camera moved since last time this was called with this id
+    didThisMove(id = "default") {
+        var moveresult = this.#moveTrackers[id] ?? true;
+        this.#moveTrackers[id] = false;
+        return moveresult;
     };
 
     printVals() {
