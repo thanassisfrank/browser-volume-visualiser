@@ -12,7 +12,7 @@ export class AssociativeCache {
     // functions to read/write to the buffers
     #readFuncs = {
         default: (buff, slotNum, blockSize) => {
-            buff.slice(slotNum * blockSize, (slotNum + 1) * blockSize);
+            return buff.slice(slotNum * blockSize, (slotNum + 1) * blockSize);
         }
     }
     #writeFuncs = {
