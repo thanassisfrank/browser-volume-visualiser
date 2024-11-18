@@ -122,6 +122,10 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     var mergeList = [];
     var splitList = [];
 
+    // dual thresholding for hysteresis
+    const splitThreshold = 0.5;
+    const mergeThreshold = -0.5;
+
     let currNode, currFullNode;
 
     let lowestSplitIndex = scores.length - 1;
@@ -129,7 +133,7 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     for (let i = scores.length - 1; i >= Math.max(0, scores.length * (1 - searchProp)); i--) {
         if (splitList.length >= maxCount) break;
         currNode = scores[i];
-        if (currNode.score < 0) break;
+        if (currNode.score < splitThreshold) break;
         currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
         // can't be split if its a true leaf
         if (currFullNode.rightPtr == 0) continue;
@@ -146,7 +150,7 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
         // check if we have enough
         if (mergeList.length >= maxCount) break;
         currNode = scores[i];
-        if (currNode.score > 0) break;
+        if (currNode.score > mergeThreshold) break;
         // can't be merged if sibling not a leaf
         if (!currNode.bothSiblingsLeaves) continue;
         // check if sibling is in split list
