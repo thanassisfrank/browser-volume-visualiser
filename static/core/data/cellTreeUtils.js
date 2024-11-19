@@ -210,7 +210,7 @@ export const pointInAABB = (p, box) => {
 
 // point in tet functions returns the barycentric coords if inside and all 0 if outside
 // this implementation uses the determinates of matrices - slightly faster
-var pointInTetDet = (queryPoint, cell) => {
+export const pointInTetDet = (queryPoint, cell) => {
     var x = queryPoint[0];
     var y = queryPoint[1];
     var z = queryPoint[2];
@@ -262,7 +262,7 @@ var pointInTetDet = (queryPoint, cell) => {
 };
 
 
-var pointInTetBounds = (queryPoint, cell) => {
+export const pointInTetBounds = (queryPoint, cell) => {
     var minVec = [
         Math.min(cell.points[0][0], Math.min(cell.points[1][0], Math.min(cell.points[2][0], cell.points[3][0]))),
         Math.min(cell.points[0][1], Math.min(cell.points[1][1], Math.min(cell.points[2][1], cell.points[3][1]))),
@@ -363,10 +363,6 @@ function* iterateLeafCells(dataObj, leafNode, slotNum) {
     }
     return;
 };
-
-export const getContainingLeafNode = (tree, ) => {
-
-}
 
 
 // searches through all points specified in the leaf node to find the closest to the sample point
