@@ -10,9 +10,9 @@ class StructuredVertexIterator {
 
     // iterates all vertices
     iterate = function* () {
-        for (let i = 0; i < this.#dataSource.size[0]; i++) {
+        for (let k = 0; k < this.#dataSource.size[2]; k++) {
             for (let j = 0; j < this.#dataSource.size[1]; j++) {
-                for (let k = 0; i < this.#dataSource.size[2]; k++) {
+                for (let i = 0; i < this.#dataSource.size[0]; i++) {
                     yield {
                         index: i + this.#dataSource.size[0] * j + this.#dataSource.size[0] * this.#dataSource.size[1] * k,
                         pos: [i, j, k]
