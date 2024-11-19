@@ -1,6 +1,8 @@
 // vectorDataArray.js
 // provides information about mappings from a vector of 
 
+import { VecMath } from "../VecMath";
+
 export const DataModifiers = {
     NONE: "none",
     DERIVATIVE_X: "derivative x",
@@ -63,12 +65,59 @@ class DivergenceMap {
     }
 }
 
+class VorticityMagMap {
+    constructor() {
+        this.inputs = [
+            {name: "VelocityX", modifier: DataModifiers.DERIVATIVE_Y},
+            {name: "VelocityX", modifier: DataModifiers.DERIVATIVE_Z},
+            {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_X},
+            {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_Z},
+            {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_X},
+            {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_Y},
+        ];
+        this.output = "VorticityMag";
+    }
+    // calculate the magnitude of the vorticity vector
+    calculate(vxdy, vxdz, vydx, vydz, vzdx, vzdy) {
+        return VecMath.magnitude([
+            vzdy - vydz,
+            vxdz - vzdx,
+            vydx - vxdy
+        ]);
+    }
+}
+
+class QCriterionMap {
+    constructor() {
+        this.inputs = [
+            {name: "VelocityX", modifier: DataModifiers.DERIVATIVE_X},
+            {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_X},
+            {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_X},
+            {name: "VelocityX", modifier: DataModifiers.DERIVATIVE_Y},
+            {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_Y},
+            {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_Y},
+            {name: "VelocityX", modifier: DataModifiers.DERIVATIVE_Z},
+            {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_Z},
+            {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_Z},
+        ];
+        this.output = "QCriterion";
+    }
+    // calculate the second invariant of the velocity gradient tensor
+    calculate(vxdx, vydx, vzdx, vxdy, vydy, vzdy, vxdz, vydz, vzdz) {
+        const sym = vxdx*vydy + vxdx*vzdz + vydy*vzdz;
+        const asym = vxdy*vydx + vxdz*vzdx + vydz*vzdy;
+        return sym - asym;
+    }
+}
+
 export class VectorMappingHandler {
     constructor() {
         this.mappings = [
             new MagnitudeMap("Velocity"),
             new MachNumberMap(),
-            // new DivergenceMap("Velocity")
+            new DivergenceMap("Velocity"),
+            new VorticityMagMap(),
+            new QCriterionMap()
         ];
     }
     // returns an array of output array names that can be calculated from the inputs
