@@ -1,7 +1,18 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
 import { downloadObject, toCSVStr } from "../utils.js";
-import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer, traverseNodeBufferDepthBox, pointInAABB } from "./cellTreeUtils.js";
+import { 
+    NODE_BYTE_LENGTH, 
+    writeNodeToBuffer, 
+    pivotFull, 
+    forEachDepth, 
+    processLeafMeshDataInfo, 
+    readNodeFromBuffer, 
+    traverseNodeBufferDepthBox, 
+    pointInAABB, 
+    pointInTetBounds, 
+    pointInTetDet 
+} from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
     VERT_MEDIAN:    "vert median",
@@ -1023,9 +1034,57 @@ export class UnstructuredTree {
         };
     }
 
-    // search and sampling on the tree
+    // find the containing leaf node
     getContainingLeafNode(pos) {
+        if (!pointInAABB(pos, this.extentBox)) return;
 
+        let node = readNodeFromBuffer(this.nodes, 0);
+        let depth = 0;
+        while (node.rightPtr != 0) {
+            if (pos[depth%3] < node.splitVal) {
+                node = readNodeFromBuffer(this.nodes, node.leftPtr * NODE_BYTE_LENGTH);
+            } else {
+                node = readNodeFromBuffer(this.nodes, node.rightPtr * NODE_BYTE_LENGTH);
+            }
+        }
+
+        return node;
+    }
+
+    getContainingCell(pos, leafNode) {
+        let cell = {
+            points : [
+                [0, 0, 0], 
+                [0, 0, 0], 
+                [0, 0, 0], 
+                [0, 0, 0],
+            ],
+            pointsIndices: [0, 0, 0, 0],
+            factors: [0, 0, 0, 0]
+        };
+        for (let i = 0; i < leafNode.cellCount; i++) {
+            var cellsPtr = leafNode.leftPtr; // go to where cells are stored
+            var cellID = this.cells[cellsPtr + i];
+            var pointsOffset = this.cellOffsets[cellID];
+            // read all the point positions
+            for (let j = 0; j < 4; j++) {
+                // get the coords of the point as an array 3
+                const thisPointIndex = this.cellConnectivity[pointsOffset + j];
+                cell.pointsIndices[j] = thisPointIndex;
+                cell.points[j][0] = this.points[3 * thisPointIndex + 0];
+                cell.points[j][1] = this.points[3 * thisPointIndex + 1];
+                cell.points[j][2] = this.points[3 * thisPointIndex + 2];
+            }
+
+            if(!pointInTetBounds(pos, cell)) continue;
+            const tetFactors = pointInTetDet(pos, cell);
+            if (tetFactors.every(v => v == 0)) continue;
+            cell.factors = tetFactors;
+            return cell;
+        }
+
+        // no containing cell found
+        return;
     }
 
     // print the tree node info
