@@ -69,6 +69,7 @@ class VorticityMagMap {
             {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_X},
             {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_Y},
         ];
+
         this.output = "VorticityMag";
     }
     // calculate the magnitude of the vorticity vector
@@ -94,11 +95,12 @@ class QCriterionMap {
             {name: "VelocityY", modifier: DataModifiers.DERIVATIVE_Z},
             {name: "VelocityZ", modifier: DataModifiers.DERIVATIVE_Z},
         ];
+
         this.output = "QCriterion";
     }
     // calculate the second invariant of the velocity gradient tensor
     calculate(vxdx, vydx, vzdx, vxdy, vydy, vzdy, vxdz, vydz, vzdz) {
-        const sym = vxdx*vydy + vxdx*vzdz + vydy*vzdz;
+        const sym  = vxdx*vydy + vxdx*vzdz + vydy*vzdz;
         const asym = vxdy*vydx + vxdz*vzdx + vydz*vzdy;
         return sym - asym;
     }
@@ -127,17 +129,14 @@ export class VectorMappingHandler {
         const dataArrayDescriptors = this.dataSource.getAvailableDataArrays();
         let possibleOutputNames = [];
         for (let mapping of this.mappings) {
-            let satisfied = mapping.inputs.map(v => false);
+            // push it pre-emptively
+            possibleOutputNames.push(mapping.output);
+            for (let inDesc of mapping.inputs) {
+                // check if each required input is present
+                if (dataArrayDescriptors.find(v => v.name == inDesc.name)) continue;
 
-            // search through all input array descriptors
-            for (let srcDesc of dataArrayDescriptors) {
-                const index = mapping.inputs.findIndex(v => v.name == srcDesc.name);
-                if (-1 == index) continue;
-                // array name is one of the inputs for this mapping
-                satisfied[index] = true;
-                if (!satisfied.every(v => v)) continue;
-                // all inputs found
-                possibleOutputNames.push(mapping.output);
+                // remove it if one input cannot be found
+                possibleOutputNames.pop();
                 break;
             }
         }
