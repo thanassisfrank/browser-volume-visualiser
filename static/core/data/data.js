@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, CalcVectArraysDataSource, DataArrayTypes } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, DataArrayTypes } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -417,7 +417,6 @@ class Data extends SceneObject {
         let loadedIndex = this.data.values.findIndex(elem => elem.name == desc.name);
         if (loadedIndex != -1) return loadedIndex;
 
-        debugger;
         let newSlotNum;
         try {
             if (DataArrayTypes.DATA == desc.arrayType) {
