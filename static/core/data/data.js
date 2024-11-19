@@ -7,7 +7,7 @@ import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
 import { ResolutionModes } from "./cellTreeUtils.js";
-import { getCellTreeBuffers, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes } from "./cellTree.js";
+import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes, UnstructuredTree } from "./cellTree.js";
 import { DynamicTree } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.js";
 
@@ -86,24 +86,24 @@ const dataManager = {
 
         const dataSource = await this.getDataSource(config, opts);
 
+        let tree, dynamicTree;
+
+        if (dataSource.dataFormat == DataFormats.UNSTRUCTURED) {
+            tree = new UnstructuredTree(dataSource);
+        };
+        
         let resolutionMode = ResolutionModes.FULL;
         if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
         if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
-        const dynamicTree = new DynamicTree(resolutionMode);
+        if (resolutionMode != ResolutionModes.FULL) {
+            dynamicTree = new DynamicTree(resolutionMode);
+        }
 
-        var newData = new Data(id, dataSource, undefined, dynamicTree);
+        var newData = new Data(id, dataSource, tree, dynamicTree);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
-        
-        // first, create the dataset from the config
-        try {
-            await newData.createFromSource();
-        } catch (e) {
-            console.error("Unable to create dataset:", e);
-            return undefined;
-        }
 
         // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
@@ -120,17 +120,21 @@ const dataManager = {
                 console.log("loading pre generated tree...");
                 try {
                     const nodesResp = await fetch(preGenTree.nodesPath);
-                    if (!nodesResp.ok) throw Error("File not found");
+                    if (!nodesResp.ok) throw Error("Nodes file not found");
                     newData.data.treeNodes = await nodesResp.arrayBuffer();
                                             
                     const cellsResp = await fetch(preGenTree.cellsPath);
-                    if (!cellsResp.ok) throw Error("File not found");
+                    if (!cellsResp.ok) throw Error("Cells file not found");
                     const cellsBuff = await cellsResp.arrayBuffer();
                     newData.data.treeCells = new Uint32Array(cellsBuff);
                 } catch (e) {
                     console.warn("unable to load pre-genenerated tree");
                     found = false;
                 }
+                // update the tree object
+                tree.setBuffers(newData.data.treeNodes, newData.data.treeCells);
+                tree.nodeCount = preGenTree.treeNodeCount;
+
                 newData.data.treeNodeCount = preGenTree.treeNodeCount;
 
                 // store in the data object for future reference
@@ -139,7 +143,10 @@ const dataManager = {
             }
             if (!found) {
                 console.log("generating tree");
-                this.createUnstructuredTree(newData, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
+                const treeBuffers = buildUnstructuredTree(tree, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
+                newData.data.treeNodes = treeBuffers.nodes;
+                newData.data.treeCells = treeBuffers.cells;
+                newData.data.treeNodeCount = treeBuffers.nodeCount;
             }
 
             newData.setCornerValType(opts.cornerValType);
@@ -186,14 +193,6 @@ const dataManager = {
 
         this.datas[id] = newData;
         return newData;
-    },
-
-    createUnstructuredTree: function(dataObj, cellsPerLeaf, maxDepth, treeType) {
-        // generate the tree for rendering
-        const treeBuffers = getCellTreeBuffers(dataObj, cellsPerLeaf, maxDepth, treeType);
-        dataObj.data.treeNodes = treeBuffers.nodes;
-        dataObj.data.treeCells = treeBuffers.cells;
-        dataObj.data.treeNodeCount = treeBuffers.nodeCount;
     },
 
     // create the unstructured tree with a varying subset of the nodes
@@ -360,9 +359,7 @@ class Data extends SceneObject {
         // dynamic tree object
         this.dynamicTree = dynamicTree;
 
-    }
 
-    async createFromSource() {
         // source must be initialised first
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
@@ -376,7 +373,7 @@ class Data extends SceneObject {
 
             this.geometry = this.dataSource.geometry;
         }
-    };
+    }
 
     updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
@@ -395,7 +392,7 @@ class Data extends SceneObject {
     getAvailableDataArrays() {
         return this.dataSource.getAvailableDataArrays().map(v => {
             return {...v, type: DataSrcTypes.ARRAY}
-        })
+        });
     };
 
     // returns the slot number that was written to

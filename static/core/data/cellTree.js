@@ -4,11 +4,11 @@ import { downloadObject, toCSVStr } from "../utils.js";
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, pivotFull, forEachDepth, processLeafMeshDataInfo, readNodeFromBuffer, traverseNodeBufferDepthBox, pointInAABB } from "./cellTreeUtils.js";
 
 export const KDTreeSplitTypes = {
-    VERT_MEDIAN:    1,
-    VERT_AVERAGE:   2,
-    NODE_MEDIAN:    3,
-    SURF_AREA_HEUR: 4,
-    VOLUME_HEUR:    5
+    VERT_MEDIAN:    "vert median",
+    VERT_AVERAGE:   "vert average",
+    NODE_MEDIAN:    "node median",
+    SURF_AREA_HEUR: "surf area heur",
+    VOLUME_HEUR:    "volume heur"
 }
 
 
@@ -235,138 +235,40 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
 };
 
 
-// generates the cell tree for fast lookups in unstructured data
-// returns two buffers:
-//   the nodes of the tree (leaves store indices into second buffer)
-//   the lists of cells present in each leaf node 
-export var getCellTreeBuffers = (dataObj, maxLeafCells, maxDepth, treeSplitType) => {
-    var tree = new CellTree();
-    // dimensions, depth, points, cellConnectivity, cellOffsets, cellTypes
-    var t0 = performance.now();
-    tree.setBuffers(
-        dataObj.data.positions, 
-        dataObj.data.cellConnectivity,
-        dataObj.data.cellOffsets,
-        dataObj.data.cellTypes
-    );
-
-    tree.setExtentBox(dataObj.extentBox);
-
-    switch (treeSplitType) {
-        case KDTreeSplitTypes.VERT_MEDIAN:
-            console.log("vert median tree");
-            tree.buildVertexMedian(maxLeafCells, maxDepth);
-            break;
-        case KDTreeSplitTypes.VERT_AVERAGE:
-            console.log("vert average tree");
-            tree.buildVertexAverage(maxLeafCells, maxDepth);
-            break;
-        case KDTreeSplitTypes.NODE_MEDIAN:
-            tree.buildNodeMedian(maxLeafCells, maxDepth);
-            break;
-        case KDTreeSplitTypes.SURF_AREA_HEUR:
-            tree.buildSAH(maxLeafCells, maxDepth);
-            break;
-        case KDTreeSplitTypes.VOLUME_HEUR:
-            tree.buildVolH(maxLeafCells, maxDepth);
-            break;
-        default:
-            throw Error("Tree split type not recognised");
-
-    }
-    var t1 = performance.now();
-    console.log("tree build took:", (t1 - t0)/1000, "s");
-    var treeBuffers = tree.serialise();
-    tree.tree = null; // clear the unused tree
-    var t2 = performance.now();
-    console.log("tree serialise took:", (t2 - t1)/1000, "s");
-    return treeBuffers;
+const createNode = (depth = 0, splitDimension = 0, points = null, cells = [], parent = null) => {
+    return {
+        depth: depth,
+        splitDimension: splitDimension,
+        splitVal: null,
+        parent: parent,
+        byteLocation: 0,
+        left: null,
+        right: null,
+        points: points,
+        cells: cells
+    };
 };
 
-
-export function CellTree() {
-    this.tree = null;
-
-    const dimensions = 3;
-
-    this.points = null;
-    this.cellConnectivity = null;
-    this.cellOffsets = null;
-    this.cellTypes = null;
-
-    this.extentBox = null;
-
-    this.setBuffers = function(points, cellConnectivity, cellOffsets, cellTypes) {
-        this.points = points;
-        this.cellConnectivity = cellConnectivity;
-        this.cellOffsets = cellOffsets;
-        this.cellTypes = cellTypes;
-    };
-
-    this.setExtentBox = function(box) {
-        this.extentBox = box;
-    };
-
-    this.checkCellPosition = function(id, checkDimension, splitVal) {
-        // first get the points in the cell
-        var pointsLength = 0;
-        switch (this.cellTypes[id]) {
-            case 10: // tet
-                pointsLength = 4;
-                break;
-            case 12: // hexa
-                pointsLength = 8;
-                break;
-            case 5:  // tri
-                pointsLength = 3;
-                break;
-        }
-        var pointsOffset = this.cellOffsets[id];
-        var results = [false, false];
-        var thisPointValue;
-        for (let i = 0; i < pointsLength; i++) {
-            // the position of this point in the dimension that is being checked
-            thisPointValue = this.points[this.cellConnectivity[pointsOffset + i]*dimensions + checkDimension];
-            if (thisPointValue <= splitVal) results[0] = true;
-            if (thisPointValue > splitVal)  results[1] = true;
-        }
-        return results;
-    };
-
-    this.createNode = function(depth = 0, splitDimension = 0, points = null, cells = [], parent = null) {
-        return{
-            depth: depth,
-            splitDimension: splitDimension,
-            splitVal: null,
-            parent: parent,
-            byteLocation: 0,
-            left: null,
-            right: null,
-            points: points,
-            cells: cells
-        };
-    };
-
+const treeBuilders = {
     // builds a tree by splitting the whole data with median each time
-    this.buildVertexMedian = function(maxLeafCells, maxDepth) {
+    vertexMedian: function (tree, maxLeafCells, maxDepth) {
         // console.log(points);
         var cellsTree = false;
-        if (this.cellConnectivity) cellsTree = true;
+        if (tree.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
-    
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
         // make a root node with the whole dataset
-        var root = this.createNode(0, 0, this.points);
+        var root = createNode(0, 0, tree.points);
 
         if (cellsTree) {
-            for (let i = 0; i < this.cellOffsets.length; i++) {
+            for (let i = 0; i < tree.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
         nodeQueue.push(root);
-    
+
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
@@ -378,97 +280,97 @@ export function CellTree() {
                 leavesCount++;
                 continue;
             }
-    
+
             var currentDimension = parentNode.splitDimension;
             var currentPoints = parentNode.points;
-    
+
             // make a set of points that is just the values in the current dimension
-            var thisDimValues = new Float32Array(currentPoints.length/3);
-            for (let i = currentDimension; i < currentPoints.length; i += dimensions) {
+            var thisDimValues = new Float32Array(currentPoints.length / 3);
+            for (let i = currentDimension; i < currentPoints.length; i += tree.dimensions) {
                 // console.log(i);
-                thisDimValues[(i - currentDimension)/dimensions] = currentPoints[i];
+                thisDimValues[(i - currentDimension) / tree.dimensions] = currentPoints[i];
             }
-            
+
             // find the pivot 
             parentNode.splitVal = pivotFull(thisDimValues);
-    
+
             // split the points into left and right
             var leftPoints = [];
             var rightPoints = [];
-            for (let i = 0; i < currentPoints.length; i+= dimensions) {
+            for (let i = 0; i < currentPoints.length; i += tree.dimensions) {
                 if (currentPoints[i + currentDimension] <= parentNode.splitVal) {
                     // point goes in left
-                    for (let j = 0; j < dimensions; j++) {
+                    for (let j = 0; j < tree.dimensions; j++) {
                         leftPoints.push(currentPoints[i + j]);
                     }
                 } else {
                     // point goes in right
-                    for (let j = 0; j < dimensions; j++) {
+                    for (let j = 0; j < tree.dimensions; j++) {
                         rightPoints.push(currentPoints[i + j]);
                     }
                 }
             }
-            
-            if(leftPoints.length < 3 || rightPoints.length < 3) {
+
+            if (leftPoints.length < 3 || rightPoints.length < 3) {
                 // console.log(currentPoints.length);
                 // didn't successfully split node, dont split to make degenerate node
                 continue;
             }
-    
+
             // split the cells into left and right
             var leftCells = [];
             var rightCells = [];
-    
+
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = this.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
             }
-    
+
             // create the new left and right nodes
-            var nextDimension = (currentDimension + 1) % dimensions;
-            var leftNode = this.createNode(currentDepth, nextDimension, leftPoints, leftCells, parentNode);
-            var rightNode = this.createNode(currentDepth, nextDimension, rightPoints, rightCells, parentNode);
-    
+            var nextDimension = (currentDimension + 1) % tree.dimensions;
+            var leftNode = createNode(currentDepth, nextDimension, leftPoints, leftCells, parentNode);
+            var rightNode = createNode(currentDepth, nextDimension, rightPoints, rightCells, parentNode);
+
             // make sure the parent is properly closed out
             parentNode.cells = null;
             parentNode.points = null;
             parentNode.left = leftNode;
             parentNode.right = rightNode;
-    
+
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
 
-        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
-    
+        console.log("avg cells in leaves:", cellsCountSum / leavesCount);
+
         // return the tree object
-        this.tree = root;
-        return this.tree;
-    };
+        tree.tree = root;
+        return tree.tree;
+    },
 
     // builds a tree by splitting the whole data with median each time
-    this.buildVertexAverage = function(maxLeafCells, maxDepth) {
+    vertexAverage: function (tree, maxLeafCells, maxDepth) {
         // console.log(points);
         var cellsTree = false;
-        if (this.cellConnectivity) cellsTree = true;
-    
+        if (tree.cellConnectivity) cellsTree = true;
+
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
         // make a root node with the whole dataset
-        var root = this.createNode(0, 0, this.points);
+        var root = createNode(0, 0, tree.points);
 
         if (cellsTree) {
-            for (let i = 0; i < this.cellOffsets.length; i++) {
+            for (let i = 0; i < tree.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
         nodeQueue.push(root);
-    
+
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
@@ -480,86 +382,85 @@ export function CellTree() {
                 leavesCount++;
                 continue;
             }
-    
+
             var currentDimension = parentNode.splitDimension;
             var currentPoints = parentNode.points;
-    
+
             // make a set of points that is just the values in the current dimension
             var thisDimMin = Number.POSITIVE_INFINITY;
             var thisDimMax = Number.NEGATIVE_INFINITY;
-            for (let i = currentDimension; i < currentPoints.length; i += dimensions) {
+            for (let i = currentDimension; i < currentPoints.length; i += tree.dimensions) {
                 thisDimMin = Math.min(currentPoints[i], thisDimMin);
                 thisDimMax = Math.max(currentPoints[i], thisDimMax);
             }
-            
+
             // find the pivot 
-            parentNode.splitVal = (thisDimMin + thisDimMax)/2;
-    
+            parentNode.splitVal = (thisDimMin + thisDimMax) / 2;
+
             // split the points into left and right
             var leftPoints = [];
             var rightPoints = [];
-            for (let i = 0; i < currentPoints.length; i+= dimensions) {
+            for (let i = 0; i < currentPoints.length; i += tree.dimensions) {
                 if (currentPoints[i + currentDimension] <= parentNode.splitVal) {
                     // point goes in left
-                    for (let j = 0; j < dimensions; j++) {
+                    for (let j = 0; j < tree.dimensions; j++) {
                         leftPoints.push(currentPoints[i + j]);
                     }
                 } else {
                     // point goes in right
-                    for (let j = 0; j < dimensions; j++) {
+                    for (let j = 0; j < tree.dimensions; j++) {
                         rightPoints.push(currentPoints[i + j]);
                     }
                 }
             }
-            
-            if(leftPoints.length < 3 || rightPoints.length < 3) {
+
+            if (leftPoints.length < 3 || rightPoints.length < 3) {
                 // console.log(currentPoints.length);
                 // didn't successfully split node, dont split to make degenerate node
                 continue;
             }
-    
+
             // split the cells into left and right
             var leftCells = [];
             var rightCells = [];
-    
+
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = this.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
             }
-    
+
             // create the new left and right nodes
-            var nextDimension = (currentDimension + 1) % dimensions;
-            var leftNode = this.createNode(currentDepth, nextDimension, leftPoints, leftCells, parentNode);
-            var rightNode = this.createNode(currentDepth, nextDimension, rightPoints, rightCells, parentNode);
-    
+            var nextDimension = (currentDimension + 1) % tree.dimensions;
+            var leftNode = createNode(currentDepth, nextDimension, leftPoints, leftCells, parentNode);
+            var rightNode = createNode(currentDepth, nextDimension, rightPoints, rightCells, parentNode);
+
             // make sure the parent is properly closed out
             parentNode.cells = null;
             parentNode.points = null;
             parentNode.left = leftNode;
             parentNode.right = rightNode;
-    
+
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
 
-        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
-    
+        console.log("avg cells in leaves:", cellsCountSum / leavesCount);
+
         // return the tree object
-        this.tree = root;
-        return this.tree;
-    };
+        tree.tree = root;
+        return tree.tree;
+    },
 
     // builds a tree by splitting nodes at their centre
-    this.buildNodeMedian = function(maxLeafCells, maxDepth) {
+    nodeMedian: function (tree, maxLeafCells, maxDepth) {
         // console.log(points);
         var cellsTree = false;
-        if (this.cellConnectivity) cellsTree = true;
+        if (tree.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
-    
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
@@ -567,15 +468,15 @@ export function CellTree() {
         var maxCellCount = 0;
         var maxLeafDepth = 0;
         // make a root node with the whole dataset
-        var root = {...this.createNode(), box: Object.assign({}, this.extentBox)};
+        var root = { ...createNode(), box: Object.assign({}, tree.extentBox) };
 
         if (cellsTree) {
-            for (let i = 0; i < this.cellOffsets.length; i++) {
+            for (let i = 0; i < tree.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
         nodeQueue.push(root);
-    
+
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
@@ -589,9 +490,9 @@ export function CellTree() {
                 leavesCount++;
                 continue;
             }
-    
+
             var currentDimension = parentNode.splitDimension;
-            
+
             // find the pivot 
             parentNode.splitVal = 0.5 * (parentNode.box.min[currentDimension] + parentNode.box.max[currentDimension]);
 
@@ -606,53 +507,53 @@ export function CellTree() {
             };
             rightBox.min[currentDimension] = parentNode.splitVal;
 
-    
+
             // split the cells into left and right
             var leftCells = [];
             var rightCells = [];
-    
+
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = this.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
             }
-    
+
             // create the new left and right nodes
-            var nextDimension = (currentDimension + 1) % dimensions;
-            var leftNode = this.createNode(currentDepth, nextDimension, [], leftCells, parentNode);
+            var nextDimension = (currentDimension + 1) % tree.dimensions;
+            var leftNode = createNode(currentDepth, nextDimension, [], leftCells, parentNode);
             leftNode.box = leftBox;
-            var rightNode = this.createNode(currentDepth, nextDimension, [], rightCells, parentNode);
+            var rightNode = createNode(currentDepth, nextDimension, [], rightCells, parentNode);
             rightNode.box = rightBox;
-    
+
             // make sure the parent is properly closed out
             parentNode.cells = null;
             parentNode.points = null;
             parentNode.left = leftNode;
             parentNode.right = rightNode;
-    
+
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
 
-        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+        console.log("avg cells in leaves:", cellsCountSum / leavesCount);
         console.log("max cells in leaves:", maxCellCount);
         console.log("max tree depth:", maxLeafDepth);
-    
+
         // return the tree object
-        this.tree = root;
-        return this.tree;
-    };
+        tree.tree = root;
+        return tree.tree;
+    },
 
     // builds a tree by splitting nodes at their centre
-    this.buildSAH = function(maxLeafCells, maxDepth) {
+    SAH: function (tree, maxLeafCells, maxDepth) {
         var calcBoxSA = (box) => {
             const x = box.max[0] - box.min[0];
             const y = box.max[1] - box.min[1];
             const z = box.max[2] - box.min[2];
-            return 2*(x*y + x*z + y*z);
+            return 2 * (x * y + x * z + y * z);
         };
 
         // estimates the cost to tree of splitting at this value using a surface area heuristic
@@ -661,41 +562,40 @@ export function CellTree() {
             var NA = 0;
             var NB = 0;
 
-            var boxA = {min:[...node.box.min], max:[...node.box.max]};
+            var boxA = { min: [...node.box.min], max: [...node.box.max] };
             boxA.max[dimension] = splitVal;
 
-            var boxB = {min:[...node.box.min], max:[...node.box.max]};
+            var boxB = { min: [...node.box.min], max: [...node.box.max] };
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both
-                var cellSides = this.checkCellPosition(cellID, dimension, splitVal);
+                var cellSides = tree.checkCellPosition(cellID, dimension, splitVal);
                 if (cellSides[0]) NA++;
                 if (cellSides[1]) NB++;
             }
 
-            return 1/16 + (calcBoxSA(boxA) * NA + calcBoxSA(boxB) * NB)/calcBoxSA(node.box);
+            return 1 / 16 + (calcBoxSA(boxA) * NA + calcBoxSA(boxB) * NB) / calcBoxSA(node.box);
         };
 
         var cellsTree = false;
-        if (this.cellConnectivity) cellsTree = true;
+        if (tree.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
-    
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
         var criterionTerminatedCount = 0;
 
         // make a root node with the whole dataset
-        var root = this.createNode();
-        root.box = this.extentBox;
+        var root = createNode();
+        root.box = tree.extentBox;
 
         if (cellsTree) {
-            for (let i = 0; i < this.cellOffsets.length; i++) {
+            for (let i = 0; i < tree.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
         nodeQueue.push(root);
-    
+
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
@@ -707,7 +607,7 @@ export function CellTree() {
                 leavesCount++;
                 continue;
             }
-    
+
             var currentDimension = parentNode.splitDimension;
 
             // check a range of split values
@@ -732,7 +632,7 @@ export function CellTree() {
                 criterionTerminatedCount++;
                 continue;
             }
-            
+
             // find the pivot 
             parentNode.splitVal = minSplitVal;
 
@@ -741,52 +641,52 @@ export function CellTree() {
             var rightBox = structuredClone(parentNode.box);
             rightBox.min[currentDimension] = parentNode.splitVal;
 
-    
+
             // split the cells into left and right
             var leftCells = [];
             var rightCells = [];
-    
+
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = this.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
             }
-    
+
             // create the new left and right nodes
-            var nextDimension = (currentDimension + 1) % dimensions;
-            var leftNode = this.createNode(currentDepth, nextDimension, [], leftCells, parentNode);
+            var nextDimension = (currentDimension + 1) % tree.dimensions;
+            var leftNode = createNode(currentDepth, nextDimension, [], leftCells, parentNode);
             leftNode.box = leftBox;
-            var rightNode = this.createNode(currentDepth, nextDimension, [], rightCells, parentNode);
+            var rightNode = createNode(currentDepth, nextDimension, [], rightCells, parentNode);
             rightNode.box = rightBox;
-    
+
             // make sure the parent is properly closed out
             parentNode.cells = null;
             parentNode.points = null;
             parentNode.left = leftNode;
             parentNode.right = rightNode;
-    
+
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
 
-        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+        console.log("avg cells in leaves:", cellsCountSum / leavesCount);
         console.log("amount terminated by criterion:", criterionTerminatedCount);
-    
+
         // return the tree object
-        this.tree = root;
-        return this.tree;
-    };
+        tree.tree = root;
+        return tree.tree;
+    },
 
     // builds a tree by splitting nodes at their centre
-    this.buildVolH = function(maxLeafCells, maxDepth) {
+    VH: function (tree, maxLeafCells, maxDepth) {
         var calcBoxVol = (box) => {
             const x = box.max[0] - box.min[0];
             const y = box.max[1] - box.min[1];
             const z = box.max[2] - box.min[2];
-            return x*y*z;
+            return x * y * z;
         };
 
         // estimates the cost to tree of splitting at this value using a surface area heuristic
@@ -795,43 +695,42 @@ export function CellTree() {
             var NA = 0;
             var NB = 0;
 
-            var boxA = {min:[...node.box.min], max:[...node.box.max]};
+            var boxA = { min: [...node.box.min], max: [...node.box.max] };
             boxA.max[dimension] = splitVal;
 
-            var boxB = {min:[...node.box.min], max:[...node.box.max]};
+            var boxB = { min: [...node.box.min], max: [...node.box.max] };
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both
-                var cellSides = this.checkCellPosition(cellID, dimension, splitVal);
+                var cellSides = tree.checkCellPosition(cellID, dimension, splitVal);
                 if (cellSides[0]) NA++;
                 if (cellSides[1]) NB++;
             }
 
-            return 1/16 + (calcBoxVol(boxA) * NA + calcBoxVol(boxB) * NB)/calcBoxVol(node.box);
-        }
+            return 1 / 16 + (calcBoxVol(boxA) * NA + calcBoxVol(boxB) * NB) / calcBoxVol(node.box);
+        };
 
 
         // console.log(points);
         var cellsTree = false;
-        if (this.cellConnectivity) cellsTree = true;
+        if (tree.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
-    
         var nodeQueue = [];
         var cellsCountSum = 0;
         var leavesCount = 0;
         var criterionTerminatedCount = 0;
 
         // make a root node with the whole dataset
-        var root = this.createNode();
-        root.box = this.extentBox;
+        var root = createNode();
+        root.box = tree.extentBox;
 
         if (cellsTree) {
-            for (let i = 0; i < this.cellOffsets.length; i++) {
+            for (let i = 0; i < tree.cellOffsets.length; i++) {
                 root.cells.push(i);
             }
         }
         nodeQueue.push(root);
-    
+
         while (nodeQueue.length > 0) {
             var parentNode = nodeQueue.pop();
             var currentDepth = parentNode.depth + 1;
@@ -843,7 +742,7 @@ export function CellTree() {
                 leavesCount++;
                 continue;
             }
-    
+
             var currentDimension = parentNode.splitDimension;
 
             // check a range of split values
@@ -868,7 +767,7 @@ export function CellTree() {
                 criterionTerminatedCount++;
                 continue;
             }
-            
+
             // find the pivot 
             parentNode.splitVal = minSplitVal;
 
@@ -877,72 +776,169 @@ export function CellTree() {
             var rightBox = structuredClone(parentNode.box);
             rightBox.min[currentDimension] = parentNode.splitVal;
 
-    
+
             // split the cells into left and right
             var leftCells = [];
             var rightCells = [];
-    
+
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = this.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
             }
-    
+
             // create the new left and right nodes
-            var nextDimension = (currentDimension + 1) % dimensions;
-            var leftNode = this.createNode(currentDepth, nextDimension, [], leftCells, parentNode);
+            var nextDimension = (currentDimension + 1) % tree.dimensions;
+            var leftNode = createNode(currentDepth, nextDimension, [], leftCells, parentNode);
             leftNode.box = leftBox;
-            var rightNode = this.createNode(currentDepth, nextDimension, [], rightCells, parentNode);
+            var rightNode = createNode(currentDepth, nextDimension, [], rightCells, parentNode);
             rightNode.box = rightBox;
-    
+
             // make sure the parent is properly closed out
             parentNode.cells = null;
             parentNode.points = null;
             parentNode.left = leftNode;
             parentNode.right = rightNode;
-    
+
             // add children to the queue
             nodeQueue.push(leftNode, rightNode);
         }
 
-        console.log("avg cells in leaves:", cellsCountSum/leavesCount);
+        console.log("avg cells in leaves:", cellsCountSum / leavesCount);
         console.log("amount terminated by criterion:", criterionTerminatedCount);
-    
-        // return the tree object
-        this.tree = root;
-        return this.tree;
-    };
 
-    this.getTreeNodeCount = function() {
+        // return the tree object
+        tree.tree = root;
+        return tree.tree;
+    }
+};
+
+// generates the cell tree for fast lookups in unstructured data
+// returns two buffers:
+//   the nodes of the tree (leaves store indices into second buffer)
+//   the lists of cells present in each leaf node 
+export var buildUnstructuredTree = (tree, maxLeafCells, maxDepth, treeSplitType) => {
+    const t0 = performance.now();
+
+    switch (treeSplitType) {
+        case KDTreeSplitTypes.VERT_MEDIAN:
+            console.log("vert median tree");
+            treeBuilders.vertexMedian(tree, maxLeafCells, maxDepth);
+            break;
+        case KDTreeSplitTypes.VERT_AVERAGE:
+            console.log("vert average tree");
+            treeBuilders.vertexAverage(tree, maxLeafCells, maxDepth);
+            break;
+        case KDTreeSplitTypes.NODE_MEDIAN:
+            treeBuilders.nodeMedian(tree, maxLeafCells, maxDepth);
+            break;
+        case KDTreeSplitTypes.SURF_AREA_HEUR:
+            treeBuilders.SAH(tree, maxLeafCells, maxDepth);
+            break;
+        case KDTreeSplitTypes.VOLUME_HEUR:
+            treeBuilders.VH(tree, maxLeafCells, maxDepth);
+            break;
+        default:
+            throw Error("Tree split type not recognised");
+    }
+
+    const t1 = performance.now();
+    console.log("tree build took:", (t1 - t0)/1000, "s");
+    const treeBuffers = tree.serialise();
+    tree.tree = null; // clear the unused tree
+    const t2 = performance.now();
+    console.log("tree serialise took:", (t2 - t1)/1000, "s");
+    return treeBuffers;
+};
+
+
+export class UnstructuredTree {
+    tree = null;
+
+    // buffers
+    nodes = null;
+    cells = null;
+
+    nodeCount = 0;
+
+    dimensions = 3;
+
+    constructor(dataSource) {
+        // mesh buffers
+        this.points = dataSource.mesh?.positions;
+        this.cellConnectivity = dataSource.mesh?.cellConnectivity;
+        this.cellOffsets = dataSource.mesh?.cellOffsets;
+        // this.cellTypes = dataSource.mesh.cellTypes;
+
+        // bounding box
+        this.extentBox = dataSource.extentBox;
+    }
+
+    setBuffers(nodesBuff, cellsBuff) {
+        this.nodes = nodesBuff;
+        this.cells = cellsBuff;
+    }
+
+    checkCellPosition(id, checkDimension, splitVal) {
+        // first get the points in the cell
+        // var pointsLength = 0;
+        // switch (this.cellTypes[id]) {
+        //     case 10: // tet
+        //         pointsLength = 4;
+        //         break;
+        //     case 12: // hexa
+        //         pointsLength = 8;
+        //         break;
+        //     case 5: // tri
+        //         pointsLength = 3;
+        //         break;
+        // }
+
+        // only tetra for now
+        const pointsLength = 4;
+
+        const pointsOffset = this.cellOffsets[id];
+        const results = [false, false];
+        let thisPointValue;
+        for (let i = 0; i < pointsLength; i++) {
+            // the position of this point in the dimension that is being checked
+            thisPointValue = this.points[this.cellConnectivity[pointsOffset + i] * this.dimensions + checkDimension];
+            if (thisPointValue <= splitVal) results[0] = true;
+            if (thisPointValue > splitVal) results[1] = true;
+        }
+        return results;
+    }
+
+    getTreeNodeCount() {
         var count = 0;
         forEachDepth(this.tree,
-            () => {count++},
-            () => {},
-            () => {}
-        ); 
+            () => { count++; },
+            () => { },
+            () => { }
+        );
         return count;
-    };
+    }
 
-    this.getTreeCellsCount = function() {
+    getTreeCellsCount() {
         var count = 0;
         var under10 = 0;
         forEachDepth(this.tree,
-            () => {},
+            () => { },
             (node) => {
-                count += node.cells.length
+                count += node.cells.length;
                 if (node.cells.length < 10) under10++;
             },
-            () => {}
+            () => { }
         );
         console.log(under10 + " nodes with <10 cells");
         return count;
-    };
+    }
 
-    // returns the tree as a buffer
-    this.serialise = function() {
+    // returns the tree as buffers
+    serialise() {
         // tree has not been built
         if (!this.tree) return;
         // var byteLength = this.getTreeByteLength();
@@ -952,7 +948,7 @@ export function CellTree() {
         console.log("tree nodes buffer byte length: ", totalNodeCount * NODE_BYTE_LENGTH);
         console.log("tree cells buffer byte length: ", totalCellsCount * 4);
         // create a buffer to store the tree nodes
-        var nodesBuffer = new ArrayBuffer(totalNodeCount*NODE_BYTE_LENGTH);
+        var nodesBuffer = new ArrayBuffer(totalNodeCount * NODE_BYTE_LENGTH);
         // create a buffer to store
         var cellsBuffer = new Uint32Array(totalCellsCount);
         // take the tree and pack it into a buffer representation
@@ -965,84 +961,87 @@ export function CellTree() {
                 node.byteLocation = nextNodeByteOffset;
                 var parent = node.parent;
                 writeNodeToBuffer(
-                    nodesBuffer, 
-                    node.byteLocation, 
-                    node.splitVal, 
-                    node.cells?.length ?? 0, 
-                    parent?.byteLocation/NODE_BYTE_LENGTH,
-                    null, 
+                    nodesBuffer,
+                    node.byteLocation,
+                    node.splitVal,
+                    node.cells?.length ?? 0,
+                    parent?.byteLocation / NODE_BYTE_LENGTH,
+                    null,
                     null
                 );
                 if (parent) {
                     // write location at the parent node
                     if (parent.left == node) {
                         writeNodeToBuffer(
-                            nodesBuffer, 
-                            parent.byteLocation, 
-                            null, 
-                            null, 
+                            nodesBuffer,
+                            parent.byteLocation,
                             null,
-                            node.byteLocation/NODE_BYTE_LENGTH, 
+                            null,
+                            null,
+                            node.byteLocation / NODE_BYTE_LENGTH,
                             null
                         );
                     } else {
                         writeNodeToBuffer(
-                            nodesBuffer, 
-                            parent.byteLocation, 
-                            null, 
-                            null, 
+                            nodesBuffer,
+                            parent.byteLocation,
                             null,
-                            null, 
-                            node.byteLocation/NODE_BYTE_LENGTH
+                            null,
+                            null,
+                            null,
+                            node.byteLocation / NODE_BYTE_LENGTH
                         );
                     }
                 }
                 nextNodeByteOffset += NODE_BYTE_LENGTH;
-            }, 
+            },
             // run only for leaf nodex
             (node) => {
                 node.cellsByteLocation = nextCellsByteOffset;
                 new Uint32Array(cellsBuffer.buffer, node.cellsByteLocation, node.cells.length).set(node.cells);
                 writeNodeToBuffer(
-                    nodesBuffer, 
-                    node.byteLocation, 
-                    null, 
-                    null, 
+                    nodesBuffer,
+                    node.byteLocation,
                     null,
-                    node.cellsByteLocation/4, 
+                    null,
+                    null,
+                    node.cellsByteLocation / 4,
                     0
                 );
-                nextCellsByteOffset += node.cells.length*4;
-            }, 
+                nextCellsByteOffset += node.cells.length * 4;
+            },
             // run only for branch nodes
-            (node) => {}
+            (node) => { }
         );
+
+        this.nodeCount = totalNodeCount;
+        this.setBuffers(nodesBuffer, cellsBuffer);
 
         return {
             nodes: nodesBuffer,
             cells: cellsBuffer,
             nodeCount: totalNodeCount,
-        }
-    };
+        };
+    }
 
     // print the tree node info
     // if full, prints more info
     // if not full, prints only info sent to gpu
-    this.printNodes = function() {
-        console.log("splitDim, splitVal, cellsLen, cellsLoc, leftLoc, rightLoc")
+    printNodes() {
+        console.log("splitDim, splitVal, cellsLen, cellsLoc, leftLoc, rightLoc");
         forEachDepth(this.tree,
             (node) => {
-               console.log(" ".repeat(node.depth),
-                    node.splitDimension, 
+                console.log(" ".repeat(node.depth),
+                    node.splitDimension,
                     node.splitVal,
                     node.cells?.length || 0,
-                    node.cellsByteLocation/4 || 0,
-                    node.left?.byteLocation/4,
-                    node.right?.byteLocation/4,
-                )
+                    node.cellsByteLocation / 4 || 0,
+                    node.left?.byteLocation / 4,
+                    node.right?.byteLocation / 4
+                );
             },
-            () => {},
-            () => {}
-        )
+            () => { },
+            () => { }
+        );
     };
 }

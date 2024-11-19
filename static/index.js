@@ -140,7 +140,7 @@ async function main() {
                 dynamicNodeCount: parseInt(opts.dynamicNodeCount?.value),
                 dynamicMeshBlockCount: parseInt(opts.dynamicMeshBlockCount?.value),
                 maxTreeDepth: parseInt(opts.maxDepth.value),
-                kdTreeType: parseInt(opts.kdTreeType.value),
+                kdTreeType: opts.kdTreeType.value,
                 cornerValType: parseInt(opts.cornerValType.value),
             }
         );
