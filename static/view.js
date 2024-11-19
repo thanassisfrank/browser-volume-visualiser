@@ -4,8 +4,8 @@
 import { get, show, hide, newId, hexStringToRGBArray } from "./core/utils.js";
 import { VecMath } from "./core/VecMath.js";
 
-import { dataManager, ResolutionModes } from "./core/data/data.js";
-import { updateDynamicDataset } from "./core/data/dynamicTree.js";
+import { dataManager } from "./core/data/data.js";
+import { ResolutionModes } from "./core/data/cellTreeUtils.js";
 
 import { DataSrcSelectElem } from "./viewElems.js";
 
@@ -520,9 +520,8 @@ function View(id, camera, data, renderMode) {
 
         // need to find the camera position in world space
         if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
-            updateDynamicDataset(
+            this.data.updateDynamicTree(
                 cameraChanged,
-                this.data, 
                 focusPoint,  
                 this.sceneGraph.activeCamera.getEyePos(),
                 activeValueSlots

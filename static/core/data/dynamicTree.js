@@ -5,7 +5,7 @@ import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMes
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
-import { ResolutionModes } from "./data.js";
+import { ResolutionModes } from "./cellTreeUtils.js";
 
 
 const NodeStates = {
@@ -37,9 +37,8 @@ const calcBoxScore = (box, focusCoords, camToFocDist) => {
 // calculate the scores for the current leaf nodes, true leaf or pruned
 // returns a list of leaf node objects containing their score
 // assumes camera coords is in the dataset coordinate space
-function getNodeScores (dataObj, focusCoords, camCoords) {
-    var dynamicNodes = dataObj.data.dynamicTreeNodes;
-    var fullNodes = dataObj.data.treeNodes;
+function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords) {
+    var dynamicNodes = nodeCache.getBuffers()["nodes"];
     var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
 
     const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));;
@@ -49,8 +48,8 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
     var rootNode = readNodeFromBuffer(dynamicNodes, 0);
     rootNode.depth = 0;
     var rootBox = {
-        max: [...dataObj.extentBox.max],
-        min: [...dataObj.extentBox.min],
+        max: [...extentBox.max],
+        min: [...extentBox.min],
     };
 
     // the next nodes to process
@@ -64,7 +63,7 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
         if (currNode.rightPtr == 0) {
             // this is a leaf node, get its score
             currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
-            currNode.state = dataObj.dynamicNodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
+            currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
             scores.push(currNode);
         } else {
             // get the ptr to the children in the full buffer
@@ -106,7 +105,7 @@ function getNodeScores (dataObj, focusCoords, camCoords) {
 };
 
 
-function updateMeshCacheScores(dataObj, scores) {
+function updateMeshCacheScores(meshCache, scores) {
     // create a map from full pointer -> node score
     const fullPtrScoreMap = new Map();
     for (let node of scores) {
@@ -114,9 +113,63 @@ function updateMeshCacheScores(dataObj, scores) {
     }
     // update the mesh cache with the node scores
     // if a node is not in the dynamic tree and thus the scores list, the score is set to -inf
-    dataObj.dynamicMeshCache.syncScores(fullPtr => 
+    meshCache.syncScores(fullPtr => 
         fullPtrScoreMap.get(fullPtr) ?? Number.NEGATIVE_INFINITY
     );
+}
+
+// returns the index of this mesh block
+// if it is not in the cache and wasnt loaded, returns -1
+function tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, childNode, activeValueSlots) {
+    let meshBlockIndex = meshCache.getTagSlotNum(childNode.thisFullPtr);
+    if (-1 != meshBlockIndex) return meshBlockIndex;
+
+    // the mesh data for this leaf is not currently loaded
+    // see if the score is high enough to load
+    const worstScore = meshCache.getWorstScore().val;
+    // score too low, dont load
+    if (worstScore > childNode.score) return -1;
+
+    // get mesh data
+    const leafMesh = getMeshBlockFunc(childNode.thisFullPtr, activeValueSlots);
+    // const leafMesh = dataObj.getNodeMeshBlock(childNode.thisFullPtr, activeValueSlots);
+
+    // load new mesh data
+    const loadResult = meshCache.insertNewBlock(childNode.score, childNode.thisFullPtr, leafMesh);
+    meshBlockIndex = loadResult.slot;
+    // check if the evicted block is currently loaded in the dynamic node cache
+    if (undefined != loadResult.evicted) {
+        const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
+        if (-1 != evictedTagNodeSlot) {
+            // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
+            nodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
+        }
+    }
+
+    return meshBlockIndex;        
+}
+
+function updateDynamicMeshCache(nodeCache, meshCache, getMeshBlockFunc, fullNodes, scores, activeValueSlots) {
+    for (let node of scores) {
+        if (node.rightPtr != 0) continue;
+        // node is a leaf in dynamic tree
+        const fullNode = readNodeFromBuffer(fullNodes, node.thisFullPtr * NODE_BYTE_LENGTH);
+        if (fullNode.rightPtr != 0) continue;
+        // this is a true leaf
+
+        if (node.cellCount > 0) continue;
+        // node is not connected with its mesh block
+
+        // try to load the mesh data, evict if necessary
+        const blockIndex = tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, node, activeValueSlots);
+        if (-1 == blockIndex) continue;
+        // node's mesh is now present in the dynamic mesh cache
+
+        // update node in the dynamic cache
+        nodeCache.updateBlockAt(node.thisPtr, {
+            "nodes": {cellCount: fullNode.cellCount, leftPtr: blockIndex}
+        });
+    }
 }
 
 // takes the full scores list and returns a list of nodes to split and a list to merge
@@ -182,72 +235,19 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     };
 };
 
-// returns the index of this mesh block
-// if it is not in the cache and wasnt loaded, returns -1
-function tryLoadTrueLeafNodeMesh(dataObj, childNode, activeValueSlots) {
-    let meshBlockIndex = dataObj.dynamicMeshCache.getTagSlotNum(childNode.thisFullPtr);
-    if (-1 != meshBlockIndex) return meshBlockIndex;
 
-    // the mesh data for this leaf is not currently loaded
-    // see if the score is high enough to load
-    const worstScore = dataObj.dynamicMeshCache.getWorstScore().val;
-    // score too low, dont load
-    if (worstScore > childNode.score) return -1;
-
-    // get mesh data
-    const leafMesh = dataObj.getNodeMeshBlock(childNode.thisFullPtr, activeValueSlots);
-
-    // load new mesh data
-    const loadResult = dataObj.dynamicMeshCache.insertNewBlock(childNode.score, childNode.thisFullPtr, leafMesh);
-    meshBlockIndex = loadResult.slot;
-    // check if the evicted block is currently loaded in the dynamic node cache
-    if (undefined != loadResult.evicted) {
-        const evictedTagNodeSlot = dataObj.dynamicNodeCache.getTagSlotNum(loadResult.evicted);
-        if (-1 != evictedTagNodeSlot) {
-            // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
-            dataObj.dynamicNodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
-        }
-    }
-
-    return meshBlockIndex;        
-}
-
-function updateDynamicMeshCache(dataObj, fullNodes, scores, activeValueSlots) {
-    for (let node of scores) {
-        if (node.rightPtr != 0) continue;
-        // node is a leaf in dynamic tree
-        const fullNode = readNodeFromBuffer(fullNodes, node.thisFullPtr * NODE_BYTE_LENGTH);
-        if (fullNode.rightPtr != 0) continue;
-        // this is a true leaf
-
-        if (node.cellCount > 0) continue;
-        // node is not connected with its mesh block
-
-        // try to load the mesh data, evict if necessary
-        const blockIndex = tryLoadTrueLeafNodeMesh(dataObj, node, activeValueSlots);
-        if (-1 == blockIndex) continue;
-        // node's mesh is now present in the dynamic mesh cache
-
-        // update node in the dynamic cache
-        dataObj.dynamicNodeCache.updateBlockAt(node.thisPtr, {
-            "nodes": {cellCount: fullNode.cellCount, leftPtr: blockIndex}
-        });
-    }
-}
-
-
-const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) => {
+const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeValueSlots, mergeSplit, noCells) => {
     // find the amount of changes we can now make
-    const changeCount = Math.min(scores.merge.length, scores.split.length);
+    const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
 
 
     // merge the leaves with the highest scores with their siblings (delete 2 per change)
     var freePtrs = [];
     for (let i = 0; i < changeCount; i++) {
-        var parentNode = dataObj.dynamicNodeCache.readBuffSlotAt("nodes", scores.merge[i].parentPtr);
+        var parentNode = nodeCache.readBuffSlotAt("nodes", mergeSplit.merge[i].parentPtr);
         freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
         // convert the parentNode to a pruned leaf
-        dataObj.dynamicNodeCache.updateBlockAt(scores.merge[i].parentPtr, {
+        nodeCache.updateBlockAt(mergeSplit.merge[i].parentPtr, {
             "nodes": {leftPtr: 0, rightPtr: 0},
             "state": [NodeStates.MERGED]
         });
@@ -255,12 +255,12 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
 
     // split the leaves with the lowest scores (write 2 per change)
     for (let i = 0; i < freePtrs.length/2; i++) {
-        var thisNode = scores.split[i];
+        var thisNode = mergeSplit.split[i];
         var thisNodeFull = readNodeFromBuffer(fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
         // update node to branch
-        dataObj.dynamicNodeCache.updateBlockAt(thisNode.thisPtr, {
+        nodeCache.updateBlockAt(thisNode.thisPtr, {
             "nodes": {splitVal: thisNodeFull.splitVal, cellCount: 0, leftPtr: freePtrs[2*i], rightPtr: freePtrs[2*i + 1]}
-        })
+        });
 
         const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
         for (let j = 0; j < 2; j++) {
@@ -269,188 +269,226 @@ const updateDynamicNodeCache = (dataObj, fullNodes, activeValueSlots, scores) =>
             const newData = {
                 "nodes": {
                     splitVal: childNode.splitVal, 
-                    cellCount: 0, 
+                    cellCount: noCells ? 0 : childNode.cellCount, 
                     parentPtr: thisNode.thisPtr, 
-                    leftPtr: 0, 
+                    leftPtr: noCells ? 0 : childNode.leftPtr, 
                     rightPtr: 0
                 },
                 "state": NodeStates.SPLIT
             };
             
             for (let slotNum of activeValueSlots) {
-                newData["corners" + slotNum] = readCornerVals(dataObj.getFullCornerValues(slotNum), childNode.thisPtr);
+                newData["corners" + slotNum] = getCornerValsFunc(childNode.thisPtr, slotNum);
             }
 
-            dataObj.dynamicNodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
+            nodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
         }
     }
 };
 
 
-// updates the dynamic dataset based on camera location
-// this handles updating the dynamic nodes and dynamic mesh
-export const updateDynamicDataset = (cameraChanged, dataObj, focusCoords, camCoords, activeValueSlots) => {
-    if (cameraChanged) {
-        // reset the record of modifications to nodes
-        dataObj.dynamicNodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
+
+export class DynamicTree {
+    nodeCache;
+    meshCache;
+
+    fullNodes;
+
+    constructor(resolutionMode) {
+        this.resolutionMode = resolutionMode;
     }
+    // create the buffers used for dynamic data resolution
+    // for the first iteration, this only modifies the treenodes buffer
+    createDynamicNodeCache (fullNodes, maxNodes) {
+        this.fullNodes = fullNodes
+        // set up the cache object for the dynamic nodes
+        this.nodeCache = new AssociativeCache(maxNodes);
+        this.nodeCache.createBuffer("state", Uint8Array, 1);
+        this.nodeCache.createBuffer("nodes", ArrayBuffer, NODE_BYTE_LENGTH);
+        this.nodeCache.setReadFunc("nodes", (buff, slotNum, blockSize) => {
+            return readNodeFromBuffer(buff, slotNum * blockSize);
+        });
+        this.nodeCache.setWriteFunc("nodes", (buff, data, slotNum, blockSize) => {
+            writeNodeToBuffer(
+                buff, 
+                slotNum * blockSize, 
+                data.splitVal ?? null,
+                data.cellCount ?? null,
+                data.parentPtr ?? null,
+                data.leftPtr ?? null,
+                data.rightPtr ?? null
+            );
+        })
 
-    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
-        // get a list of all nodes in the dynamic node tree with their scores
-        const scores = getNodeScores(dataObj, focusCoords, camCoords);
+        // create the empty cache buffers at the given maximum size
+        // var dynamicNodes = new ArrayBuffer(maxNodes * NODE_BYTE_LENGTH);
+        // fill the dynamic buffer from the full tree buffer, breadth first
+        var currNodeIndex = 0; // where to write the next node
 
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            updateMeshCacheScores(dataObj, scores);
+        var rootNode = readNodeFromBuffer(fullNodes, 0);
 
-            // update the mesh blocks that are loaded in the cache
-            updateDynamicMeshCache(dataObj, dataObj.data.treeNodes, scores, activeValueSlots);
-        }
-
-        scores.sort((a, b) => a.score - b.score);
-        const mergeSplitLists = createMergeSplitLists(dataObj.data.treeNodes, scores, 20);
+        this.nodeCache.insertNewBlockAt(0, rootNode.thisPtr, {
+            "nodes": {splitVal: rootNode.splitVal, cellCount: 0, parentPtr: 0, leftPtr: 0, rightPtr: 0}
+        });
+        currNodeIndex++;
         
-        // update the dynamic buffer contents
-        updateDynamicNodeCache(
-            dataObj,
-            dataObj.data.treeNodes, 
-            activeValueSlots,
-            mergeSplitLists
-        );   
-    }
-};
+        var currDepth = 0;
+        while (currNodeIndex < maxNodes) {
+            // loop through all the nodes at this level of the tree 
+            // try to add both their children
+            addLayer: {
+                for (let i = 0; i < Math.pow(2, currDepth); i++) {
+                    // the parent node as it currently is in dynamic nodes
+                    // var currParent = readNodeFromBuffer(dynamicNodes, 0);
+                    var currParent = this.nodeCache.readBuffSlotAt("nodes", 0);
 
+                    // the parent node in the full tree buffer
+                    var currParentFull = rootNode;
+                    var parentLoc = 0;
+                    var parentLocFull = 0;
 
-// create the buffers used for dynamic data resolution
-// for the first iteration, this only modifies the treenodes buffer
-export var createDynamicNodeCache = (dataObj, maxNodes) => {
-    var fullNodes = dataObj.data.treeNodes;
-
-    // set up the cache object for the dynamic nodes
-    var dynamicNodeCache = new AssociativeCache(maxNodes);
-    dynamicNodeCache.createBuffer("state", Uint8Array, 1);
-    dynamicNodeCache.createBuffer("nodes", ArrayBuffer, NODE_BYTE_LENGTH);
-    dynamicNodeCache.setReadFunc("nodes", (buff, slotNum, blockSize) => {
-        return readNodeFromBuffer(buff, slotNum * blockSize);
-    });
-    dynamicNodeCache.setWriteFunc("nodes", (buff, data, slotNum, blockSize) => {
-        writeNodeToBuffer(
-            buff, 
-            slotNum * blockSize, 
-            data.splitVal ?? null,
-            data.cellCount ?? null,
-            data.parentPtr ?? null,
-            data.leftPtr ?? null,
-            data.rightPtr ?? null
-        );
-    })
-
-    // create the empty cache buffers at the given maximum size
-    // var dynamicNodes = new ArrayBuffer(maxNodes * NODE_BYTE_LENGTH);
-    // fill the dynamic buffer from the full tree buffer, breadth first
-    var currNodeIndex = 0; // where to write the next node
-
-    var rootNode = readNodeFromBuffer(fullNodes, 0);
-
-    dynamicNodeCache.insertNewBlockAt(0, rootNode.thisPtr, {
-        "nodes": {splitVal: rootNode.splitVal, cellCount: 0, parentPtr: 0, leftPtr: 0, rightPtr: 0}
-    });
-    currNodeIndex++;
-    
-    var currDepth = 0;
-    while (currNodeIndex < maxNodes) {
-        // loop through all the nodes at this level of the tree 
-        // try to add both their children
-        addLayer: {
-            for (let i = 0; i < Math.pow(2, currDepth); i++) {
-                // the parent node as it currently is in dynamic nodes
-                // var currParent = readNodeFromBuffer(dynamicNodes, 0);
-                var currParent = dynamicNodeCache.readBuffSlotAt("nodes", 0);
-
-                // the parent node in the full tree buffer
-                var currParentFull = rootNode;
-                var parentLoc = 0;
-                var parentLocFull = 0;
-
-                // navigate to the next node to add children too
-                for (let j = 0; j < currDepth; j++) {
-                    // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
-                    if ((i >> (currDepth - j - 1)) & 1 != 0) {
-                        // go right
-                        parentLoc = currParent.rightPtr;
-                        parentLocFull = currParentFull.rightPtr;
-                    } else {
-                        // go left
-                        parentLoc = currParent.leftPtr;
-                        parentLocFull = currParentFull.leftPtr;
+                    // navigate to the next node to add children too
+                    for (let j = 0; j < currDepth; j++) {
+                        // i acts as the route to get to the node (0 bit -> left, 1 bit -> right)
+                        if ((i >> (currDepth - j - 1)) & 1 != 0) {
+                            // go right
+                            parentLoc = currParent.rightPtr;
+                            parentLocFull = currParentFull.rightPtr;
+                        } else {
+                            // go left
+                            parentLoc = currParent.leftPtr;
+                            parentLocFull = currParentFull.leftPtr;
+                        }
+                        currParent = this.nodeCache.readBuffSlotAt("nodes", parentLoc);
+                        currParentFull = readNodeFromBuffer(fullNodes, parentLocFull * NODE_BYTE_LENGTH);
                     }
-                    currParent = dynamicNodeCache.readBuffSlotAt("nodes", parentLoc);
-                    currParentFull = readNodeFromBuffer(fullNodes, parentLocFull * NODE_BYTE_LENGTH);
+                    // got to the node we want to add children to
+                    // check if there is room to add the children
+                    if (currNodeIndex < maxNodes - 2) {
+                        // update parent so it is not a pruned leaf node
+                        this.nodeCache.updateBlockAt(parentLoc, {
+                            "nodes": {splitVal: currParentFull.splitVal, cellCount: 0, leftPtr: currNodeIndex, rightPtr: currNodeIndex + 1}
+                        });
+                        
+                        // fetch the left node from the full buffer and write to dynamic as pruned leaf
+                        var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
+                        this.nodeCache.insertNewBlockAt(currNodeIndex, leftNode.thisPtr, {
+                            "nodes": {splitVal: leftNode.splitVal, cellCount: 0, parentPtr: parentLoc, leftPtr: 0, rightPtr: 0}
+                        });
+
+                        // fetch the right node from the full buffer and write to dynamic as pruned leaf
+                        var rightNode = readNodeFromBuffer(fullNodes, currParentFull.rightPtr * NODE_BYTE_LENGTH);
+                        this.nodeCache.insertNewBlockAt(currNodeIndex + 1, rightNode.thisPtr, {
+                            "nodes": {splitVal: rightNode.splitVal, cellCount: 0, parentPtr: parentLoc, leftPtr: 0, rightPtr: 0}
+                        });
+                    }
+                    currNodeIndex += 2;
+                    if (currNodeIndex >= maxNodes) break addLayer;
                 }
-                // got to the node we want to add children to
-                // check if there is room to add the children
-                if (currNodeIndex < maxNodes - 2) {
-                    // update parent so it is not a pruned leaf node
-                    dynamicNodeCache.updateBlockAt(parentLoc, {
-                        "nodes": {splitVal: currParentFull.splitVal, cellCount: 0, leftPtr: currNodeIndex, rightPtr: currNodeIndex + 1}
-                    });
-                    
-                    // fetch the left node from the full buffer and write to dynamic as pruned leaf
-                    var leftNode = readNodeFromBuffer(fullNodes, currParentFull.leftPtr * NODE_BYTE_LENGTH);
-                    dynamicNodeCache.insertNewBlockAt(currNodeIndex, leftNode.thisPtr, {
-                        "nodes": {splitVal: leftNode.splitVal, cellCount: 0, parentPtr: parentLoc, leftPtr: 0, rightPtr: 0}
-                    });
-
-                    // fetch the right node from the full buffer and write to dynamic as pruned leaf
-                    var rightNode = readNodeFromBuffer(fullNodes, currParentFull.rightPtr * NODE_BYTE_LENGTH);
-                    dynamicNodeCache.insertNewBlockAt(currNodeIndex + 1, rightNode.thisPtr, {
-                        "nodes": {splitVal: rightNode.splitVal, cellCount: 0, parentPtr: parentLoc, leftPtr: 0, rightPtr: 0}
-                    });
-                }
-                currNodeIndex += 2;
-                if (currNodeIndex >= maxNodes) break addLayer;
-            }
-        } 
-        currDepth++;
-    }
-    console.log("written up to depth of", currDepth);
-    console.log("written", currNodeIndex - 1, "nodes");
-    console.log("made dynamic tree node buffer");
-    return dynamicNodeCache;
-};
-
-
-
-// dynamic mesh data ======================================================================================
-export const createDynamicMeshCache = (blockSizes, leafBlockCount) => {
-    const cacheObj = new AssociativeCache(leafBlockCount);
-
-    console.log(blockSizes);
-    // mesh buffers
-    cacheObj.createBuffer("positions", Float32Array, blockSizes.positions);
-    cacheObj.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
-    cacheObj.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
-
-    return new ScoredCacheManager(cacheObj);
-};
-
-// run when a new data array is selected
-// creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
-// dynamic mesh buffers for the mesh geometry
-export const createMatchedDynamicMeshValueArray = (dataObj, slotNum) => {
-    const buffName = "values" + slotNum; 
-    if (!dataObj.dynamicMeshCache.getBuffers()[buffName] ) {
-        // create if not present
-        dataObj.dynamicMeshCache.createBuffer(buffName, Float32Array, dataObj.dynamicMeshCache.blockSizes.positions/3);
-    }
-
-    // make sure that the corner buffer is synchronised to the currently loaded nodes
-    dataObj.dynamicMeshCache.syncBuffer(
-        buffName, 
-        (fullPtr) => {
-            const meshBlock = dataObj.getNodeMeshBlock(fullPtr, [slotNum]);
-            return meshBlock[buffName];
+            } 
+            currDepth++;
         }
-    );
+        console.log("written up to depth of", currDepth);
+        console.log("written", currNodeIndex - 1, "nodes");
+        console.log("made dynamic tree node buffer");
+        return this.nodeCache;
+    }
+
+    // creates or modifies the dynamic corner values buffer 
+    // agnostic to samples vs poly
+    // extends the cache object used for dynamic nodes
+    createMatchedDynamicCornerValues(fullCornerValues, slotNum) {
+        if (!fullCornerValues) {
+            throw Error("Unable to generate dynamic corner values, full corner values does not exist for slot " + slotNum);
+        }
+            
+        const buffName = "corners" + slotNum; 
+        if (!this.nodeCache.getBuffers()[buffName] ) {
+            // create if not present
+            this.nodeCache.createBuffer(buffName, Float32Array, 8);
+        }
+
+        // make sure that the corner buffer is synchronised to the currently loaded nodes
+        // dataObj.dynamicNodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
+        this.nodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
+        
+        return this.nodeCache.getBuffers()[buffName];
+    };
+
+    createDynamicMeshCache (blockSizes, leafBlockCount) {
+        const cacheObj = new AssociativeCache(leafBlockCount);
     
-    return dataObj.dynamicMeshCache.getBuffers()[buffName];
-};
+        console.log(blockSizes);
+        // mesh buffers
+        cacheObj.createBuffer("positions", Float32Array, blockSizes.positions);
+        cacheObj.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
+        cacheObj.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
+        
+        this.meshCache = new ScoredCacheManager(cacheObj);
+
+        return this.meshCache;
+    }
+
+    // run when a new data array is selected
+    // creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
+    // dynamic mesh buffers for the mesh geometry
+    // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
+    createMatchedDynamicMeshValueArray (getMeshBlockFuncExt, slotNum) {
+        const buffName = "values" + slotNum; 
+        if (!this.meshCache.getBuffers()[buffName] ) {
+            // create if not present
+            this.meshCache.createBuffer(buffName, Float32Array, this.meshCache.blockSizes.positions/3);
+        }
+
+        // make sure that the corner buffer is synchronised to the currently loaded nodes
+        this.meshCache.syncBuffer(
+            buffName, 
+            (fullPtr) => {
+                const meshBlock = getMeshBlockFuncExt(fullPtr, [slotNum]);
+                return meshBlock[buffName];
+            }
+        );
+        
+        return this.meshCache.getBuffers()[buffName];
+    };
+
+
+    // updates the dynamic dataset based on camera location
+    // this handles updating the dynamic nodes and dynamic mesh
+    // getCornerValsFuncExt -> dataObj.getFullCornerValues
+    // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
+    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueSlots) {
+        if (cameraChanged) {
+            // reset the record of modifications to nodes
+            this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
+        }
+    
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
+            // get a list of all nodes in the dynamic node tree with their scores
+            const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, focusCoords, camCoords);
+    
+            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+                updateMeshCacheScores(this.meshCache, scores);
+    
+                // update the mesh blocks that are loaded in the cache
+                updateDynamicMeshCache(this.nodeCache, this.meshCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueSlots);
+            }
+    
+            scores.sort((a, b) => a.score - b.score);
+            const mergeSplitLists = createMergeSplitLists(this.fullNodes, scores, 20);
+            
+            const getCornerValsFunc = (index, slotNum) => {
+                return readCornerVals(getCornerValsFuncExt(slotNum), index)
+            };
+            // update the dynamic buffer contents
+            updateDynamicNodeCache(
+                this.nodeCache,
+                getCornerValsFunc,
+                this.fullNodes, 
+                activeValueSlots,
+                mergeSplitLists,
+                this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+            );   
+        }
+    }
+}

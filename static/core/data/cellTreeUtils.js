@@ -2,8 +2,14 @@
 
 import { mat4, vec4 } from "../gl-matrix.js";
 import { VecMath } from "../VecMath.js";
-import { ResolutionModes } from "./data.js";
 
+
+// these act as bit masks to create the full resolution mode
+export const ResolutionModes = {
+    FULL:              0b00, // resolution is fixed at the maximum 
+    DYNAMIC_NODES_BIT: 0b01, // the resolution is variable
+    DYNAMIC_CELLS_BIT: 0b10, // cell and vertex data are arranged per-leaf
+};
 
 export const NODE_BYTE_LENGTH = 5 * 4;
 

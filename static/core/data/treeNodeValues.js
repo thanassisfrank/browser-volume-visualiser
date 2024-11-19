@@ -374,30 +374,6 @@ export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
 };
 
 
-// creates or modifies the dynamic corner values buffer 
-// agnostic to samples vs poly
-// extends the cache object used for dynamic nodes
-export var createMatchedDynamicCornerValues = (dataObj, slotNum) => {
-    // use existing or create new
-    var fullCornerValues = dataObj.getFullCornerValues(slotNum);
-    
-    if (!fullCornerValues) {
-        throw Error("Unable to generate dynamic corner values, full corner values does not exist for slot " + slotNum);
-    }
-        
-    const buffName = "corners" + slotNum; 
-    if (!dataObj.dynamicNodeCache.getBuffers()[buffName] ) {
-        // create if not present
-        dataObj.dynamicNodeCache.createBuffer(buffName, Float32Array, 8);
-    }
-
-    // make sure that the corner buffer is synchronised to the currently loaded nodes
-    dataObj.dynamicNodeCache.syncBuffer(buffName, (fullPtr) => readCornerVals(fullCornerValues, fullPtr));
-    
-    return dataObj.dynamicNodeCache.getBuffers()[buffName];
-};
-
-
 // node values ========================================================================================
 // one value per node, can be written directly into the full tree
 

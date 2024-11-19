@@ -3,7 +3,7 @@
 
 import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats } from "../../../data/dataSource.js";
-import { ResolutionModes } from "../../../data/data.js";
+import { ResolutionModes } from "../../../data/cellTreeUtils.js";
 import { boxesEqual, clamp, clampBox } from "../../../utils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";

@@ -6,22 +6,16 @@ import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, Downsam
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
+import { ResolutionModes } from "./cellTreeUtils.js";
 import { getCellTreeBuffers, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes } from "./cellTree.js";
-import { createDynamicNodeCache, createDynamicMeshCache, createMatchedDynamicMeshValueArray } from "./dynamicTree.js";
-import { createNodeCornerValuesBuffer, createMatchedDynamicCornerValues, CornerValTypes } from "./treeNodeValues.js";
+import { DynamicTree } from "./dynamicTree.js";
+import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 
 export {dataManager};
-
-// these act as bit masks to create the full resolution mode
-export const ResolutionModes = {
-    FULL:              0b00, // resolution is fixed at the maximum 
-    DYNAMIC_NODES_BIT: 0b01, // the resolution is variable
-    DYNAMIC_CELLS_BIT: 0b10, // cell and vertex data are arranged per-leaf
-};
 
 
 // object in charge of creating, transforming and deleting data objects
@@ -89,7 +83,16 @@ const dataManager = {
 
     createData: async function(config, opts) {
         const id = newId(this.datas);
-        var newData = new Data(id, await this.getDataSource(config, opts));
+
+        const dataSource = await this.getDataSource(config, opts);
+
+        let resolutionMode = ResolutionModes.FULL;
+        if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
+        if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+
+        const dynamicTree = new DynamicTree(resolutionMode);
+
+        var newData = new Data(id, dataSource, undefined, dynamicTree);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
@@ -202,11 +205,9 @@ const dataManager = {
             console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
             return;
         }
-        dataObj.data.dynamicNodeCount = dynamicNodeCount;
 
-        dataObj.dynamicNodeCache = createDynamicNodeCache(dataObj, dynamicNodeCount);
-        console.log(dataObj.dynamicNodeCache);
-        dataObj.data.dynamicTreeNodes = dataObj.dynamicNodeCache.getBuffers().nodes;
+        const nodeCache = dataObj.dynamicTree.createDynamicNodeCache(dataObj.data.treeNodes, dynamicNodeCount);
+        dataObj.data.dynamicTreeNodes = nodeCache.getBuffers()["nodes"];
     },
 
     // converts the geometry buffers and generates a new buffer tracking the vertices for each leaf
@@ -241,9 +242,9 @@ const dataManager = {
             return;
         }
 
-        dataObj.dynamicMeshCache = createDynamicMeshCache(blockSizes, dynamicLeafCount);
+        const meshCache = dataObj.dynamicTree.createDynamicMeshCache(blockSizes, dynamicLeafCount);
 
-        const buffers = dataObj.dynamicMeshCache.getBuffers();
+        const buffers = meshCache.getBuffers();
         dataObj.data.dynamicPositions = buffers.positions;
         dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
         dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
@@ -284,9 +285,7 @@ class Data extends SceneObject {
     opts;
 
     // how the data will be presented to the user
-    resolutionMode = ResolutionModes.FULL;
-    
-    
+    resolutionMode = ResolutionModes.FULL;    
 
     // the actual data store of the object
     // all entries should be typedarray objects
@@ -314,16 +313,11 @@ class Data extends SceneObject {
         treeCells: null,
         fullLeafCount: 0,
 
-        dynamicNodeCount: 0,
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
 
         leafVerts: null,
     };
-
-    // objects that handle the state of the dynamic node, corner values and mesh buffers
-    dynamicNodeCache;
-    dynamicMeshCache;
 
     // the lengths of the blocks in the mesh buffers if a block mesh is being used
     meshBlockSizes;
@@ -351,7 +345,7 @@ class Data extends SceneObject {
     // includes scaling of the grid
     dataTransformMat = mat4.create();
     
-    constructor(id, dataSource) {
+    constructor(id, dataSource, tree, dynamicTree) {
         super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
 
@@ -359,8 +353,13 @@ class Data extends SceneObject {
         this.dataSource = dataSource;
         // what format of mesh this represents
         this.dataFormat = dataSource.format;
-        // what this.data represents
+        // the display name
         this.dataName = dataSource.name;
+        // unstructured tree object
+        this.tree = tree;
+        // dynamic tree object
+        this.dynamicTree = dynamicTree;
+
     }
 
     async createFromSource() {
@@ -378,6 +377,20 @@ class Data extends SceneObject {
             this.geometry = this.dataSource.geometry;
         }
     };
+
+    updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
+        // getCornerValsFuncExt -> dataObj.getFullCornerValues
+        // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
+        this.dynamicTree.update(
+            cameraChanged, 
+            focusCoords, 
+            camCoords, 
+            this.extentBox, 
+            this.getFullCornerValues.bind(this), 
+            this.getNodeMeshBlock.bind(this), 
+            activeValueSlots
+        );
+    }
 
     getAvailableDataArrays() {
         return this.dataSource.getAvailableDataArrays().map(v => {
@@ -494,7 +507,8 @@ class Data extends SceneObject {
     // creates the dynamic corner values buffer from scratch
     // matches the nodes currently loaded in dynamic tree
     createDynamicCornerValues(slotNum) {
-        this.data.values[slotNum].dynamicCornerValues = createMatchedDynamicCornerValues(this, slotNum);
+        const fullCornerValues = this.getFullCornerValues(slotNum);
+        this.data.values[slotNum].dynamicCornerValues = this.dynamicTree.createMatchedDynamicCornerValues(fullCornerValues, slotNum);
     };
 
     convertValuesToBlockMesh(slotNum) {
@@ -507,7 +521,10 @@ class Data extends SceneObject {
     };
 
     createDynamicBlockValues(slotNum) {
-        this.data.values[slotNum].dynamicData = createMatchedDynamicMeshValueArray(this, slotNum);
+        this.data.values[slotNum].dynamicData = this.dynamicTree.createMatchedDynamicMeshValueArray(
+            this.getNodeMeshBlock, 
+            slotNum
+        );
     };
 
     // returns the byte length of the values array
@@ -616,11 +633,6 @@ class Data extends SceneObject {
         this.extentBox.max = size;
         this.size = size;
     };
-
-    getDynamicNodeCount() {
-        return this.data.dynamicNodeCount;
-    };
-
 
     getValues(slotNum) {
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) return this.getDynamicValues(slotNum);
