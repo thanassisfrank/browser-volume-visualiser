@@ -28,6 +28,20 @@ class MagnitudeMap {
     }
 }
 
+class GradientMagMap {
+    constructor(name) {
+        this.inputs = [
+            {name: name, modifier: DataModifiers.DERIVATIVE_X},
+            {name: name, modifier: DataModifiers.DERIVATIVE_Y},
+            {name: name, modifier: DataModifiers.DERIVATIVE_Z},
+        ];
+        this.output = name + "GradientMag";
+    }
+    calculate(dx, dy, dz) {
+        return Math.sqrt(dx**2 + dy**2 + dz**2);
+    }
+}
+
 class MachNumberMap {
     constructor() {
         this.inputs = [
@@ -114,6 +128,7 @@ export class VectorMappingHandler {
         this.dataSource = dataSource;
         this.tree = tree;
         this.mappings = [
+            new GradientMagMap("Default"),
             new MagnitudeMap("Velocity"),
             new MachNumberMap(),
             new DivergenceMap("Velocity"),
@@ -160,9 +175,7 @@ export class VectorMappingHandler {
     }
 
     async getDataArray(desc) {
-        // debugger;
         if (DataArrayTypes.CALC != desc.arrayType) return;
-        debugger;
         
         // check if the vertex iterator was created properly
         if (!this.#vertexIterator) return;
