@@ -4,7 +4,7 @@ import {mat4} from "../gl-matrix.js";
 import { DATA_TYPES } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
-import { VectorMappingHandler } from "./vectorDataArray.js";
+import { DataModifiers, VectorMappingHandler } from "./vectorDataArray.js";
 import { createVertexIterator } from "./vertexIterator.js";
 
 
@@ -474,86 +474,3 @@ export class UnstructFromStructDataSource extends EmptyTransformDataSource {
 
 
 // tiling transformation that copies data the required number of times in the x, y and z directions
-
-
-// handles the calculations of mappings from a vector of data arrays to a single scalar
-// e.g. vector magnitude, q criterion, mach number
-export class CalcVectArraysDataSource extends EmptyTransformDataSource {
-    #mappingHandler;
-    #vertexIterator;
-
-    constructor(dataSource) {
-        super(dataSource)
-        this.format = this.dataSource.format;
-        this.#mappingHandler = new VectorMappingHandler();
-        this.#vertexIterator = createVertexIterator(dataSource);
-    }
-
-    async init() {
-        await super.init()
-        if (DataFormats.UNSTRUCTURED == this.format) {
-            this.mesh = this.dataSource.mesh;
-            this.geometry = this.dataSource.geometry;
-        }
-    }
-
-    getAvailableDataArrays() {
-        const sourceArrayDescriptors = this.dataSource.getAvailableDataArrays();
-
-        // if this doesn't have a valid vert iterator, can't access the mapped arrays
-        if (!this.#vertexIterator) return sourceArrayDescriptors;
-
-        // find the possible calculable data arrays given the source data
-        const mappingOutputNames = this.#mappingHandler.getPossibleMappings(sourceArrayDescriptors);
-        const calcArrayDescriptors = mappingOutputNames.map(v => {
-            return {name: v, arrayType: DataArrayTypes.CALC}
-        });
-
-        // return the combination of the two
-        return [
-            ...sourceArrayDescriptors,
-            ...calcArrayDescriptors
-        ];
-    }
-
-    getDataArray(desc) {
-        // debugger;
-        if (DataArrayTypes.CALC != desc.arrayType) {
-            return this.dataSource.getDataArray(desc);
-        }
-        
-        // check if the vertex iterator was created properly
-        if (!this.#vertexIterator) return;
-        
-        // check if this is a valid mapping output
-        const inputs = this.#mappingHandler.getRequiredInputs(desc.name);
-        if (!inputs) return;
-        const mapFunc = this.#mappingHandler.getMappingFunction(desc.name);
-        if (!mapFunc) return;
-        
-        // try to load all of the input arrays
-        // these are not modified with derivatives at this point
-        const inputArrays = inputs.map(v => this.dataSource.getDataArray({name: v.name}));
-        
-        // check if they could all be loaded
-        if (!inputArrays.every(a => a)) return;
-        
-        // create output array of same size as input
-        const outputArray = new Float32Array(inputArrays[0].data.length);
-        const limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-
-        for (let vert of this.#vertexIterator.iterate()) {
-            const val = mapFunc(...inputArrays.map(a => a.data[vert.index]));
-            
-            limits[0] = Math.min(limits[0], val);
-            limits[1] = Math.max(limits[1], val);
-            outputArray[vert.index] = val;
-        }
-
-        return {
-            name: desc.name,
-            data: outputArray,
-            limits
-        }
-    }
-}

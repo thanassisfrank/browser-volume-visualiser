@@ -1,7 +1,7 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, CalcVectArraysDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, CalcVectArraysDataSource, DataArrayTypes } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -14,6 +14,7 @@ import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.j
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
+import { VectorMappingHandler } from "./vectorDataArray.js";
 
 export {dataManager};
 
@@ -65,9 +66,6 @@ const dataManager = {
             dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
         }
 
-        // add a data source that will calculate additional data values
-        dataSource = new CalcVectArraysDataSource(dataSource);
-
         // convert struct -> unstruct if needed
         if (opts.forceUnstruct) {
             if (dataSource.format == DataFormats.STRUCTURED) {
@@ -88,7 +86,7 @@ const dataManager = {
 
         let tree, dynamicTree;
 
-        if (dataSource.dataFormat == DataFormats.UNSTRUCTURED) {
+        if (dataSource.format == DataFormats.UNSTRUCTURED) {
             tree = new UnstructuredTree(dataSource);
         };
         
@@ -100,7 +98,9 @@ const dataManager = {
             dynamicTree = new DynamicTree(resolutionMode);
         }
 
-        var newData = new Data(id, dataSource, tree, dynamicTree);
+        const vectMappingHandler = new VectorMappingHandler(dataSource, tree);
+
+        var newData = new Data(id, dataSource, vectMappingHandler, tree, dynamicTree);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
@@ -344,7 +344,7 @@ class Data extends SceneObject {
     // includes scaling of the grid
     dataTransformMat = mat4.create();
     
-    constructor(id, dataSource, tree, dynamicTree) {
+    constructor(id, dataSource, mappingHandler, tree, dynamicTree) {
         super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
 
@@ -354,6 +354,8 @@ class Data extends SceneObject {
         this.dataFormat = dataSource.format;
         // the display name
         this.dataName = dataSource.name;
+        // for calculation of new data arrays
+        this.mappingHandler = mappingHandler;
         // unstructured tree object
         this.tree = tree;
         // dynamic tree object
@@ -390,21 +392,41 @@ class Data extends SceneObject {
     }
 
     getAvailableDataArrays() {
-        return this.dataSource.getAvailableDataArrays().map(v => {
+        const sourceArrayDescriptors = this.dataSource.getAvailableDataArrays();
+
+        // find the possible calculable data arrays given the source data
+        const mappingOutputNames = this.mappingHandler.getPossibleMappings(sourceArrayDescriptors);
+        const calcArrayDescriptors = mappingOutputNames.map(v => {
+            return {name: v, arrayType: DataArrayTypes.CALC}
+        });
+
+        const allArrayDescriptors = [
+            ...sourceArrayDescriptors,
+            ...calcArrayDescriptors
+        ];
+
+        return allArrayDescriptors.map(v => {
             return {...v, type: DataSrcTypes.ARRAY}
         });
     };
 
     // returns the slot number that was written to
-    // if it already is loaded, return its slot number
+    // if it is already is loaded, return its slot number
     async loadDataArray(desc, binCount) {
         // check if already loaded
         let loadedIndex = this.data.values.findIndex(elem => elem.name == desc.name);
         if (loadedIndex != -1) return loadedIndex;
 
+        debugger;
         let newSlotNum;
         try {
-            this.data.values.push(await this.dataSource.getDataArray(desc));
+            if (DataArrayTypes.DATA == desc.arrayType) {
+                this.data.values.push(await this.dataSource.getDataArray(desc));
+            } else if (DataArrayTypes.CALC == desc.arrayType) {
+                this.data.values.push(await this.mappingHandler.getDataArray(desc));
+            } else {
+                throw Error("Invalid data array type");
+            }
             newSlotNum = this.data.values.length - 1;   
         } catch (e) {
             console.warn("Unable to load data array " + desc.name + ": " + e);

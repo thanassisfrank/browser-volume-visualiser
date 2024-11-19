@@ -457,7 +457,6 @@ const treeBuilders = {
 
     // builds a tree by splitting nodes at their centre
     nodeMedian: function (tree, maxLeafCells, maxDepth) {
-        // console.log(points);
         var cellsTree = false;
         if (tree.cellConnectivity) cellsTree = true;
         // checks whether the cell of the given id is lte, gt the split val in checked dimension or both
@@ -1022,6 +1021,11 @@ export class UnstructuredTree {
             cells: cellsBuffer,
             nodeCount: totalNodeCount,
         };
+    }
+
+    // search and sampling on the tree
+    getContainingLeafNode(pos) {
+
     }
 
     // print the tree node info

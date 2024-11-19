@@ -364,6 +364,10 @@ function* iterateLeafCells(dataObj, leafNode, slotNum) {
     return;
 };
 
+export const getContainingLeafNode = (tree, ) => {
+
+}
+
 
 // searches through all points specified in the leaf node to find the closest to the sample point
 export const getClosestVertexInLeaf = (dataObj, slotNum, queryPoint, leafNode) => {
