@@ -7,7 +7,7 @@ import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructData
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
-import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes, UnstructuredTree } from "./cellTree.js";
+import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
 import { DynamicTree } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.js";
 
@@ -87,7 +87,7 @@ const dataManager = {
         let tree, dynamicTree;
 
         if (dataSource.format == DataFormats.UNSTRUCTURED) {
-            tree = new UnstructuredTree(dataSource);
+            tree = new UnstructuredTree(dataSource, opts.kdTreeType, opts.maxTreeDepth, opts.leafCells);
         };
         
         let resolutionMode = ResolutionModes.FULL;
@@ -107,47 +107,16 @@ const dataManager = {
 
         // create tree if we have unstructured data
         if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
-            // check if the tree as-specified already exists on the server
-            var found = false;
-            for (let preGenTree of config.availableUnstructuredTrees ?? []) {
-                if (found) break;
-                if (KDTreeSplitTypes[preGenTree.kdTreeType] != opts.kdTreeType) continue;
-                if (preGenTree.maxTreeDepth != opts.maxTreeDepth) continue;
-                if (preGenTree.leafCells != opts.leafCells) continue;
-                
-                // this matches what has been requested, load these files
-                found = true;
-                console.log("loading pre generated tree...");
-                try {
-                    const nodesResp = await fetch(preGenTree.nodesPath);
-                    if (!nodesResp.ok) throw Error("Nodes file not found");
-                    newData.data.treeNodes = await nodesResp.arrayBuffer();
-                                            
-                    const cellsResp = await fetch(preGenTree.cellsPath);
-                    if (!cellsResp.ok) throw Error("Cells file not found");
-                    const cellsBuff = await cellsResp.arrayBuffer();
-                    newData.data.treeCells = new Uint32Array(cellsBuff);
-                } catch (e) {
-                    console.warn("unable to load pre-genenerated tree");
-                    found = false;
-                }
-                // update the tree object
-                tree.setBuffers(newData.data.treeNodes, newData.data.treeCells);
-                tree.nodeCount = preGenTree.treeNodeCount;
-
-                newData.data.treeNodeCount = preGenTree.treeNodeCount;
-
-                // store in the data object for future reference
-                // used when generating corner values
-                newData.preGeneratedInfo = preGenTree;
-            }
-            if (!found) {
+            const loadedTreeInfo = await loadUnstructuredTree(tree, config.availableUnstructuredTrees);
+            if (loadedTree) {
+                newData.preGeneratedInfo = loadedTreeInfo;
+            } else {
                 console.log("generating tree");
-                const treeBuffers = buildUnstructuredTree(tree, opts.leafCells, opts.maxTreeDepth, opts.kdTreeType);
-                newData.data.treeNodes = treeBuffers.nodes;
-                newData.data.treeCells = treeBuffers.cells;
-                newData.data.treeNodeCount = treeBuffers.nodeCount;
+                const treeBuffers = buildUnstructuredTree(tree);
             }
+            newData.data.treeNodes = tree.nodes;
+            newData.data.treeCells = tree.cells;
+            newData.data.treeNodeCount = tree.nodeCount;
 
             newData.setCornerValType(opts.cornerValType);
         }

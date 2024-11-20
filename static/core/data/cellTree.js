@@ -830,26 +830,26 @@ const treeBuilders = {
 // returns two buffers:
 //   the nodes of the tree (leaves store indices into second buffer)
 //   the lists of cells present in each leaf node 
-export var buildUnstructuredTree = (tree, maxLeafCells, maxDepth, treeSplitType) => {
+export function buildUnstructuredTree(tree) {
     const t0 = performance.now();
 
     switch (treeSplitType) {
         case KDTreeSplitTypes.VERT_MEDIAN:
             console.log("vert median tree");
-            treeBuilders.vertexMedian(tree, maxLeafCells, maxDepth);
+            treeBuilders.vertexMedian(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.VERT_AVERAGE:
             console.log("vert average tree");
-            treeBuilders.vertexAverage(tree, maxLeafCells, maxDepth);
+            treeBuilders.vertexAverage(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.NODE_MEDIAN:
-            treeBuilders.nodeMedian(tree, maxLeafCells, maxDepth);
+            treeBuilders.nodeMedian(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.SURF_AREA_HEUR:
-            treeBuilders.SAH(tree, maxLeafCells, maxDepth);
+            treeBuilders.SAH(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.VOLUME_HEUR:
-            treeBuilders.VH(tree, maxLeafCells, maxDepth);
+            treeBuilders.VH(tree, tree.maxCells, tree.maxDepth);
             break;
         default:
             throw Error("Tree split type not recognised");
@@ -862,7 +862,40 @@ export var buildUnstructuredTree = (tree, maxLeafCells, maxDepth, treeSplitType)
     const t2 = performance.now();
     console.log("tree serialise took:", (t2 - t1)/1000, "s");
     return treeBuffers;
-};
+}
+
+
+// returns the tree config if it was loaded, undefined otherwise
+export async function loadUnstructuredTree(tree, availableTrees = []) {
+    debugger;
+    // check if the tree as-specified already exists on the server
+    for (let preGenTree of availableTrees) {
+        if (KDTreeSplitTypes[preGenTree.kdTreeType] != tree.splitType) continue;
+        if (preGenTree.maxTreeDepth != tree.maxDepth) continue;
+        if (preGenTree.leafCells != tree.maxCells) continue;
+        
+        // this matches what has been requested, load these files
+        console.log("loading pre generated tree...");
+        try {
+            const nodesResp = await fetch(preGenTree.nodesPath);
+            if (!nodesResp.ok) throw Error("Nodes file not found");
+            const treeNodes = await nodesResp.arrayBuffer();
+                                    
+            const cellsResp = await fetch(preGenTree.cellsPath);
+            if (!cellsResp.ok) throw Error("Cells file not found");
+            const cellsBuff = await cellsResp.arrayBuffer();
+            const treeCells = new Uint32Array(cellsBuff);
+
+            // update the tree object
+            tree.setBuffers(treeNodes, treeCells, preGenTree.treeNodeCount);
+            return preGenTree;
+        } catch (e) {
+            console.warn("unable to load pre-genenerated tree");
+        }        
+    }
+
+    return;
+}
 
 
 export class UnstructuredTree {
@@ -876,7 +909,7 @@ export class UnstructuredTree {
 
     dimensions = 3;
 
-    constructor(dataSource) {
+    constructor(dataSource, splitType, maxDepth, maxCells) {
         // mesh buffers
         this.points = dataSource.mesh?.positions;
         this.cellConnectivity = dataSource.mesh?.cellConnectivity;
@@ -885,11 +918,17 @@ export class UnstructuredTree {
 
         // bounding box
         this.extentBox = dataSource.extentBox;
+
+        // tree generation/load parameters
+        this.splitType = splitType;
+        this.maxDepth = maxDepth;
+        this.maxCells = maxCells;
     }
 
-    setBuffers(nodesBuff, cellsBuff) {
+    setBuffers(nodesBuff, cellsBuff, nodeCount) {
         this.nodes = nodesBuff;
         this.cells = cellsBuff;
+        this.nodeCount = nodeCount;
     }
 
     checkCellPosition(id, checkDimension, splitVal) {
@@ -1024,8 +1063,7 @@ export class UnstructuredTree {
             (node) => { }
         );
 
-        this.nodeCount = totalNodeCount;
-        this.setBuffers(nodesBuffer, cellsBuffer);
+        this.setBuffers(nodesBuffer, cellsBuffer, totalNodeCount);
 
         return {
             nodes: nodesBuffer,
