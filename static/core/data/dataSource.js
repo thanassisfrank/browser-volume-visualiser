@@ -5,6 +5,7 @@ import { DATA_TYPES } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "./dataConstants.js";
+import { buildUnstructuredTree, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
@@ -279,6 +280,12 @@ class EmptyTransformDataSource extends EmptyDataSource {
         this.name = this.dataSource.name;
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
+
+        if (DataFormats.UNSTRUCTURED == this.dataSource.format) {
+            // get geometry data of UNSTRUCTURED meshes
+            this.mesh = this.dataSource.mesh;
+            this.geometry = this.dataSource.geometry;
+        }
     }
 
     getAvailableDataArrays() {
@@ -286,7 +293,7 @@ class EmptyTransformDataSource extends EmptyDataSource {
     }
 
     async getDataArray(name) {
-        return this.dataSource.getDataArray(name);
+        return await this.dataSource.getDataArray(name);
     }
 }
 
@@ -304,8 +311,6 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
         this.format = DataFormats.STRUCTURED;
         this.name = dataSource.name;
     }
-
-    init() {}
 
     async getDataArray(name) {
         const fullData = await this.dataSource.getDataArray(name);
@@ -454,6 +459,63 @@ export class UnstructFromStructDataSource extends EmptyTransformDataSource {
                 }
             }
         }
+    }
+}
+
+// creates an unstructured tree for its data source
+export class TreeUnstructDataSource extends EmptyTransformDataSource {
+    format = DataFormats.UNSTRUCTURED;
+    tree;
+    loadedTreeInfo;
+
+
+    constructor(dataSource, availableTrees, splitType, maxDepth, maxCells) {
+        super(dataSource);
+        if (DataFormats.UNSTRUCTURED != dataSource.format) throw TypeError("Source data is not UNSTRUCTURED");
+        this.availableTrees = availableTrees;
+        
+        this.splitType = splitType;
+        this.maxDepth = maxDepth;
+        this.maxCells = maxCells;
+
+    }
+    
+    async init() {
+        await super.init();
+
+        // create the tree object
+        this.tree = new UnstructuredTree(this.dataSource, this.splitType, this.maxDepth, this.maxCells);
+
+        // load or build the tree
+        const loadedTreeInfo = await loadUnstructuredTree(this.tree, this.availableTrees);
+        if (!loadedTreeInfo) {
+            console.log("generating tree");
+            const treeBuffers = buildUnstructuredTree(this.tree);
+        }
+    }
+}
+
+
+// converts an unstructured data source into a block unstructured one based on its tree
+export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
+    format = DataFormats.BLOCK_UNSTRUCTURED;
+    mesh = {
+        positions: null,
+        cellOffsets: null,
+        cellConnectivity: null,
+        cellTypes: null,
+    };
+
+    leafVerts;
+    fullToLeafIndexMap;
+
+    constructor(dataSource) {
+        if (dataSource.format != DataFormats.UNSTRUCTURED) throw TypeError("Source data is not UNSTRUCTURED");
+    }
+
+    async init() {
+        await super.init();
+        
     }
 }
 

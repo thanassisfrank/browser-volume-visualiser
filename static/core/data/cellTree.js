@@ -833,13 +833,11 @@ const treeBuilders = {
 export function buildUnstructuredTree(tree) {
     const t0 = performance.now();
 
-    switch (treeSplitType) {
+    switch (tree.splitType) {
         case KDTreeSplitTypes.VERT_MEDIAN:
-            console.log("vert median tree");
             treeBuilders.vertexMedian(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.VERT_AVERAGE:
-            console.log("vert average tree");
             treeBuilders.vertexAverage(tree, tree.maxCells, tree.maxDepth);
             break;
         case KDTreeSplitTypes.NODE_MEDIAN:
@@ -867,7 +865,6 @@ export function buildUnstructuredTree(tree) {
 
 // returns the tree config if it was loaded, undefined otherwise
 export async function loadUnstructuredTree(tree, availableTrees = []) {
-    debugger;
     // check if the tree as-specified already exists on the server
     for (let preGenTree of availableTrees) {
         if (KDTreeSplitTypes[preGenTree.kdTreeType] != tree.splitType) continue;

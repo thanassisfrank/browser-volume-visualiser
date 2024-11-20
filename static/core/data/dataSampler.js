@@ -52,7 +52,7 @@ class UnstructuredDataSampler {
     #tree;
     constructor(dataSource, tree) {
         this.#dataSource = dataSource;
-        this.#tree = tree;
+        this.#tree = dataSource.tree;
     }
 
     // gets the val at a general position in the dataset
@@ -73,11 +73,11 @@ class UnstructuredDataSampler {
 
 export class DataSourceSampler {
     #sampler;
-    constructor(dataSource, tree = null) {
+    constructor(dataSource) {
         if (DataFormats.STRUCTURED == dataSource.format) {
             this.#sampler = new StructuredDataSampler(dataSource);
         } else if (DataFormats.UNSTRUCTURED == dataSource.format) {
-            this.#sampler = new UnstructuredDataSampler(dataSource, tree);
+            this.#sampler = new UnstructuredDataSampler(dataSource);
         }
     }
     #samplePlain(vert, dataArray) {

@@ -118,9 +118,8 @@ export class VectorMappingHandler {
     #vertexIterator;
     #dataSampler;
 
-    constructor(dataSource, tree) {
+    constructor(dataSource) {
         this.dataSource = dataSource;
-        this.tree = tree;
         this.mappings = [
             new GradientMagMap("Default"),
             new MagnitudeMap("Velocity"),
@@ -130,7 +129,7 @@ export class VectorMappingHandler {
             new QCriterionMap()
         ];
         this.#vertexIterator = createVertexIterator(dataSource);
-        this.#dataSampler = new DataSourceSampler(dataSource, tree);
+        this.#dataSampler = new DataSourceSampler(dataSource);
     }
     // returns an array of output array names that can be calculated from the inputs
     getPossibleMappings() {

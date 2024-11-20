@@ -2,7 +2,7 @@
 // handles the storing of the data object, normals etc
 
 import { DataFormats, DataArrayTypes, ResolutionModes } from "./dataConstants.js";
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -74,6 +74,18 @@ const dataManager = {
                 console.warn("Could not convert dataset to unstructured, dataFormat is not Dataformats.STRUCTURED");
             }
         }
+
+        if (dataSource.format == DataFormats.UNSTRUCTURED) {
+            // if unstructured here, create a tree
+            dataSource = new TreeUnstructDataSource(
+                dataSource, 
+                config.availableUnstructuredTrees,
+                opts.kdTreeType, 
+                opts.maxTreeDepth, 
+                opts.leafCells
+            );
+        }
+
         await dataSource.init();
         console.log(dataSource);
         return dataSource;
@@ -84,11 +96,7 @@ const dataManager = {
 
         const dataSource = await this.getDataSource(config, opts);
 
-        let tree, dynamicTree;
-
-        if (dataSource.format == DataFormats.UNSTRUCTURED) {
-            tree = new UnstructuredTree(dataSource, opts.kdTreeType, opts.maxTreeDepth, opts.leafCells);
-        };
+        let dynamicTree;
         
         let resolutionMode = ResolutionModes.FULL;
         if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
@@ -98,25 +106,16 @@ const dataManager = {
             dynamicTree = new DynamicTree(resolutionMode);
         }
 
-        const vectMappingHandler = new VectorMappingHandler(dataSource, tree);
-
-        var newData = new Data(id, dataSource, vectMappingHandler, tree, dynamicTree);
+        const newData = new Data(id, dataSource, dynamicTree);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
 
         // create tree if we have unstructured data
-        if (newData.dataFormat == DataFormats.UNSTRUCTURED) {
-            const loadedTreeInfo = await loadUnstructuredTree(tree, config.availableUnstructuredTrees);
-            if (loadedTree) {
-                newData.preGeneratedInfo = loadedTreeInfo;
-            } else {
-                console.log("generating tree");
-                const treeBuffers = buildUnstructuredTree(tree);
-            }
-            newData.data.treeNodes = tree.nodes;
-            newData.data.treeCells = tree.cells;
-            newData.data.treeNodeCount = tree.nodeCount;
+        if (dataSource.tree) {
+            newData.data.treeNodes = dataSource.tree.nodes;
+            newData.data.treeCells = dataSource.tree.cells;
+            newData.data.treeNodeCount = dataSource.tree.nodeCount;
 
             newData.setCornerValType(opts.cornerValType);
         }
@@ -293,9 +292,6 @@ class Data extends SceneObject {
     // any additional mesh geometry that is part of the dataset but not part of the mesh
     geometry = {};
 
-    // information about the data files that have been pre-generated and are available to be laoded from the server
-    preGeneratedInfo = {};
-
     cornerValType = null;
 
     valueCounts = [];
@@ -313,7 +309,7 @@ class Data extends SceneObject {
     // includes scaling of the grid
     dataTransformMat = mat4.create();
     
-    constructor(id, dataSource, mappingHandler, tree, dynamicTree) {
+    constructor(id, dataSource, dynamicTree) {
         super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
 
@@ -324,9 +320,7 @@ class Data extends SceneObject {
         // the display name
         this.dataName = dataSource.name;
         // for calculation of new data arrays
-        this.mappingHandler = mappingHandler;
-        // unstructured tree object
-        this.tree = tree;
+        this.mappingHandler = new VectorMappingHandler(dataSource);;
         // dynamic tree object
         this.dynamicTree = dynamicTree;
 
@@ -425,7 +419,6 @@ class Data extends SceneObject {
             console.log("created dynamic corners");
         }
 
-
         return newSlotNum;
     };
 
@@ -469,7 +462,7 @@ class Data extends SceneObject {
         // first, check if the corner values are available on the server
         var found = false;
 
-        for (let preGenCornerVal of this.preGeneratedInfo.cornerValues ?? []) {
+        for (let preGenCornerVal of this.dataSource?.loadedTreeInfo?.cornerValues ?? []) {
             if (found) break;
             if (preGenCornerVal.dataArray != this.data.values[slotNum].name) continue;
             if (CornerValTypes[preGenCornerVal.type] != this.cornerValType) continue;
