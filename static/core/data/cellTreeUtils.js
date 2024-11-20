@@ -137,6 +137,13 @@ export const traverseNodeBufferDepthBox = (buff, fullBox, alwaysFunc, leafFunc, 
 };
 
 
+export const sampleDataArrayWithCell = (dataArray, cell) => {
+    const cellVals = cell.pointsIndices.map(i => dataArray[i]);
+
+    return VecMath.dot(cellVals, cell.factors);
+};
+
+
 // returns the box covering this node from the direct parent node's box
 // takes parent box, if its left and split dimension
 export var getNodeBox = (parentBox, childType, splitDimension, splitVal) => {

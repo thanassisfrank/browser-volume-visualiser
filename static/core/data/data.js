@@ -82,7 +82,8 @@ const dataManager = {
                 config.availableUnstructuredTrees,
                 opts.kdTreeType, 
                 opts.maxTreeDepth, 
-                opts.leafCells
+                opts.leafCells,
+                opts.cornerValType
             );
         }
 
@@ -110,25 +111,6 @@ const dataManager = {
         newData.opts = opts;
         console.log(config);
         console.log(opts);
-
-        // create tree if we have unstructured data
-        if (dataSource.tree) {
-            newData.data.treeNodes = dataSource.tree.nodes;
-            newData.data.treeCells = dataSource.tree.cells;
-            newData.data.treeNodeCount = dataSource.tree.nodeCount;
-
-            newData.setCornerValType(opts.cornerValType);
-        }
-
-        // create dynamic tree (nodes)
-        if (opts.dynamicNodes) {
-            try {
-                this.createDynamicTree(newData, opts.dynamicNodeCount);
-                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-            } catch (e) {
-                console.error("Could not create dataset with dynamic node set:", e)
-            }
-        }
 
         // create dynamic mesh information
         if (opts.dynamicMesh) {
@@ -159,6 +141,16 @@ const dataManager = {
             }
         }
 
+        // create dynamic tree (nodes)
+        if (opts.dynamicNodes) {
+            try {
+                this.createDynamicTree(newData, opts.dynamicNodeCount);
+                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
+            } catch (e) {
+                console.error("Could not create dataset with dynamic node set:", e)
+            }
+        }
+
         this.datas[id] = newData;
         return newData;
     },
@@ -173,7 +165,10 @@ const dataManager = {
             return;
         }
 
-        const nodeCache = dataObj.dynamicTree.createDynamicNodeCache(dataObj.data.treeNodes, dynamicNodeCount);
+        const nodeCache = dataObj.dynamicTree.createDynamicNodeCache(
+            dataObj.data.blockTreeNodes ?? dataObj.data.treeNodes, 
+            dynamicNodeCount
+        );
         dataObj.data.dynamicTreeNodes = nodeCache.getBuffers()["nodes"];
     },
 
@@ -188,9 +183,10 @@ const dataManager = {
         }
 
         // over write the plain mesh buffers
-        dataObj.data.positions = leafMeshBuffers.positions;
-        dataObj.data.cellOffsets = leafMeshBuffers.cellOffsets;
-        dataObj.data.cellConnectivity = leafMeshBuffers.cellConnectivity;
+        dataObj.data.blockTreeNodes = leafMeshBuffers.blockTreeNodes;
+        dataObj.data.blockPositions = leafMeshBuffers.positions;
+        dataObj.data.blockCellOffsets = leafMeshBuffers.cellOffsets;
+        dataObj.data.blockCellConnectivity = leafMeshBuffers.cellConnectivity;
 
         dataObj.data.leafVerts = leafMeshBuffers.leafVerts;
         dataObj.fullToLeafIndexMap = leafMeshBuffers.indexMap;
@@ -268,6 +264,10 @@ class Data extends SceneObject {
         cellConnectivity: null,
         cellTypes: null,
 
+        blockPositions: null,
+        blockCellOffsets: null,
+        blockCellConnectivity: null,
+
         dynamicPositions: null,
         dynamicCellOffsets: null,
         dynamicCellConnectivity: null,
@@ -282,6 +282,8 @@ class Data extends SceneObject {
 
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
+
+        blockTreeNodes: null,
 
         leafVerts: null,
     };
@@ -337,6 +339,14 @@ class Data extends SceneObject {
             this.data.cellTypes = this.dataSource.mesh.cellTypes;
 
             this.geometry = this.dataSource.geometry;
+        }
+
+        if (this.dataSource.tree) {
+            this.data.treeNodes = dataSource.tree.nodes;
+            this.data.treeCells = dataSource.tree.cells;
+            this.data.treeNodeCount = dataSource.tree.nodeCount;
+
+            this.cornerValType = dataSource.cornerValType;
         }
     }
 
@@ -410,7 +420,8 @@ class Data extends SceneObject {
 
         // if this is dynamic, load corner values too
         if (ResolutionModes.FULL != this.resolutionMode) {
-            await this.createCornerValues(newSlotNum);
+            this.data.values[newSlotNum].cornerValues = await this.dataSource.getCornerValues(desc);//, this.data.values[newSlotNum].data);
+            // await this.createCornerValues(newSlotNum);
             console.log("created corner vals");
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
@@ -429,13 +440,13 @@ class Data extends SceneObject {
         const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
         // slice the mesh geometry buffers
         let buffers = {
-            positions: this.data.positions.slice(
+            positions: this.data.blockPositions.slice(
                 leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions
             ),
-            cellOffsets: this.data.cellOffsets.slice(
+            cellOffsets: this.data.blockCellOffsets.slice(
                 leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets
             ),
-            cellConnectivity: this.data.cellConnectivity.slice(
+            cellConnectivity: this.data.blockCellConnectivity.slice(
                 leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity
             )
         };
@@ -455,33 +466,6 @@ class Data extends SceneObject {
 
     setCornerValType(type) {
         this.cornerValType = type;
-    };
-
-    // creates the full corner values buffer for the full tree, using the data in the specified value slot
-    async createCornerValues(slotNum) {
-        // first, check if the corner values are available on the server
-        var found = false;
-
-        for (let preGenCornerVal of this.dataSource?.loadedTreeInfo?.cornerValues ?? []) {
-            if (found) break;
-            if (preGenCornerVal.dataArray != this.data.values[slotNum].name) continue;
-            if (CornerValTypes[preGenCornerVal.type] != this.cornerValType) continue;
-            // this matches what has been requested, load these files
-            console.log("loading pre generated corner vals");
-            found = true;
-            try {
-                const resp = await fetch(preGenCornerVal.path);
-                if (!resp.ok) throw Error("File not found");
-                const buff = await resp.arrayBuffer();
-                this.data.values[slotNum].cornerValues = new Float32Array(buff);
-            } catch (e) {
-                console.warn("unable to load pre-generated corner val, generating instead...");
-                found = false;
-            }
-        }
-        if (found) return;
-        console.log("generating corner vals");
-        this.data.values[slotNum].cornerValues = createNodeCornerValuesBuffer(this, slotNum, this.cornerValType);
     };
 
     // creates the dynamic corner values buffer from scratch

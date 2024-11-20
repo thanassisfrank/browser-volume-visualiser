@@ -4,7 +4,7 @@
 import { smoothStep } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
-import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox, getClosestVertexInLeaf } from "./cellTreeUtils.js";
+import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox, getClosestVertexInLeaf, sampleDataArrayWithCell } from "./cellTreeUtils.js";
 
 // Node values are 1 value per node and are written into the tree nodes buffer
 // Corner values are 8 values per node and are written into their own buffer
@@ -46,7 +46,7 @@ export const CornerValTypes = {
 // 6 -> 110  max max min
 // 7 -> 111  max max max
 
-const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
+const getLeafSampleCornerVals = (dataBuff, tree, leafNode, leafBox) => {
     var cornerVals = new Float32Array(8);
 
     const points = [
@@ -60,7 +60,21 @@ const getLeafSampleCornerVals = (dataObj, slotNum, leafNode, leafBox) => {
         leafBox.max,
     ];
     for (let i = 0; i < points.length; i++) {
-        cornerVals[i] = sampleLeaf(dataObj, slotNum, leafNode, points[i]) ?? getClosestVertexInLeaf(dataObj, slotNum, points[i], leafNode).value;
+        const cell = tree.getContainingCell(points[i], leafNode);
+        if (cell) {
+            cornerVals[i] = sampleDataArrayWithCell(dataBuff, cell);
+            continue;
+        }
+
+        // use the nearest vertex instead
+        const vert = tree.getClosestVertexInLeaf(points[i], leafNode);
+        if (vert.index !== undefined) {
+            cornerVals[i] = dataBuff[vert.index];
+            continue;
+        }
+
+        // leaf likely has no cells, default to 0
+        cornerVals[i] = 0;
     }
     
     return cornerVals;
@@ -87,10 +101,10 @@ const getSampleCornerValsFromChildren = (cornerValBuffer, splitDim, leftPtr, rig
 // creates an f32 buffer containg 8 values per node
 // these are the values at the vertices where the split plane intersects the node bounding box edges
 // there are not values for true leaves as these don't have a split plane
-var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
+var createNodeSampleCornerValuesBuffer = (dataBuff, tree) => {
     var start = performance.now();
-    var treeNodes = dataObj.data.treeNodes;
-    var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
+    var treeNodes = tree.nodes;
+    var nodeCount = tree.nodeCount;
     var nodeCornerVals = new Float32Array(8 * nodeCount);
 
     // figure out the box of the current node
@@ -98,7 +112,7 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
         // console.log(currNode);
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
-            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
+            return {min: [...tree.extentBox.min], max: [...tree.extentBox.max], uses: 0};
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
@@ -115,7 +129,10 @@ var createNodeSampleCornerValuesBuffer = (dataObj, slotNum) => {
         var currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // get the corner values for this box and write to buffer
-            writeCornerVals(nodeCornerVals, currNode.thisPtr, getLeafSampleCornerVals(dataObj, slotNum, currNode, getThisBox(currNode)));
+            const thisBox = getThisBox(currNode);
+            const thisCornerVals = getLeafSampleCornerVals(dataBuff, tree, currNode, thisBox);
+            
+            writeCornerVals(nodeCornerVals, currNode.thisPtr, thisCornerVals);
 
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -279,18 +296,18 @@ const getPolyCornerValsFromChildren = (cornerValBuffer, currBox, splitDim, currN
 };
 
 
-var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
+var createNodePolyCornerValuesBuffer = (dataArray, tree) => {
     const sampleCount = 16;
     var start = performance.now();
-    var treeNodes = dataObj.data.treeNodes;
-    var nodeCount = Math.floor(dataObj.data.treeNodes.byteLength/NODE_BYTE_LENGTH);
+    var treeNodes = tree.nodes;
+    var nodeCount = tree.nodeCount;
     var nodeCornerVals = new Float32Array(8 * nodeCount);
 
     // figure out the box of the current node
     var getThisBox = (currNode) => {
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
-            return {min: [0, 0, 0], max: dataObj.getDataSize(), uses: 0};
+            return {min: [...tree.extentBox.min], max: [...tree.extentBox.max], uses: 0};
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
@@ -307,7 +324,9 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
         var currNode = nodes.pop();
         if (currNode.rightPtr == 0) {
             // get the corner values for this box and write to buffer
-            writeCornerVals(nodeCornerVals, currNode.thisPtr, getLeafPolyCornerVals(dataObj, slotNum, currNode, getThisBox(currNode), sampleCount));
+            const thisBox = getThisBox(currNode);
+            const thisCornerVals = getLeafPolyCornerVals(dataArray, tree, currNode, thisBox, sampleCount);
+            writeCornerVals(nodeCornerVals, currNode.thisPtr, thisCornerVals);
 
             if (currNode.childType == ChildTypes.RIGHT) currDepth--;       
         } else {
@@ -362,12 +381,37 @@ var createNodePolyCornerValuesBuffer = (dataObj, slotNum) => {
 };
 
 
+// loads the described corner values buffer if present on the server
+export async function loadCornerValues (dataSrcDesc, treeInfo, cornerValType) {
+    if (!treeInfo) return;
+
+    for (let preGenCornerVal of treeInfo?.cornerValues ?? []) {
+        if (preGenCornerVal.dataArray != dataSrcDesc.name) continue;
+        if (CornerValTypes[preGenCornerVal.type] != cornerValType) continue;
+        // this matches what has been requested, load these files
+        console.log("loading pre generated corner vals...");
+        try {
+            const resp = await fetch(preGenCornerVal.path);
+            if (!resp.ok) throw Error("File not found");
+            const buff = await resp.arrayBuffer();
+            return new Float32Array(buff);
+        } catch (e) {
+            console.warn("unable to load pre-generated corner val");
+        }
+    }
+
+    return;
+}
+
+
 // generates the corner values for the full node tree of the data set
-export const createNodeCornerValuesBuffer = (dataObj, slotNum, type) => {
+export const createNodeCornerValuesBuffer = (dataArray, tree, type) => {
     if (CornerValTypes.SAMPLE == type) {
-        return createNodeSampleCornerValuesBuffer(dataObj, slotNum);
+        return createNodeSampleCornerValuesBuffer(dataArray.data, tree);
     } else if (CornerValTypes.POLYNOMIAL == type) {
-        return createNodePolyCornerValuesBuffer(dataObj, slotNum);
+        // TODO: update to support dataArray, tree instead of dataObj, slotNum
+        // return createNodePolyCornerValuesBuffer(dataArray, tree);
+        throw Error("Currently unsupported corner value type");
     } else {
         throw Error("Unrecognised corner value type");
     }

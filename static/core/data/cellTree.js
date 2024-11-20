@@ -1,6 +1,8 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
 import { downloadObject, toCSVStr } from "../utils.js";
+import { VecMath } from "../VecMath.js";
+
 import { 
     NODE_BYTE_LENGTH, 
     writeNodeToBuffer, 
@@ -43,6 +45,7 @@ export const logLeafMeshBufferSizes = (dataObj) => {
 
 
 export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=false) => {
+    var blockTreeNodes = dataObj.data.treeNodes.slice();
     var leafPositions = new Float32Array(blockSizes.positions * leafCount);
     var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
     var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
@@ -59,7 +62,7 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
         if (0 != currNode.rightPtr) continue;
 
         // This is needed to be able to properly address a leaf node's cells
-        writeNodeToBuffer(dataObj.data.treeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
+        writeNodeToBuffer(blockTreeNodes, i * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
 
         // this is a leaf node, generate the mesh segments for it
         let currOffsetIndex = 0;
@@ -106,6 +109,7 @@ export const getLeafMeshBuffers = (dataObj, blockSizes, leafCount, analysis=fals
     } 
 
     return {
+        nodes: blockTreeNodes,
         positions: leafPositions,
         cellOffsets: leafCellOffsets,
         cellConnectivity: leafCellConnectivity,
@@ -1120,6 +1124,56 @@ export class UnstructuredTree {
 
         // no containing cell found
         return;
+    }
+
+    getClosestVertexInLeaf(pos, leafNode) {
+        let bestPoint = [0, 0, 0];
+        let bestDist = Number.POSITIVE_INFINITY;
+        let dist, index;
+
+        const checked = new Set();
+
+        let cell = {
+            points : [
+                [0, 0, 0], 
+                [0, 0, 0], 
+                [0, 0, 0], 
+                [0, 0, 0],
+            ],
+            pointsIndices: [0, 0, 0, 0],
+            factors: [0, 0, 0, 0]
+        };
+        for (let i = 0; i < leafNode.cellCount; i++) {
+            var cellsPtr = leafNode.leftPtr; // go to where cells are stored
+            var cellID = this.cells[cellsPtr + i];
+            var pointsOffset = this.cellOffsets[cellID];
+            // read all the point positions
+            for (let j = 0; j < 4; j++) {
+                // get the coords of the point as an array 3
+                const thisPointIndex = this.cellConnectivity[pointsOffset + j];
+                cell.pointsIndices[j] = thisPointIndex;
+
+                if (checked.has(thisPointIndex)) continue;
+                checked.add(thisPointIndex);
+
+                cell.points[j][0] = this.points[3 * thisPointIndex + 0];
+                cell.points[j][1] = this.points[3 * thisPointIndex + 1];
+                cell.points[j][2] = this.points[3 * thisPointIndex + 2];
+
+                
+                dist = VecMath.magnitude(VecMath.vecMinus(cell.points[j], pos));
+                if (dist < bestDist) {
+                    bestPoint = [...cell.points[j]];
+                    bestDist = dist;
+                    index = thisPointIndex;
+                }
+            }
+        }
+
+        return {
+            pos: bestPoint,
+            index
+        };
     }
 
     // print the tree node info

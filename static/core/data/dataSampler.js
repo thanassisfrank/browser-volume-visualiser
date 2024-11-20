@@ -1,7 +1,7 @@
 // dataSampler.js
 import { VecMath } from "../VecMath.js";
 import { DataFormats, DataModifiers } from "./dataConstants.js";
-import { pointInAABB } from "./cellTreeUtils.js";
+import { pointInAABB, sampleDataArrayWithCell } from "./cellTreeUtils.js";
 
 const EPSILON_DER = 0.001;
 
@@ -65,9 +65,7 @@ class UnstructuredDataSampler {
         const cell = this.#tree.getContainingCell(pos, leafNode);
         if (!cell) return;
 
-        const cellVals = cell.pointsIndices.map(i => dataArray[i]);
-
-        return VecMath.dot(cellVals, cell.factors);
+        return sampleDataArrayWithCell(dataArray, cell);
     }
 }
 

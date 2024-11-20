@@ -6,6 +6,7 @@ import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "./dataConstants.js";
 import { buildUnstructuredTree, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
+import { createNodeCornerValuesBuffer, loadCornerValues } from "./treeNodeValues.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
@@ -292,8 +293,8 @@ class EmptyTransformDataSource extends EmptyDataSource {
         return this.dataSource.getAvailableDataArrays();
     }
 
-    async getDataArray(name) {
-        return await this.dataSource.getDataArray(name);
+    async getDataArray(desc) {
+        return await this.dataSource.getDataArray(desc);
     }
 }
 
@@ -312,8 +313,8 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
         this.name = dataSource.name;
     }
 
-    async getDataArray(name) {
-        const fullData = await this.dataSource.getDataArray(name);
+    async getDataArray(desc) {
+        const fullData = await this.dataSource.getDataArray(desc);
         if (!fullData) return;
         
         const downSampData = new Float32Array(this.size[0]*this.size[1]*this.size[2]);
@@ -469,7 +470,7 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
     loadedTreeInfo;
 
 
-    constructor(dataSource, availableTrees, splitType, maxDepth, maxCells) {
+    constructor(dataSource, availableTrees, splitType, maxDepth, maxCells, cornerValType) {
         super(dataSource);
         if (DataFormats.UNSTRUCTURED != dataSource.format) throw TypeError("Source data is not UNSTRUCTURED");
         this.availableTrees = availableTrees;
@@ -478,6 +479,7 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
         this.maxDepth = maxDepth;
         this.maxCells = maxCells;
 
+        this.cornerValType = cornerValType;
     }
     
     async init() {
@@ -487,11 +489,30 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
         this.tree = new UnstructuredTree(this.dataSource, this.splitType, this.maxDepth, this.maxCells);
 
         // load or build the tree
-        const loadedTreeInfo = await loadUnstructuredTree(this.tree, this.availableTrees);
-        if (!loadedTreeInfo) {
+        this.loadedTreeInfo = await loadUnstructuredTree(this.tree, this.availableTrees);
+        if (!this.loadedTreeInfo) {
             console.log("generating tree");
             const treeBuffers = buildUnstructuredTree(this.tree);
         }
+    }
+
+    async getCornerValues(desc, inDataArray = undefined) {
+        // try load corner values first
+        const loadedVals = await loadCornerValues(desc, this.loadedTreeInfo, this.cornerValType);
+
+        if (loadedVals) return loadedVals;
+
+        // need to generate them
+        let dataArray = inDataArray;
+        if (!dataArray) {
+            // need to get data array from this data source
+            dataArray = await this.dataSource.getDataArray(desc);
+        }
+        if (!dataArray) return;
+
+        // managed to get data array
+        console.log("generating corner vals");
+        return createNodeCornerValuesBuffer(dataArray, this.tree, this.cornerValType);
     }
 }
 
