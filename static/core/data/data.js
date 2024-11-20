@@ -540,7 +540,7 @@ class Data extends SceneObject {
 
     createDynamicBlockValues(slotNum) {
         this.data.values[slotNum].dynamicData = this.dynamicTree.createMatchedDynamicMeshValueArray(
-            this.getNodeMeshBlock, 
+            this.getNodeMeshBlock.bind(this), 
             slotNum
         );
     };
