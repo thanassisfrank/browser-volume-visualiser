@@ -3,7 +3,7 @@ import { VecMath } from "../VecMath.js";
 import { DataFormats, DataModifiers } from "./dataConstants.js";
 import { pointInAABB, sampleDataArrayWithCell } from "./cellTreeUtils.js";
 
-const EPSILON_DER = 0.001;
+const EPSILON_DER = 2**-6;
 
 class StructuredDataSampler {
     #dataSource;
@@ -61,6 +61,7 @@ class UnstructuredDataSampler {
         // find the containing leaf node
         const leafNode = this.#tree.getContainingLeafNode(pos);
         if (!leafNode) return;
+        
         // find the containing cell
         const cell = this.#tree.getContainingCell(pos, leafNode);
         if (!cell) return;

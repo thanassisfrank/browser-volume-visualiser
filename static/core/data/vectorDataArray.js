@@ -196,6 +196,7 @@ export class VectorMappingHandler {
         const limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
 
         for (let vert of this.#vertexIterator.iterate()) {
+            // debugger;
             const inputVals = [];
             for (let input of reqInputs) {
                 const array = inputArrays[input.name].data;

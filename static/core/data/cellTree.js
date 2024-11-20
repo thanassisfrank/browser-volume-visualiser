@@ -1096,6 +1096,7 @@ export class UnstructuredTree {
             } else {
                 node = readNodeFromBuffer(this.nodes, node.rightPtr * NODE_BYTE_LENGTH);
             }
+            depth++;
         }
 
         return node;
@@ -1125,11 +1126,12 @@ export class UnstructuredTree {
                 cell.points[j][1] = this.points[3 * thisPointIndex + 1];
                 cell.points[j][2] = this.points[3 * thisPointIndex + 2];
             }
-
+            
             if(!pointInTetBounds(pos, cell)) continue;
-            const tetFactors = pointInTetDet(pos, cell);
-            if (tetFactors.every(v => v == 0)) continue;
-            cell.factors = tetFactors;
+
+            cell.factors = pointInTetDet(pos, cell);
+            if (cell.factors.every(v => v == 0)) continue;
+
             return cell;
         }
 

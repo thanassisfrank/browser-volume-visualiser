@@ -12,6 +12,8 @@ export const ChildTypes = {
     RIGHT: 1,
 }
 
+const EPSILON_CELL_TEST = 0.005;
+
 
 // struct KDTreeNode {
 //     splitVal : f32,
@@ -252,9 +254,19 @@ export const pointInTetDet = (queryPoint, cell) => {
         1, p[3][0], p[3][1], p[3][2],      
     ));
 
-    if (lambda1 <= 0 && lambda2 <= 0 && lambda3 <= 0 && lambda4 <= 0) {
+    if (
+        lambda1 <= EPSILON_CELL_TEST && 
+        lambda2 <= EPSILON_CELL_TEST && 
+        lambda3 <= EPSILON_CELL_TEST && 
+        lambda4 <= EPSILON_CELL_TEST
+    ) {
         return [-lambda1/vol, -lambda2/vol, -lambda3/vol, -lambda4/vol];
-    } else if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0 && lambda4 >= 0) {
+    } else if (
+        lambda1 >= -EPSILON_CELL_TEST && 
+        lambda2 >= -EPSILON_CELL_TEST && 
+        lambda3 >= -EPSILON_CELL_TEST && 
+        lambda4 >= -EPSILON_CELL_TEST
+    ) {
         return [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol];
     } else {
         // not in this cell
