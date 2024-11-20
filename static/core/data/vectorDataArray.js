@@ -1,17 +1,11 @@
 // vectorDataArray.js
 // provides information about mappings from a vector of 
 
+import { DataArrayTypes, DataModifiers } from "./dataConstants.js";
+
 import { VecMath } from "../VecMath.js";
 import { DataSourceSampler } from "./dataSampler.js";
-import { DataArrayTypes } from "./dataSource.js";
 import { createVertexIterator } from "./vertexIterator.js";
-
-export const DataModifiers = {
-    NONE: "none",
-    DERIVATIVE_X: "derivative x",
-    DERIVATIVE_Y: "derivative y",
-    DERIVATIVE_Z: "derivative z",
-};
 
 
 class MagnitudeMap {

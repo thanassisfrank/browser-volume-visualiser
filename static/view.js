@@ -4,8 +4,8 @@
 import { get, show, hide, newId, hexStringToRGBArray } from "./core/utils.js";
 import { VecMath } from "./core/VecMath.js";
 
+import { ResolutionModes } from "./core/data/dataConstants.js";
 import { dataManager } from "./core/data/data.js";
-import { ResolutionModes } from "./core/data/cellTreeUtils.js";
 
 import { DataSrcSelectElem } from "./viewElems.js";
 

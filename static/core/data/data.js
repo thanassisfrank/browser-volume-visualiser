@@ -1,12 +1,12 @@
 // data.js
 // handles the storing of the data object, normals etc
 
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DataFormats, DownsampleStructDataSource, UnstructFromStructDataSource, DataArrayTypes } from "./dataSource.js";
+import { DataFormats, DataArrayTypes, ResolutionModes } from "./dataConstants.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
-import { ResolutionModes } from "./cellTreeUtils.js";
 import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, KDTreeSplitTypes, UnstructuredTree } from "./cellTree.js";
 import { DynamicTree } from "./dynamicTree.js";
 import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.js";

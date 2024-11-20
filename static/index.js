@@ -2,7 +2,7 @@
 // the main js file for index.html
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas} from "./core/utils.js";
 
-import { DataFormats } from "./core/data/dataSource.js";
+import { DataFormats } from "./core/data/dataConstants.js";
 import { dataManager } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
 import { viewManager } from "./view.js";

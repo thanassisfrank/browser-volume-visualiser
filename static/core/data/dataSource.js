@@ -4,25 +4,10 @@ import {mat4} from "../gl-matrix.js";
 import { DATA_TYPES } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
-import { DataModifiers, VectorMappingHandler } from "./vectorDataArray.js";
-import { createVertexIterator } from "./vertexIterator.js";
+import { DataFormats, DataArrayTypes } from "./dataConstants.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
-
-
-export const DataFormats = {
-    EMPTY:           "empty",  // undefined/empty
-    STRUCTURED:      "structured",  // data points are arranged as a contiguous texture
-    STRUCTURED_GRID: "structured grid",  // data is arranged as a contiguous 3d texture, each point has a sumplemental position
-    UNSTRUCTURED:    "unstructured",  // data points have a value and position, supplemental connectivity information
-};
-
-export const DataArrayTypes = {
-    NONE:           "none",
-    DATA:           "data",
-    CALC:           "calculated"
-};
 
 
 // base data sources

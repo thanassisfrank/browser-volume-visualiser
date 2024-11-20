@@ -1,11 +1,12 @@
 // dynamicTree.js
 // contains functions to create, update and manage dynamic tree nodes and dynamic unstructured mesh data
 
+import { ResolutionModes } from "./dataConstants.js";
+
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
-import { ResolutionModes } from "./cellTreeUtils.js";
 
 
 const NodeStates = {

@@ -1,7 +1,7 @@
 // viewElems.js
 // defines a set of classes that handle setup of the various possible elements within a view
 
-import { DataArrayTypes } from "./core/data/dataSource.js";
+import { DataArrayTypes } from "./core/data/dataConstants.js";
 import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 
 export class DataSrcSelectElem {
