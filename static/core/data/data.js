@@ -2,17 +2,14 @@
 // handles the storing of the data object, normals etc
 
 import { DataFormats, DataArrayTypes, ResolutionModes } from "./dataConstants.js";
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource, BlockFromUnstructDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
-import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
 import { DynamicTree } from "./dynamicTree.js";
-import { createNodeCornerValuesBuffer, CornerValTypes } from "./treeNodeValues.js";
 
 import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
-import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { VectorMappingHandler } from "./vectorDataArray.js";
 
@@ -87,6 +84,10 @@ const dataManager = {
             );
         }
 
+        if (opts.dynamicMesh) {
+            dataSource = new BlockFromUnstructDataSource(dataSource);
+        }
+
         await dataSource.init();
         console.log(dataSource);
         return dataSource;
@@ -115,25 +116,7 @@ const dataManager = {
         // create dynamic mesh information
         if (opts.dynamicMesh) {
             try {
-                newData.data.totalCellCount = newData.data?.cellOffsets?.length;
-                let maxCells = 0; // max number of cells found within the leaf nodes
-                let maxVerts = 0; // max number of unique verts found in the leaf nodes
-                let leafCount = 0;
-                processLeafMeshDataInfo(newData, l => {
-                    maxCells = Math.max(maxCells, l.cells);
-                    maxVerts = Math.max(maxVerts, l.verts);
-                    leafCount++;
-                });
-
-                console.log(maxCells, maxVerts);
-                newData.data.fullLeafCount = leafCount;
-                newData.meshBlockSizes = {
-                    positions: 3 * maxVerts,
-                    cellOffsets: maxCells,
-                    cellConnectivity: 4 * maxCells,
-                };
-                this.createLeafMeshData(newData, newData.meshBlockSizes, leafCount);
-                this.createDynamicMeshCache(newData, newData.meshBlockSizes, leafCount, opts.dynamicMeshBlockCount);
+                this.createDynamicMeshCache(newData, dataSource.meshBlockSizes, dataSource.leafCount, opts.dynamicMeshBlockCount);
                 newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
@@ -158,7 +141,7 @@ const dataManager = {
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
-        if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic tree, dataset not of dataFormat UNSTRUCTURED";
+        if (!dataObj.dataSource.tree) throw "Could not create dynamic tree, dataset does not have a tree";
         
         if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
             console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
@@ -166,38 +149,18 @@ const dataManager = {
         }
 
         const nodeCache = dataObj.dynamicTree.createDynamicNodeCache(
-            dataObj.data.blockTreeNodes ?? dataObj.data.treeNodes, 
+            dataObj.data.treeNodes, 
             dynamicNodeCount
         );
         dataObj.data.dynamicTreeNodes = nodeCache.getBuffers()["nodes"];
     },
 
-    // converts the geometry buffers and generates a new buffer tracking the vertices for each leaf
-    createLeafMeshData: function(dataObj, blockSizes, leafCount) {
-        // create the new buffers
-        // const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
-        const leafMeshBuffers = getLeafMeshBuffers(dataObj, blockSizes, leafCount);
-        for (let name of ["positions", "cellOffsets", "cellConnectivity"]) {
-            console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
-            console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
-        }
-
-        // over write the plain mesh buffers
-        dataObj.data.blockTreeNodes = leafMeshBuffers.blockTreeNodes;
-        dataObj.data.blockPositions = leafMeshBuffers.positions;
-        dataObj.data.blockCellOffsets = leafMeshBuffers.cellOffsets;
-        dataObj.data.blockCellConnectivity = leafMeshBuffers.cellConnectivity;
-
-        dataObj.data.leafVerts = leafMeshBuffers.leafVerts;
-        dataObj.fullToLeafIndexMap = leafMeshBuffers.indexMap;
-
-        console.log(leafMeshBuffers);
-    },
-
     // create dynamic mesh buffers that contain a varying subset of the leaves cell data
     // fixed number of data slots
     createDynamicMeshCache: function(dataObj, blockSizes, fullLeafCount, dynamicLeafCount) {
-        if (dataObj.dataFormat != DataFormats.UNSTRUCTURED) throw "Could not create dynamic cells, dataset not of dataFormat UNSTRUCTURED";
+        if (dataObj.dataFormat != DataFormats.BLOCK_UNSTRUCTURED) {
+            throw new TypeError("Could not create dynamic cells, dataset not of dataFormat BLOCK_UNSTRUCTURED");
+        }
         
         // the total number of leaves of a binary tree of node count n is n/2
         if (dynamicLeafCount >= fullLeafCount) {
@@ -264,10 +227,6 @@ class Data extends SceneObject {
         cellConnectivity: null,
         cellTypes: null,
 
-        blockPositions: null,
-        blockCellOffsets: null,
-        blockCellConnectivity: null,
-
         dynamicPositions: null,
         dynamicCellOffsets: null,
         dynamicCellConnectivity: null,
@@ -283,34 +242,16 @@ class Data extends SceneObject {
         dynamicTreeNodes: null,
         dynamicTreeCells: null,
 
-        blockTreeNodes: null,
-
         leafVerts: null,
     };
 
-    // the lengths of the blocks in the mesh buffers if a block mesh is being used
-    meshBlockSizes;
-
-    // any additional mesh geometry that is part of the dataset but not part of the mesh
-    geometry = {};
-
-    cornerValType = null;
-
     valueCounts = [];
-
-    // supplemental attributes
-    // the dimensions in data space
-    size = [0, 0, 0];
-    // axis aligned (data space) maximum extent
-    extentBox = {
-        min: [0, 0, 0],
-        max: [0, 0, 0]
-    };
 
     // matrix that captures data space -> object space
     // includes scaling of the grid
     dataTransformMat = mat4.create();
     
+    // source must be initialised first
     constructor(id, dataSource, dynamicTree) {
         super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
@@ -327,27 +268,49 @@ class Data extends SceneObject {
         this.dynamicTree = dynamicTree;
 
 
-        // source must be initialised first
+        // the dimensions in data space
         this.size = this.dataSource.size;
+        // axis aligned (data space) maximum extent
         this.extentBox = this.dataSource.extentBox;
 
-        if (this.dataFormat == DataFormats.UNSTRUCTURED) {
+        if (this.dataFormat == DataFormats.UNSTRUCTURED || this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             // get the mesh buffers
             this.data.positions = this.dataSource.mesh.positions;
             this.data.cellOffsets = this.dataSource.mesh.cellOffsets;
             this.data.cellConnectivity = this.dataSource.mesh.cellConnectivity;
             this.data.cellTypes = this.dataSource.mesh.cellTypes;
-
+            // any additional mesh geometry that is part of the dataset but not part of the mesh
             this.geometry = this.dataSource.geometry;
         }
 
+        
         if (this.dataSource.tree) {
             this.data.treeNodes = dataSource.tree.nodes;
             this.data.treeCells = dataSource.tree.cells;
             this.data.treeNodeCount = dataSource.tree.nodeCount;
-
+            
             this.cornerValType = dataSource.cornerValType;
         }
+
+        if (this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
+            // the lengths of the blocks in the mesh buffers if a block mesh is being used
+            this.meshBlockSizes = this.dataSource.meshBlockSizes
+
+            // set the tree nodes to be the version for the block mesh
+            this.data.treeNodes = this.dataSource.blockNodes;
+        }
+    }
+
+    getNodeBlock (nodeIndex, valueSlots) {
+        let nodeBlock = this.dataSource.getNodeMeshBlock(nodeIndex);
+        // slice the needed value buffers
+        for (const slotNum of valueSlots) {
+            const values = this.getFullValues(slotNum);
+            if (!values) continue;
+            nodeBlock.buffers["values" + slotNum] = values.slice(...nodeBlock.valueSliceRange);
+        }
+
+        return nodeBlock.buffers
     }
 
     updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
@@ -359,7 +322,7 @@ class Data extends SceneObject {
             camCoords, 
             this.extentBox, 
             this.getFullCornerValues.bind(this), 
-            this.getNodeMeshBlock.bind(this), 
+            this.getNodeBlock.bind(this), 
             activeValueSlots
         );
     }
@@ -401,7 +364,8 @@ class Data extends SceneObject {
             }
             newSlotNum = this.data.values.length - 1;   
         } catch (e) {
-            console.warn("Unable to load data array " + desc.name + ": " + e);
+            console.warn("Unable to load data array " + desc.name);
+            console.warn(e);
             return -1;
         }
         // get the histogram if required
@@ -411,18 +375,11 @@ class Data extends SceneObject {
 
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             // if the data is in the normal mesh format, reformat to block mesh
-            this.convertValuesToBlockMesh(newSlotNum);
-            console.log("converted values");
+            // this.convertValuesToBlockMesh(newSlotNum);
+            // console.log("converted values");
             // create new entry in the dynamic mesh cache object
             this.createDynamicBlockValues(newSlotNum);
             console.log("created dynamic values");
-        }
-
-        // if this is dynamic, load corner values too
-        if (ResolutionModes.FULL != this.resolutionMode) {
-            this.data.values[newSlotNum].cornerValues = await this.dataSource.getCornerValues(desc);//, this.data.values[newSlotNum].data);
-            // await this.createCornerValues(newSlotNum);
-            console.log("created corner vals");
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
         if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
@@ -431,37 +388,6 @@ class Data extends SceneObject {
         }
 
         return newSlotNum;
-    };
-
-    // gets the data describing the mesh geometry and values for the mesh of this node
-    // if this node is not a leaf, returns undefined
-    getNodeMeshBlock(nodeIndex, valueSlots) {
-        if (!this.fullToLeafIndexMap.has(nodeIndex)) return;
-        const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
-        // slice the mesh geometry buffers
-        let buffers = {
-            positions: this.data.blockPositions.slice(
-                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions
-            ),
-            cellOffsets: this.data.blockCellOffsets.slice(
-                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets
-            ),
-            cellConnectivity: this.data.blockCellConnectivity.slice(
-                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity
-            )
-        };
-
-        // slice the needed value buffers
-        for (const slotNum of valueSlots) {
-            const values = this.getFullValues(slotNum);
-            if (!values) continue;
-            buffers["values" + slotNum] = values.slice(
-                leafIndex * this.meshBlockSizes.positions / 3, (leafIndex + 1) * this.meshBlockSizes.positions / 3
-            );
-        }
-
-        // return the buffers together
-        return buffers;
     };
 
     setCornerValType(type) {
@@ -475,18 +401,9 @@ class Data extends SceneObject {
         this.data.values[slotNum].dynamicCornerValues = this.dynamicTree.createMatchedDynamicCornerValues(fullCornerValues, slotNum);
     };
 
-    convertValuesToBlockMesh(slotNum) {
-        // create new buffer to re-write values into
-        // if vert count < block length, value of vert 0 will be written
-        const blockVals = new Float32Array(this.data.leafVerts.length);
-        this.data.leafVerts.forEach((e, i) => blockVals[i] = this.getFullValues(slotNum)[e]);
-
-        this.data.values[slotNum].data = blockVals;
-    };
-
     createDynamicBlockValues(slotNum) {
         this.data.values[slotNum].dynamicData = this.dynamicTree.createMatchedDynamicMeshValueArray(
-            this.getNodeMeshBlock.bind(this), 
+            this.getNodeBlock.bind(this), 
             slotNum
         );
     };
@@ -502,36 +419,18 @@ class Data extends SceneObject {
 
     // returns the positions of the boundary points
     getBoundaryPoints() {
-        if (this.dataFormat == DataFormats.STRUCTURED) {
-            var size = this.getDataSize();
-            // extent is size -1
-            var e = [size[0] - 1, size[1] - 1, size[2] - 1];
-            var points = new Float32Array([
-                0, 0, 0, // 0
-                e[0], 0, 0, // 1
-                0, e[1], 0, // 2
-                e[0], e[1], 0, // 3
-                0, 0, e[2], // 4
-                e[0], 0, e[2], // 5
-                0, e[1], e[2], // 6
-                e[0], e[1], e[2] // 7
-            ]);
-        } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
-            var a = this.extentBox.min;
-            var b = this.extentBox.max;
-            var points = new Float32Array([
-                a[0], a[1], a[2], // 0
-                b[0], a[1], a[2], // 1
-                a[0], b[1], a[2], // 2
-                b[0], b[1], a[2], // 3
-                a[0], a[1], b[2], // 4
-                b[0], a[1], b[2], // 5
-                a[0], b[1], b[2], // 6
-                b[0], b[1], b[2] // 7
-            ]);
-        } else {
-            var points = new Float32Array(24);
-        }
+        var a = this.extentBox.min;
+        var b = this.extentBox.max;
+        var points = new Float32Array([
+            a[0], a[1], a[2], // 0
+            b[0], a[1], a[2], // 1
+            a[0], b[1], a[2], // 2
+            b[0], b[1], a[2], // 3
+            a[0], a[1], b[2], // 4
+            b[0], a[1], b[2], // 5
+            a[0], b[1], b[2], // 6
+            b[0], b[1], b[2] // 7
+        ]);
 
         var transformedPoint = [0, 0, 0, 0];
         for (let i = 0; i < points.length; i += 3) {
@@ -584,11 +483,9 @@ class Data extends SceneObject {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return this.getDataSize().join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
-            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                return this.data.totalCellCount.toLocaleString() + "u";
-            } else {
-                return this.data.cellOffsets.length.toLocaleString() + "u";
-            }
+            return this.data.cellOffsets.length.toLocaleString() + "u";
+        } else if (this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
+            return this.dataSource.totalCellCount.toLocaleString() + "u";
         }
         return "";
     };

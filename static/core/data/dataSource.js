@@ -5,8 +5,9 @@ import { DATA_TYPES } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "./dataConstants.js";
-import { buildUnstructuredTree, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
+import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
 import { createNodeCornerValuesBuffer, loadCornerValues } from "./treeNodeValues.js";
+import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
@@ -282,7 +283,7 @@ class EmptyTransformDataSource extends EmptyDataSource {
         this.size = this.dataSource.size;
         this.extentBox = this.dataSource.extentBox;
 
-        if (DataFormats.UNSTRUCTURED == this.dataSource.format) {
+        if (DataFormats.UNSTRUCTURED == this.dataSource.format || DataFormats.BLOCK_UNSTRUCTURED == this.dataSource.format) {
             // get geometry data of UNSTRUCTURED meshes
             this.mesh = this.dataSource.mesh;
             this.geometry = this.dataSource.geometry;
@@ -471,8 +472,8 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
 
 
     constructor(dataSource, availableTrees, splitType, maxDepth, maxCells, cornerValType) {
-        super(dataSource);
         if (DataFormats.UNSTRUCTURED != dataSource.format) throw TypeError("Source data is not UNSTRUCTURED");
+        super(dataSource);
         this.availableTrees = availableTrees;
         
         this.splitType = splitType;
@@ -496,23 +497,24 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
         }
     }
 
-    async getCornerValues(desc, inDataArray = undefined) {
-        // try load corner values first
-        const loadedVals = await loadCornerValues(desc, this.loadedTreeInfo, this.cornerValType);
-
-        if (loadedVals) return loadedVals;
-
-        // need to generate them
-        let dataArray = inDataArray;
-        if (!dataArray) {
-            // need to get data array from this data source
-            dataArray = await this.dataSource.getDataArray(desc);
-        }
+    // returns the vertex and node corner data
+    async getDataArray(desc) {
+        // get the vertex data from the data source
+        let dataArray = await this.dataSource.getDataArray(desc);
         if (!dataArray) return;
 
-        // managed to get data array
-        console.log("generating corner vals");
-        return createNodeCornerValuesBuffer(dataArray, this.tree, this.cornerValType);
+        // try load corner values first
+        let cornerValues = await loadCornerValues(desc, this.loadedTreeInfo, this.cornerValType);
+
+        if (!cornerValues) {
+            console.log("generating corner vals");
+            cornerValues = createNodeCornerValuesBuffer(dataArray, this.tree, this.cornerValType);
+        }
+
+        return {
+            ...dataArray,
+            cornerValues
+        };
     }
 }
 
@@ -520,23 +522,109 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
 // converts an unstructured data source into a block unstructured one based on its tree
 export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
     format = DataFormats.BLOCK_UNSTRUCTURED;
-    mesh = {
-        positions: null,
-        cellOffsets: null,
-        cellConnectivity: null,
-        cellTypes: null,
-    };
 
     leafVerts;
     fullToLeafIndexMap;
 
+    totalCellCount;
+    leafCount;
+
+    meshBlockSizes;
+
+    // special version of the nodes buffer with modified cells ptrs
+    blockNodes;
+
     constructor(dataSource) {
         if (dataSource.format != DataFormats.UNSTRUCTURED) throw TypeError("Source data is not UNSTRUCTURED");
+        super(dataSource);
+
+        this.cornerValType = this.dataSource.cornerValType;
+    }
+
+    #calcMeshBlockSizes() {
+        let maxCells = 0; // max number of cells found within the leaf nodes
+        let maxVerts = 0; // max number of unique verts found in the leaf nodes
+        let leafCount = 0;
+        processLeafMeshDataInfo(this.dataSource.mesh, this.tree, l => {
+            maxCells = Math.max(maxCells, l.cells);
+            maxVerts = Math.max(maxVerts, l.verts);
+            leafCount++;
+        });
+
+        console.log(maxCells, maxVerts);
+        this.leafCount = leafCount;
+        this.meshBlockSizes = {
+            values: maxVerts,
+            positions: 3 * maxVerts,
+            cellOffsets: maxCells,
+            cellConnectivity: 4 * maxCells,
+        };
     }
 
     async init() {
         await super.init();
+        this.tree = this.dataSource.tree;
+        if (!this.tree) throw TypeError("Source data needs to expose a tree");
+
+        this.totalCellCount = this.dataSource.mesh.cellOffsets.length;
         
+        this.#calcMeshBlockSizes();
+
+        // create the new buffers
+        // const leafMeshBuffers = getLeafMeshBuffersAnalyse(dataObj, blockSizes, leafCount);
+        const leafMeshBuffers = getLeafMeshBuffers(this.dataSource.mesh, this.tree, this.meshBlockSizes, this.leafCount);
+
+        // over write the plain mesh buffers
+        this.mesh.positions = leafMeshBuffers.positions;
+        this.mesh.cellOffsets = leafMeshBuffers.cellOffsets;
+        this.mesh.cellConnectivity = leafMeshBuffers.cellConnectivity;
+
+        this.leafVerts = leafMeshBuffers.leafVerts;
+        this.fullToLeafIndexMap = leafMeshBuffers.indexMap;
+
+        this.blockNodes = leafMeshBuffers.nodes;
+
+        console.log(leafMeshBuffers);
+    }
+
+    // for now, only return the section of the mesh, data is handled in data obj
+    getNodeMeshBlock(nodeIndex) {
+        if (!this.fullToLeafIndexMap.has(nodeIndex)) return;
+        const leafIndex = this.fullToLeafIndexMap.get(nodeIndex);
+        // slice the mesh geometry buffers
+        let buffers = {
+            positions: this.mesh.positions.slice(
+                leafIndex * this.meshBlockSizes.positions, (leafIndex + 1) * this.meshBlockSizes.positions
+            ),
+            cellOffsets: this.mesh.cellOffsets.slice(
+                leafIndex * this.meshBlockSizes.cellOffsets, (leafIndex + 1) * this.meshBlockSizes.cellOffsets
+            ),
+            cellConnectivity: this.mesh.cellConnectivity.slice(
+                leafIndex * this.meshBlockSizes.cellConnectivity, (leafIndex + 1) * this.meshBlockSizes.cellConnectivity
+            )
+        };
+
+        // return the buffers together
+        return {
+            buffers,
+            valueSliceRange: [
+                leafIndex * this.meshBlockSizes.values, 
+                (leafIndex + 1) * this.meshBlockSizes.values
+            ]
+        };
+    }
+
+    async getDataArray(desc) {
+        const dataArray = await this.dataSource.getDataArray(desc);
+        if (!dataArray) return;
+        // create new buffer to re-write values into
+        // if vert count < block length, value of vert 0 will be written in empty space
+        const blockVals = new Float32Array(this.leafVerts.length);
+        this.leafVerts.forEach((e, i) => blockVals[i] = dataArray.data[e]);
+
+        dataArray.data = blockVals;
+
+        return dataArray;
     }
 }
 

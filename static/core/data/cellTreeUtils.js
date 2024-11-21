@@ -473,9 +473,9 @@ export const getRandVertInLeafNode = (dataObj, slotNum, leafNode) => {
 
 // interate through all of the leaves in the data objects tree nodes buffer
 // perform callback with the information of each
-export const processLeafMeshDataInfo = (dataObj, callback) => {
-    const treeNodes = dataObj.data.treeNodes;
-    if (!dataObj.data.treeNodes) throw TypeError("Data object does not contain a node buffer");
+export const processLeafMeshDataInfo = (mesh, tree, callback) => {
+    const treeNodes = tree.nodes;
+    if (!treeNodes) throw TypeError("Data object does not contain a node buffer");
     // iterate through all leaves
     var rootNode = readNodeFromBuffer(treeNodes, 0);
     rootNode.depth = 0;
@@ -489,12 +489,12 @@ export const processLeafMeshDataInfo = (dataObj, callback) => {
             var cellsPtr = currNode.leftPtr; // go to where cells are stored
             for (let i = 0; i < currNode.cellCount; i++) {
                 // go through and check all the contained cells
-                var cellID = dataObj.data.treeCells[cellsPtr + i];
+                var cellID = tree.cells[cellsPtr + i];
                 // figure out if cell is inside using barycentric coords
-                var pointsOffset = dataObj.data.cellOffsets[cellID];
+                var pointsOffset = mesh.cellOffsets[cellID];
                 // read all the point positions and check each
                 for (let j = 0; j < 4; j++) {
-                    var thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                    var thisPointIndex = mesh.cellConnectivity[pointsOffset + j];
                     if (uniqueVerts.has(thisPointIndex)) continue;
                     uniqueVerts.add(thisPointIndex);
                 }  

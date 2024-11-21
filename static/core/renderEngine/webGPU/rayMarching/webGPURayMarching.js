@@ -409,7 +409,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         passData.dMatInv = dataObj.getdMatInv();
         passData.cornerValType = dataObj.cornerValType;
 
-        passData.usesBlockMesh = dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT;
+        passData.usesBlockMesh = dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED;
         passData.blockSizes = {
             positions: dataObj.meshBlockSizes?.positions ?? 0,
             cellOffsets: dataObj.meshBlockSizes?.cellOffsets ?? 0,
@@ -525,7 +525,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     this.createDataMeshRenderables = function(dataObj, dataRenderable) {
         if (dataObj.dataFormat == DataFormats.STRUCTURED) {
             var faceRenderMode = RenderableRenderModes.DATA_RAY_VOLUME;
-        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
+        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED || dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             var faceRenderMode = RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME;
         } else {
             return;
@@ -613,7 +613,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             var dataRenderable = await this.createStructuredDataRenderable(dataObj);
             // create and add the mesh renderables
             dataObj.renderables.push(...this.createDataMeshRenderables(dataObj, dataRenderable));
-        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED) {
+        } else if (dataObj.dataFormat == DataFormats.UNSTRUCTURED || dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             var dataRenderable = await this.createUnstructuredDataRenderable(dataObj);
         } else {
             throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
