@@ -571,8 +571,8 @@ export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
         this.#calcMeshBlockSizes();
 
         // create the new buffers
-        // const leafMeshBuffers = getLeafMeshBuffersAnalyse(dataObj, blockSizes, leafCount);
         const leafMeshBuffers = getLeafMeshBuffers(this.dataSource.mesh, this.tree, this.meshBlockSizes, this.leafCount);
+        // const leafMeshBuffers = getLeafMeshBuffersAnalyse(this.dataSource.mesh, this.tree, this.meshBlockSizes, this.leafCount);
 
         // over write the plain mesh buffers
         this.mesh.positions = leafMeshBuffers.positions;

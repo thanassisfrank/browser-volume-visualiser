@@ -121,7 +121,7 @@ export const getLeafMeshBuffers = (mesh, tree, blockSizes, leafCount) => {
 
 // transforms the mesh buffers to block mesh and outputs some analysis of the result
 // traverses the tree depth first and works out the node boxes
-export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
+export const getLeafMeshBuffersAnalyse = (mesh, tree, blockSizes, leafCount) => {
     let vertDupes = [new Set()];
     let cellDupes = [new Set()];
     const updateDuplicateCount = (dupeCounts, vertID) => {
@@ -147,9 +147,12 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
         interiorVerts: []
     };
 
-    var leafPositions = new Float32Array(blockSizes.positions * leafCount);
-    var leafCellOffsets = new Float32Array(blockSizes.cellOffsets * leafCount);
-    var leafCellConnectivity = new Float32Array(blockSizes.cellConnectivity * leafCount);
+    const blockTreeNodes = tree.nodes.slice();
+    const leafMesh = {
+        positions: new Float32Array(blockSizes.positions * leafCount),
+        cellOffsets: new Float32Array(blockSizes.cellOffsets * leafCount),
+        cellConnectivity: new Float32Array(blockSizes.cellConnectivity * leafCount),
+    };
 
     var leafVerts = new Uint32Array(blockSizes.positions/3 * leafCount);
 
@@ -157,10 +160,9 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
 
     let currLeafIndex = 0;
 
-    traverseNodeBufferDepthBox(dataObj.data.treeNodes, dataObj.extentBox, ()=>{}, (currNode, currBox, currDepth) => {
+    traverseNodeBufferDepthBox(blockTreeNodes, tree.extentBox, ()=>{}, (currNode, currBox, currDepth) => {
         // This is needed to be able to properly address a leaf node's cells
-        writeNodeToBuffer(dataObj.data.treeNodes, currNode.thisPtr * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
-
+        writeNodeToBuffer(blockTreeNodes, currNode.thisPtr * NODE_BYTE_LENGTH, null, null, null, currLeafIndex, null);
         // this is a leaf node, generate the mesh segments for it
         let currOffsetIndex = 0;
         let currConnectivityIndex = 0;
@@ -174,14 +176,14 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
         // iterate through all cells in this leaf node
         for (let i = 0; i < currNode.cellCount; i++) {
             // go through and check all the contained cells
-            var cellID = dataObj.data.treeCells[cellsPtr + i];
-            var pointsOffset = dataObj.data.cellOffsets[cellID];
+            var cellID = tree.cells[cellsPtr + i];
+            var pointsOffset = mesh.cellOffsets[cellID];
             // add a new entry into cell offsets (4 more than last as all tets)
-            leafCellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
+            leafMesh.cellOffsets[currLeafIndex * blockSizes.cellOffsets + currOffsetIndex++] = currConnectivityIndex;
 
             // iterate through the cell vertices
             for (let j = 0; j < 4; j++) {
-                let thisPointIndex = dataObj.data.cellConnectivity[pointsOffset + j];
+                let thisPointIndex = mesh.cellConnectivity[pointsOffset + j];
                 let thisPointBlockIndex;
                 // check if the offset points to a vert already pulled in
                 if (uniqueVerts.has(thisPointIndex)) {
@@ -194,13 +196,13 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
                     leafVerts[currLeafIndex * blockSizes.positions/3 + currVertIndex] = thisPointIndex;
                     // pull in vert into next free vert slot
                     const pos = [
-                        dataObj.data.positions[3 * thisPointIndex + 0],
-                        dataObj.data.positions[3 * thisPointIndex + 1],
-                        dataObj.data.positions[3 * thisPointIndex + 2],
+                        mesh.positions[3 * thisPointIndex + 0],
+                        mesh.positions[3 * thisPointIndex + 1],
+                        mesh.positions[3 * thisPointIndex + 2],
                     ];
-                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 0] = pos[0];
-                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 1] = pos[1];
-                    leafPositions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = pos[2];
+                    leafMesh.positions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 0] = pos[0];
+                    leafMesh.positions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 1] = pos[1];
+                    leafMesh.positions[currLeafIndex * blockSizes.positions + 3 * currVertIndex + 2] = pos[2];
                     // add to unique verts list
                     uniqueVerts.set(thisPointIndex, currVertIndex++);
 
@@ -211,7 +213,7 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
                     if (pointInAABB(pos, currBox)) interiorVertsCount++;
                 }
                 // add connectivity entry for vert position within the block
-                leafCellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
+                leafMesh.cellConnectivity[currLeafIndex * blockSizes.cellConnectivity + currConnectivityIndex++] = thisPointBlockIndex;
             }  
 
             updateDuplicateCount(cellDupes, cellID);
@@ -240,10 +242,19 @@ export const getLeafMeshBuffersAnalyse = (dataObj, blockSizes, leafCount) => {
     }
     downloadObject(toCSVStr(dupesArray, ","), "primitive_duplicates.csv", "text/csv");
 
+    // info on the total buffers size
+    let sizesArray = [["positions", "cellOffsets", "cellConnectivity"]];
+    sizesArray.push(sizesArray[0].map(name => mesh[name].length));
+    sizesArray.push(sizesArray[0].map(name => leafMesh[name].length));
+    downloadObject(toCSVStr(sizesArray, ","), "buffer_sizes.csv", "text/csv");
+    // console.log("leaf mesh format " + name + " is " + Math.round(leafMeshBuffers[name].length/dataObj.data[name].length) + "x larger");
+    // console.log(Math.round(dataObj.data[name].byteLength/1_000_000) + " -> " +  Math.round(leafMeshBuffers[name].byteLength/1_000_000) + " MB");
+
     return {
-        positions: leafPositions,
-        cellOffsets: leafCellOffsets,
-        cellConnectivity: leafCellConnectivity,
+        nodes: blockTreeNodes,
+        positions: leafMesh.positions,
+        cellOffsets: leafMesh.cellOffsets,
+        cellConnectivity: leafMesh.cellConnectivity,
         leafVerts: leafVerts,
         indexMap: fullToLeafIndexMap
     };
