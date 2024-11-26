@@ -13,8 +13,10 @@ import {
     traverseNodeBufferDepthBox, 
     pointInAABB, 
     pointInTetBounds, 
-    pointInTetDet 
+    pointInTetDet,
+    checkCellPosition
 } from "./cellTreeUtils.js";
+
 
 export const KDTreeSplitTypes = {
     VERT_MEDIAN:    "vert median",
@@ -350,7 +352,7 @@ const treeBuilders = {
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = checkCellPosition(tree, cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
@@ -453,7 +455,7 @@ const treeBuilders = {
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = checkCellPosition(tree, cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
@@ -540,7 +542,7 @@ const treeBuilders = {
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = checkCellPosition(tree, cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
@@ -594,7 +596,7 @@ const treeBuilders = {
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both
-                var cellSides = tree.checkCellPosition(cellID, dimension, splitVal);
+                var cellSides = checkCellPosition(tree, cellID, dimension, splitVal);
                 if (cellSides[0]) NA++;
                 if (cellSides[1]) NB++;
             }
@@ -674,7 +676,7 @@ const treeBuilders = {
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = checkCellPosition(tree, cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
@@ -727,7 +729,7 @@ const treeBuilders = {
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both
-                var cellSides = tree.checkCellPosition(cellID, dimension, splitVal);
+                var cellSides = checkCellPosition(tree, cellID, dimension, splitVal);
                 if (cellSides[0]) NA++;
                 if (cellSides[1]) NB++;
             }
@@ -809,7 +811,7 @@ const treeBuilders = {
             if (cellsTree) {
                 for (let cellID of parentNode.cells) {
                     // see if cell is <= pivot, > pivot or both
-                    var cellSides = tree.checkCellPosition(cellID, currentDimension, parentNode.splitVal);
+                    var cellSides = checkCellPosition(tree, cellID, currentDimension, parentNode.splitVal);
                     if (cellSides[0]) leftCells.push(cellID);
                     if (cellSides[1]) rightCells.push(cellID);
                 }
@@ -941,36 +943,6 @@ export class UnstructuredTree {
         this.nodes = nodesBuff;
         this.cells = cellsBuff;
         this.nodeCount = nodeCount;
-    }
-
-    checkCellPosition(id, checkDimension, splitVal) {
-        // first get the points in the cell
-        // var pointsLength = 0;
-        // switch (this.cellTypes[id]) {
-        //     case 10: // tet
-        //         pointsLength = 4;
-        //         break;
-        //     case 12: // hexa
-        //         pointsLength = 8;
-        //         break;
-        //     case 5: // tri
-        //         pointsLength = 3;
-        //         break;
-        // }
-
-        // only tetra for now
-        const pointsLength = 4;
-
-        const pointsOffset = this.cellOffsets[id];
-        const results = [false, false];
-        let thisPointValue;
-        for (let i = 0; i < pointsLength; i++) {
-            // the position of this point in the dimension that is being checked
-            thisPointValue = this.points[this.cellConnectivity[pointsOffset + i] * this.dimensions + checkDimension];
-            if (thisPointValue <= splitVal) results[0] = true;
-            if (thisPointValue > splitVal) results[1] = true;
-        }
-        return results;
     }
 
     getTreeNodeCount() {

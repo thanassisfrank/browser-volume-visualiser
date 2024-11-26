@@ -292,6 +292,38 @@ export const pointInTetBounds = (queryPoint, cell) => {
 };
 
 
+export const checkCellPosition = (mesh, id, checkDimension, splitVal) => {
+    // first get the points in the cell
+    // var pointsLength = 0;
+    // switch (this.cellTypes[id]) {
+    //     case 10: // tet
+    //         pointsLength = 4;
+    //         break;
+    //     case 12: // hexa
+    //         pointsLength = 8;
+    //         break;
+    //     case 5: // tri
+    //         pointsLength = 3;
+    //         break;
+    // }
+
+    // only tetra for now
+    const pointsLength = 4;
+
+    const pointsOffset = mesh.cellOffsets[id];
+    const results = [false, false];
+    let thisPointValue;
+    for (let i = 0; i < pointsLength; i++) {
+        // the position of this point in the dimension that is being checked
+        // fixed to three dimensional
+        thisPointValue = mesh.points[mesh.cellConnectivity[pointsOffset + i] * 3 + checkDimension];
+        if (thisPointValue <= splitVal) results[0] = true;
+        if (thisPointValue > splitVal) results[1] = true;
+    }
+    return results;
+}
+
+
 const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
     var cell = {
         points : [

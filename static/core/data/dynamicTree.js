@@ -7,6 +7,7 @@ import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMes
 import { writeCornerVals, readCornerVals } from "./treeNodeValues.js";
 import { VecMath } from "../VecMath.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
+import { generateTreelet } from "./treelet.js";
 
 
 const NodeStates = {
@@ -65,6 +66,7 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
             // this is a leaf node, get its score
             currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
             currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
+            currNode.box = currBox;
             scores.push(currNode);
         } else {
             // get the ptr to the children in the full buffer
@@ -121,7 +123,7 @@ function updateMeshCacheScores(meshCache, scores) {
 
 // returns the index of this mesh block
 // if it is not in the cache and wasnt loaded, returns -1
-function tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, childNode, activeValueSlots) {
+function tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, childNode, fullNode, activeValueSlots) {
     let meshBlockIndex = meshCache.getTagSlotNum(childNode.thisFullPtr);
     if (-1 != meshBlockIndex) return meshBlockIndex;
 
@@ -134,10 +136,20 @@ function tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, childNo
     // get mesh data
     const leafMesh = getMeshBlockFunc(childNode.thisFullPtr, activeValueSlots);
     // const leafMesh = dataObj.getNodeMeshBlock(childNode.thisFullPtr, activeValueSlots);
-
+    
     // load new mesh data
     const loadResult = meshCache.insertNewBlock(childNode.score, childNode.thisFullPtr, leafMesh);
     meshBlockIndex = loadResult.slot;
+
+    // generate the treelet for this mesh
+    // debugger;
+    // TODO: calculate the node pointer offset
+    const treelet = generateTreelet(leafMesh, fullNode.cellCount, childNode.box, childNode.depth, 4, 0, meshBlockIndex);
+    console.log(treelet.cells.length);
+    debugger;
+
+    // TODO: store the treelet in the dynamic mesh cache
+
     // check if the evicted block is currently loaded in the dynamic node cache
     if (undefined != loadResult.evicted) {
         const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
@@ -162,7 +174,7 @@ function updateDynamicMeshCache(nodeCache, meshCache, getMeshBlockFunc, fullNode
         // node is not connected with its mesh block
 
         // try to load the mesh data, evict if necessary
-        const blockIndex = tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, node, activeValueSlots);
+        const blockIndex = tryLoadTrueLeafNodeMesh(nodeCache, meshCache, getMeshBlockFunc, node, fullNode, activeValueSlots);
         if (-1 == blockIndex) continue;
         // node's mesh is now present in the dynamic mesh cache
 
