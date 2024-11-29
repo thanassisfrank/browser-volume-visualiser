@@ -6,6 +6,7 @@ export class AssociativeCache {
     #tags;
     #slotCount;
     #buffers = {};
+    #resizable = {};
     #blockSizes = {};
     #directory = new Map(); // tag -> slotNum
 
@@ -51,14 +52,16 @@ export class AssociativeCache {
     }
 
     // create a new buffer
-    createBuffer(name, prototype, blockSize) {
-        this.setBuffer(name, new prototype(blockSize * this.#slotCount), blockSize);
+    createBuffer(name, prototype, blockSize, resizable = false) {
+        this.setBuffer(name, new prototype(blockSize * this.#slotCount), blockSize, resizable);
+
     }
 
     // set an already created buffer
-    setBuffer(name, buffer, blockSize=1) {
+    setBuffer(name, buffer, blockSize = 1, resizable = false) {
         this.#buffers[name] = buffer;
         this.#blockSizes[name] = blockSize;
+        this.#resizable[name] = resizable;
     }
 
     // synchronises the named buffer with the state of this.tags
@@ -72,6 +75,22 @@ export class AssociativeCache {
         }
     }
 
+    #expandBuffer(name, minNewSize) {
+        const oldBuff = this.#buffers[name];
+        const oldBlockSize = this.blockSizes[name];
+        const newBlockSize = Math.round(Math.max(1.5 * oldBlockSize, minNewSize));
+        const newBuff = new oldBuff.constructor(newBlockSize * this.#slotCount);
+
+        this.setBuffer(name, newBuff, newBlockSize, true);
+
+        // copy data over
+        for (let i = 0; i < this.#slotCount; i++) {
+            newBuff.set(oldBuff.slice(i * oldBlockSize, (i + 1) * oldBlockSize), i * newBlockSize);
+        }
+
+        debugger;
+    }
+
     // search for the slot containing the data with this tag
     // if not slot contains the data for this, return -1
     getTagSlotNum(tag) {
@@ -80,13 +99,24 @@ export class AssociativeCache {
 
     updateBlockAt(slot, newData={}) {
         if (slot == undefined || slot >= this.#slotCount || slot < 0) return;
+
+        let info = {}
+
         for (const name in newData) {
             if (!this.#buffers[name]) continue;
             // TODO: only allow writing of data up to block size
-            (this.#writeFuncs[name] ?? this.#writeFuncs.default)(
+
+            if (this.#resizable[name] && newData[name].length > this.blockSizes[name]) {
+                // too large, re-write buffer
+                this.#expandBuffer(name, newData[name].length);
+            }
+
+            info[name] = (this.#writeFuncs[name] ?? this.#writeFuncs.default)(
                 this.#buffers[name], newData[name], slot, this.#blockSizes[name]
             );
         };
+
+        return info;
     }
 
     // insert new block at given position
@@ -99,16 +129,18 @@ export class AssociativeCache {
         this.#tags[newSlot] = newTag;
         this.#directory.set(newTag, newSlot);
 
-        let info = {}
+        const info = this.updateBlockAt(newSlot, newData);
+
+        // let info = {}
     
-        // write the new data into this slot
-        for (const name in newData) {
-            if (!this.#buffers[name]) continue;
-            // TODO: only allow writing of data up to block size
-            info[name] = (this.#writeFuncs[name] ?? this.#writeFuncs.default)(
-                this.#buffers[name], newData[name], newSlot, this.#blockSizes[name]
-            );
-        };
+        // // write the new data into this slot
+        // for (const name in newData) {
+        //     if (!this.#buffers[name]) continue;
+        //     // TODO: only allow writing of data up to block size
+        //     info[name] = (this.#writeFuncs[name] ?? this.#writeFuncs.default)(
+        //         this.#buffers[name], newData[name], newSlot, this.#blockSizes[name]
+        //     );
+        // };
 
         return {
             slot: newSlot,
