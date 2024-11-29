@@ -141,7 +141,8 @@ const dataManager = {
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
-        if (!dataObj.dataSource.tree) throw "Could not create dynamic tree, dataset does not have a tree";
+        console.log(dataObj.data.treeNodes);
+        if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
         if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
             console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");

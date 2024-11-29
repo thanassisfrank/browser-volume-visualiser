@@ -323,6 +323,26 @@ export const checkCellPosition = (mesh, id, checkDimension, splitVal) => {
     return results;
 }
 
+export const getMeshExtentBox = (mesh) => {
+    const min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+    const max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
+    for (let i = 0; i < mesh.positions.length/3; i++) {
+        const x = mesh.positions[3*i + 0];
+        const y = mesh.positions[3*i + 1];
+        const z = mesh.positions[3*i + 2];
+
+        min[0] = Math.min(min[0], x);
+        min[1] = Math.min(min[1], y);
+        min[2] = Math.min(min[2], z);
+
+        max[0] = Math.max(max[0], x);
+        max[1] = Math.max(max[1], y);
+        max[2] = Math.max(max[2], z);
+    }
+
+    return {min, max};
+}
+
 
 const getCellAtIndex = (dataObj, leafNode, index, slotNum) => {
     var cell = {

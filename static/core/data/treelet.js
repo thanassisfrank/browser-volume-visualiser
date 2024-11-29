@@ -5,20 +5,20 @@ import { checkCellPosition, NODE_BYTE_LENGTH, writeNodeToBuffer } from "./cellTr
 
 
 // calculates how many nodes will be in a tree of the specified depth
-const nodeCountFromDepth = (depth) => {
+export const treeletNodeCountFromDepth = (depth) => {
     return 2**(depth + 1) - 2;
 }
 
 // generates a treelet of fixed depth
 // returns the nodes and cells buffers for this treelet
 export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletDepth, nodePtrOffset, slotNum) {
-    const meshFix = {
+    const meshRename = {
         cellConnectivity: mesh.cellConnectivity,
         cellOffsets: mesh.cellOffsets,
         points: mesh.positions,
     };
 
-    const nodeCount = nodeCountFromDepth(treeletDepth);
+    const nodeCount = treeletNodeCountFromDepth(treeletDepth);
     const nodesBuff = new ArrayBuffer(nodeCount * NODE_BYTE_LENGTH);
 
     let rootSplitVal;
@@ -44,6 +44,7 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
 
     while (nodes.length > 0) {
         const currNode = nodes.pop();
+        // debugger;
         if (treeletDepth + treeletRootDepth == currNode.depth) {
             // tree shouldn't go any deeper here
             leafNodes.push(currNode);
@@ -57,7 +58,7 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
         let leftCells = [];
         let rightCells = [];
         for (let cellID of currNode.cells) {
-            const [leftCheck, rightCheck] = checkCellPosition(meshFix, cellID, currNode.depth%3, currNode.splitVal);
+            const [leftCheck, rightCheck] = checkCellPosition(meshRename, cellID, currNode.depth%3, currNode.splitVal);
             if (leftCheck) leftCells.push(cellID);
             if (rightCheck) rightCells.push(cellID);
         }
@@ -88,8 +89,8 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
 
         // write left and right nodes
         const leftBox = {
+            min: [...currNode.box.min],
             max: [...currNode.box.max],
-            min: [...currNode.box.max],
         };
         leftBox.max[currNode.depth%3] = currNode.splitVal;
         const leftNode = {
@@ -100,11 +101,11 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
         }
         // write in as a leaf node and increment i
         writeNodeToBuffer(nodesBuff, (leftPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, leftNode.cells.length, null, null, 0);
-        nodes.push(leftNode);
+        nodes.unshift(leftNode);
         
         const rightBox = {
+            min: [...currNode.box.min],
             max: [...currNode.box.max],
-            min: [...currNode.box.max],
         };
         rightBox.min[currNode.depth%3] = currNode.splitVal;
         const rightNode = {
@@ -115,7 +116,7 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
         }
         // write in as a leaf node and increment i
         writeNodeToBuffer(nodesBuff, (rightPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, rightNode.cells.length, null, null, 0);
-        nodes.push(rightNode);
+        nodes.unshift(rightNode);
     }
 
     // pack the cell numbers for the treelets leaf nodes into a new buffer

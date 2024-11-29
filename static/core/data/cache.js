@@ -217,7 +217,7 @@ export class ScoredCacheManager extends EmptyCacheManager {
         this.#currentWorstScore.valid = false;
     }
 
-    // find what teh worst score is in the cache at the moment
+    // find what the worst score is in the cache at the moment
     // used externally to decide whether to write to cache
     // used internally to decide where to write to cache
     getWorstScore() {
@@ -261,5 +261,9 @@ export class ScoredCacheManager extends EmptyCacheManager {
         this.#scores[newSlot] = newScore;
         // update data
         return this.cache.insertNewBlockAt(newSlot, newTag, newData);
+    }
+
+    updateBlockAt(slot, newData={}) {
+        return this.cache.updateBlockAt(slot, newData);
     }
 }
