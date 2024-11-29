@@ -10,6 +10,8 @@ export class MeshCache {
     #cache;
     #treeletDepth = 4;
 
+    #treeletNodesPerSlot;
+
     constructor(blockSizes, blockCount) {
         const cacheObj = new AssociativeCache(blockCount);
     
@@ -19,7 +21,9 @@ export class MeshCache {
         cacheObj.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
 
         // treelet buffers
-        cacheObj.createBuffer("treeletNodes", Uint8Array, treeletNodeCountFromDepth(this.#treeletDepth) * NODE_BYTE_LENGTH);
+        this.#treeletNodesPerSlot = treeletNodeCountFromDepth(this.#treeletDepth);
+        cacheObj.createBuffer("treeletNodes", Uint8Array, this.#treeletNodesPerSlot * NODE_BYTE_LENGTH);
+        cacheObj.createBuffer("treeletCells", Uint32Array, Math.round(blockSizes.cellOffsets), true); // initial guess at 1.5x
         
         this.#cache = new ScoredCacheManager(cacheObj);
     }
@@ -37,22 +41,13 @@ export class MeshCache {
     
         // generate the treelet for this mesh
         // TODO: calculate the node pointer offset
-        const nodePtrOffset = 0;
-        // debugger;
+        const nodePtrOffset = nodeCache.blockSizes["nodes"]/NODE_BYTE_LENGTH + loadResult.slot * this.#treeletNodesPerSlot;
         const treelet = generateTreelet(mesh, fullNode.cellCount, node.box, node.depth, 4, nodePtrOffset, loadResult.slot);
         this.#cache.updateBlockAt(loadResult.slot, {
-            "treeletNodes": new Uint8Array(treelet.nodes)
+            "treeletNodes": new Uint8Array(treelet.nodes),
+            "treeletCells": treelet.cells
         });
-
-        if (fullNode.cellCount == treelet.cells.length) {
-            console.log("wrong");
-            console.log(fullNode.thisPtr, treelet.cells.length);
-            const meshBox = getMeshExtentBox(mesh);
-            console.log(node.box, meshBox);
-            console.log(boxesOverlap(node.box, meshBox), boxVolume(node.box), boxVolume(meshBox));
-        } else {
-            console.log("fine");
-        }
+        // debugger;
 
         // check if the evicted block is currently loaded in the dynamic node cache
         if (undefined != loadResult.evicted) {
