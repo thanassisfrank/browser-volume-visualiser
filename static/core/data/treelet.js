@@ -47,7 +47,6 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
 
     while (nodes.length > 0) {
         const currNode = nodes.pop();
-        // debugger;
         if (treeletDepth + treeletRootDepth == currNode.depth) {
             // tree shouldn't go any deeper here
             leafNodes.push(currNode);

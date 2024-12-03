@@ -87,8 +87,6 @@ export class AssociativeCache {
         for (let i = 0; i < this.#slotCount; i++) {
             newBuff.set(oldBuff.slice(i * oldBlockSize, (i + 1) * oldBlockSize), i * newBlockSize);
         }
-
-        // debugger;
     }
 
     // search for the slot containing the data with this tag

@@ -67,21 +67,17 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
 
     // the next nodes to process
     var nodes = [rootNode];
-    // var boxes = [rootBox];
+
     var processed = 0;
     while (nodes.length > 0 && processed < nodeCount * 3) {
         processed++;
         const currNode = nodes.pop();
-        const currBox = currNode.box;//boxes.pop();
-        // debugger;
+        const currBox = currNode.box;
+
         if (isDynamicLeaf(currNode, nodeCount)) {
             // this is a leaf node, get its score
             currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
             currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
-            // currNode.box = {
-            //     min: [...currBox.min],
-            //     max: [...currBox.max]
-            // };
             scores.push(currNode);
             // if (currNode.thisPtr == 511) console.log(structuredClone(currNode));
         } else {
@@ -116,12 +112,11 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
             };
             leftBox.max[currNode.depth % 3] = currNode.splitVal;
             leftNode.box = leftBox;
-            // boxes.push(leftBox);
 
             nodes.push(leftNode);
 
             if (boxVolume(leftBox) < 0 || boxVolume(rightBox) < 0) {
-                debugger;
+                // debugger;
             }
         }
     }
@@ -421,10 +416,6 @@ export class DynamicTree {
         const combinedNodes = new Uint8Array(dynNodes.length + treeletNodes.length);
         combinedNodes.set(dynNodes, 0);
         combinedNodes.set(treeletNodes, dynNodes.length);
-
-        // console.log(new Uint32Array(combinedNodes.buffer));
-        // console.log(new Float32Array(combinedNodes.buffer));
-        // debugger;
 
         // return the array buffer
         return combinedNodes.buffer;

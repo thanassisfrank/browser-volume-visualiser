@@ -49,7 +49,6 @@ export class MeshCache {
         if (this.#treeletDepth > 0) {
             // generate the treelet for this mesh
             const nodePtrOffset = nodeCache.slotCount + loadResult.slot * this.#treeletNodesPerSlot;
-            // debugger;
             const treelet = generateTreelet(
                 mesh, 
                 fullNode.cellCount, 
@@ -59,12 +58,13 @@ export class MeshCache {
                 nodePtrOffset, 
                 loadResult.slot
             );
+
+            // load treelet into the mesh cache
             this.#cache.updateBlockAt(loadResult.slot, {
                 "treeletNodes": new Uint8Array(treelet.nodes),
                 "treeletCells": treelet.cells,
                 "treeletRootSplit": [treelet.rootSplitVal]
             });
-            // debugger;
         }
 
         // check if the evicted block is currently loaded in the dynamic node cache
@@ -112,7 +112,6 @@ export class MeshCache {
 
             if (this.#treeletDepth > 0) {
                 // link tree node to the treelet
-                // const nodePtrOffset = nodeCache.blockSizes["nodes"]/NODE_BYTE_LENGTH + blockIndex * this.#treeletNodesPerSlot
                 const nodePtrOffset = nodeCache.slotCount + blockIndex * this.#treeletNodesPerSlot
                 const treeletLeftPtr = nodePtrOffset + InternalTreeletTopLeftPtr;
                 const treeletRightPtr = nodePtrOffset + InternalTreeletTopRightPtr;
@@ -127,8 +126,6 @@ export class MeshCache {
                         rightPtr: treeletRightPtr
                     }
                 });
-                // debugger;
-                console.log("loaded node treelet");
             } else {
                 // link tree node directly to cells
                 nodeCache.updateBlockAt(node.thisPtr, {

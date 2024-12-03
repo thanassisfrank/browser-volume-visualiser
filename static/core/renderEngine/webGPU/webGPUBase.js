@@ -445,6 +445,7 @@ export function WebGPUBase (verbose = false) {
     };
 
     // attempts to write into the supplied buffer, if it is too small, returns new buffer
+    // accepts a typed array for data
     this.writeOrCreateNewBuffer = function(buffer, data, usage, label="") {
         let resultBuffer = buffer;
         let created = false;
@@ -454,7 +455,7 @@ export function WebGPUBase (verbose = false) {
             this.deleteBuffer(buffer);
             resultBuffer = this.createFilledBuffer(
                 "u8",
-                new Uint8Array(data),
+                new Uint8Array(data.buffer),
                 usage,
                 label
             );

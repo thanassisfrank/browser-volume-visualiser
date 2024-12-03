@@ -770,28 +770,13 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     // update tree cells (resizable)
                     const loadResult = webGPU.writeOrCreateNewBuffer(
                         renderable.renderData.buffers.treeCells,
-                        dataObj.getTreeCells().buffer,
+                        dataObj.getTreeCells(),
                         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
                         "data tree cells"
                     );
 
                     treeCellsResized = loadResult.created;
                     renderable.renderData.buffers.treeCells = loadResult.buffer;
-
-                    // if (newVal != passData.blockSizes["treeletCells"]) {
-                    //     // resized, have to make new buffer
-                    //     console.log("new tc slot: " + newVal);
-                    //     webGPU.deleteBuffer(renderable.renderData.buffers.treeCells);
-                    //     renderable.renderData.buffers.treeCells = webGPU.createFilledBuffer(
-                    //         "u32", 
-                    //         dataObj.getTreeCells(), 
-                    //         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, 
-                    //         "data tree cells"
-                    //     );
-                    // } else {
-                    //     // just write new data
-                    //     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeCells, [dataObj.getTreeCells()]);
-                    // }
                 }
             }
 
