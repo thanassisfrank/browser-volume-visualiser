@@ -3,6 +3,9 @@
 
 import { checkCellPosition, NODE_BYTE_LENGTH, writeNodeToBuffer } from "./cellTreeUtils.js";
 
+// where the top left and right nodes will be written inside every treelet
+export const InternalTreeletTopLeftPtr = 0;
+export const InternalTreeletTopRightPtr = 1;
 
 // calculates how many nodes will be in a tree of the specified depth
 export const treeletNodeCountFromDepth = (depth) => {
@@ -100,7 +103,7 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
             cells: leftCells,
         }
         // write in as a leaf node and increment i
-        writeNodeToBuffer(nodesBuff, (leftPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, leftNode.cells.length, null, null, 0);
+        writeNodeToBuffer(nodesBuff, (leftPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, leftNode.cells.length, slotNum, 0, 0);
         nodes.unshift(leftNode);
         
         const rightBox = {
@@ -115,7 +118,7 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
             cells: rightCells
         }
         // write in as a leaf node and increment i
-        writeNodeToBuffer(nodesBuff, (rightPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, rightNode.cells.length, null, null, 0);
+        writeNodeToBuffer(nodesBuff, (rightPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, rightNode.cells.length, slotNum, 0, 0);
         nodes.unshift(rightNode);
     }
 
@@ -123,13 +126,13 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
     // write the locations of these cell number sections into these nodes
     // leftPtr -> location within this slot
     // parentPtr -> slotNum
-    const cellsArr = new Array();
+    const cellsArr = [];
     for (let node of leafNodes) {
         writeNodeToBuffer(
             nodesBuff, 
             (node.thisPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 
             null, 
-            null, 
+            node.cells.length, 
             slotNum, 
             cellsArr.length, 
             0
@@ -140,13 +143,10 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
     const cellsBuff = new Uint32Array(cellsArr);
 
     
-    // return where the top left and right nodes are
     // return the split value that should be written 
     return {
         nodes: nodesBuff,
         cells: cellsBuff,
-        rootSplitVal,
-        topLeftPtr,
-        topRightPtr,
+        rootSplitVal
     }
 }

@@ -105,7 +105,7 @@ const dataManager = {
         if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
         if (resolutionMode != ResolutionModes.FULL) {
-            dynamicTree = new DynamicTree(resolutionMode);
+            dynamicTree = new DynamicTree(resolutionMode, opts.treeletDepth);
         }
 
         const newData = new Data(id, dataSource, dynamicTree);
@@ -116,7 +116,12 @@ const dataManager = {
         // create dynamic mesh information
         if (opts.dynamicMesh) {
             try {
-                this.createDynamicMeshCache(newData, dataSource.meshBlockSizes, dataSource.leafCount, opts.dynamicMeshBlockCount);
+                this.createDynamicMeshCache(
+                    newData, 
+                    dataSource.meshBlockSizes, 
+                    dataSource.leafCount, 
+                    opts.dynamicMeshBlockCount,
+                );
                 newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
@@ -300,9 +305,46 @@ class Data extends SceneObject {
             // set the tree nodes to be the version for the block mesh
             this.data.treeNodes = this.dataSource.blockNodes;
         }
+
+        this.usesTreelets = this.dynamicTree?.usesTreelets ?? false;
     }
 
-    getNodeBlock (nodeIndex, valueSlots) {
+    // returns the block sizes of all the buffers which are blocked
+    getBufferBlockSizes() {
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            return this.dynamicTree.meshCache.blockSizes;
+        }
+        return this.dataSource.meshBlockSizes
+    }
+
+    // returns either the correct node buffer given resolution mode
+    getNodeBuffer() {
+        if (
+            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT || 
+            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+        ) {
+            // get the node buffer from the dynamic tree
+            return this.dynamicTree.getNodeBuffer();
+        }
+        
+        // full unstructured tree
+        return this.data.treeNodes;
+    }
+
+    getTreeCells() {
+        if (
+            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT && 
+            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+        ) {
+            // dynamic mesh with treelets and dynamic nodes
+            return this.dynamicTree.getTreeCells();
+        }
+
+        // just dynamic nodes or full resolution
+        return this.data.treeCells;
+    }
+
+    getNodeBlock(nodeIndex, valueSlots) {
         let nodeBlock = this.dataSource.getNodeMeshBlock(nodeIndex);
         // slice the needed value buffers
         for (const slotNum of valueSlots) {

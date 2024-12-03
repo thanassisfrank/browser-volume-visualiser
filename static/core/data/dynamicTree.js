@@ -19,6 +19,15 @@ const NodeStates = {
 };
 
 
+// checks if the given node is a leaf
+const isDynamicLeaf = (node, nodeCount) => {
+    if (node.rightPtr == 0) return true;
+    if (node.rightPtr >= nodeCount) return true;
+
+    return false;
+}
+
+
 
 // calculates a score for the box
 // high score -> too big -> split
@@ -64,7 +73,8 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
         processed++;
         const currNode = nodes.pop();
         const currBox = currNode.box;//boxes.pop();
-        if (currNode.rightPtr == 0) {
+        // debugger;
+        if (isDynamicLeaf(currNode, nodeCount)) {
             // this is a leaf node, get its score
             currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
             currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
@@ -80,7 +90,7 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
             // add its children to the next nodes
             const rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
             const leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
-            const bothLeaves = leftNode.rightPtr == 0 && rightNode.rightPtr == 0;
+            const bothLeaves = isDynamicLeaf(leftNode, nodeCount) && isDynamicLeaf(rightNode, nodeCount);
 
             rightNode.thisFullPtr = currFullNode.rightPtr;
             rightNode.bothSiblingsLeaves = bothLeaves;
@@ -110,7 +120,9 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
 
             nodes.push(leftNode);
 
-            if (boxVolume(leftBox) < 0 || boxVolume(rightBox) < 0) debugger;
+            if (boxVolume(leftBox) < 0 || boxVolume(rightBox) < 0) {
+                debugger;
+            }
         }
     }
 
@@ -242,8 +254,11 @@ export class DynamicTree {
 
     meshCache;
 
-    constructor(resolutionMode) {
+
+    constructor(resolutionMode, treeletDepth) {
         this.resolutionMode = resolutionMode;
+        this.treeletDepth = treeletDepth;
+        this.usesTreelets = treeletDepth > 0;
     }
     // create the buffers used for dynamic data resolution
     // fills dynamic nodes from full nodes breadth first
@@ -342,8 +357,8 @@ export class DynamicTree {
         return this.nodeCache.getBuffers()[buffName];
     }
 
-    createDynamicMeshCache (blockSizes, leafBlockCount) {
-        this.meshCache = new MeshCache(blockSizes, leafBlockCount);
+    createDynamicMeshCache(blockSizes, leafBlockCount) {
+        this.meshCache = new MeshCache(blockSizes, leafBlockCount, this.treeletDepth);
         return this.meshCache;
     }
 
@@ -393,5 +408,30 @@ export class DynamicTree {
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
             );   
         }
+    }
+
+    // concatenate the dynamic nodes and treelet nodes buffers
+    getNodeBuffer() {
+        if (!this.usesTreelets) return this.nodeCache.getBuffers()["nodes"];
+
+        // both uint8 typed arrays
+        const dynNodes = new Uint8Array(this.nodeCache.getBuffers()["nodes"]);
+        const treeletNodes = this.meshCache.getBuffers()["treeletNodes"];
+
+        const combinedNodes = new Uint8Array(dynNodes.length + treeletNodes.length);
+        combinedNodes.set(dynNodes, 0);
+        combinedNodes.set(treeletNodes, dynNodes.length);
+
+        // console.log(new Uint32Array(combinedNodes.buffer));
+        // console.log(new Float32Array(combinedNodes.buffer));
+        // debugger;
+
+        // return the array buffer
+        return combinedNodes.buffer;
+    }
+
+    getTreeCells() {
+        if (!this.usesTreelets) return new Uint32Array();
+        return this.meshCache.getBuffers()["treeletCells"];
     }
 }

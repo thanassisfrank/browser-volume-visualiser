@@ -88,7 +88,7 @@ export class AssociativeCache {
             newBuff.set(oldBuff.slice(i * oldBlockSize, (i + 1) * oldBlockSize), i * newBlockSize);
         }
 
-        debugger;
+        // debugger;
     }
 
     // search for the slot containing the data with this tag
@@ -193,6 +193,9 @@ class EmptyCacheManager {
 
     getBuffers(...args) {
         return this.#cache.getBuffers(...args);
+    }
+    readBuffSlotAt(...args) {
+        return this.#cache.readBuffSlotAt(...args);
     }
 }
 

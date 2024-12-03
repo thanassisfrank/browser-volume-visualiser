@@ -3,16 +3,17 @@
 import { boxesOverlap, boxVolume } from "../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer } from "./cellTreeUtils.js";
-import { generateTreelet, treeletNodeCountFromDepth } from "./treelet.js";
+import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";
 
 // implements a cache object for storing mesh data in block format
 export class MeshCache {
     #cache;
-    #treeletDepth = 4;
+    #treeletDepth;
 
     #treeletNodesPerSlot;
 
-    constructor(blockSizes, blockCount) {
+    constructor(blockSizes, blockCount, treeletDepth = 4) {
+        this.#treeletDepth = treeletDepth;
         const cacheObj = new AssociativeCache(blockCount);
     
         // mesh buffers
@@ -20,12 +21,19 @@ export class MeshCache {
         cacheObj.createBuffer("cellOffsets", Uint32Array, blockSizes.cellOffsets);
         cacheObj.createBuffer("cellConnectivity", Uint32Array, blockSizes.cellConnectivity);
 
-        // treelet buffers
-        this.#treeletNodesPerSlot = treeletNodeCountFromDepth(this.#treeletDepth);
-        cacheObj.createBuffer("treeletNodes", Uint8Array, this.#treeletNodesPerSlot * NODE_BYTE_LENGTH);
-        cacheObj.createBuffer("treeletCells", Uint32Array, Math.round(blockSizes.cellOffsets), true); // initial guess at 1.5x
+        if (this.#treeletDepth > 0) {
+            // treelet buffers
+            this.#treeletNodesPerSlot = treeletNodeCountFromDepth(this.#treeletDepth);
+            cacheObj.createBuffer("treeletNodes", Uint8Array, this.#treeletNodesPerSlot * NODE_BYTE_LENGTH);
+            cacheObj.createBuffer("treeletCells", Uint32Array, Math.round(blockSizes.cellOffsets), true); // initial guess at 1.5x
+            cacheObj.createBuffer("treeletRootSplit", Float32Array, 1); // track where the treelet parent nodes should split
+        }
         
         this.#cache = new ScoredCacheManager(cacheObj);
+    }
+
+    get blockSizes() {
+        return this.#cache.blockSizes;
     }
 
     #shouldScoreBeLoaded(score) {
@@ -35,30 +43,45 @@ export class MeshCache {
     }
 
     #loadNodeMesh(nodeCache, node, fullNode, mesh) {
-        
         // load new mesh data
         const loadResult = this.#cache.insertNewBlock(node.score, node.thisFullPtr, mesh);
     
-        // generate the treelet for this mesh
-        // TODO: calculate the node pointer offset
-        const nodePtrOffset = nodeCache.blockSizes["nodes"]/NODE_BYTE_LENGTH + loadResult.slot * this.#treeletNodesPerSlot;
-        const treelet = generateTreelet(mesh, fullNode.cellCount, node.box, node.depth, 4, nodePtrOffset, loadResult.slot);
-        this.#cache.updateBlockAt(loadResult.slot, {
-            "treeletNodes": new Uint8Array(treelet.nodes),
-            "treeletCells": treelet.cells
-        });
-        // debugger;
+        if (this.#treeletDepth > 0) {
+            // generate the treelet for this mesh
+            const nodePtrOffset = nodeCache.slotCount + loadResult.slot * this.#treeletNodesPerSlot;
+            // debugger;
+            const treelet = generateTreelet(
+                mesh, 
+                fullNode.cellCount, 
+                node.box, 
+                node.depth, 
+                this.#treeletDepth, 
+                nodePtrOffset, 
+                loadResult.slot
+            );
+            this.#cache.updateBlockAt(loadResult.slot, {
+                "treeletNodes": new Uint8Array(treelet.nodes),
+                "treeletCells": treelet.cells,
+                "treeletRootSplit": [treelet.rootSplitVal]
+            });
+            // debugger;
+        }
 
         // check if the evicted block is currently loaded in the dynamic node cache
         if (undefined != loadResult.evicted) {
             const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
             if (-1 != evictedTagNodeSlot) {
-                // it is loaded, make sure that if it is currently a leaf, it becomes a pruned leaf with no cells
-                nodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {cellCount: 0}});
+                // it is loaded, make sure that it becomes a pruned leaf with no cells
+                // have to make sure the ptrs are set to indicate a leaf node too
+                nodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {
+                    cellCount: 0,
+                    leftPtr: 0,
+                    rightPtr: 0,
+                }});
             }
         }
     
-        return loadResult.slot;        
+        return loadResult.slot;     
     }
 
     updateLoadedBlocks(nodeCache, getMeshBlockFunc, fullNodes, scores, activeValueSlots) {
@@ -86,11 +109,34 @@ export class MeshCache {
                 if (-1 == blockIndex) continue;
                 // node's mesh is now present in the dynamic mesh cache
             }
+
+            if (this.#treeletDepth > 0) {
+                // link tree node to the treelet
+                // const nodePtrOffset = nodeCache.blockSizes["nodes"]/NODE_BYTE_LENGTH + blockIndex * this.#treeletNodesPerSlot
+                const nodePtrOffset = nodeCache.slotCount + blockIndex * this.#treeletNodesPerSlot
+                const treeletLeftPtr = nodePtrOffset + InternalTreeletTopLeftPtr;
+                const treeletRightPtr = nodePtrOffset + InternalTreeletTopRightPtr;
+
+                // retrieve the treelet root split val
+                const rootSplitVal = this.#cache.readBuffSlotAt("treeletRootSplit", blockIndex)[0];
+                nodeCache.updateBlockAt(node.thisPtr, {
+                    "nodes": {
+                        splitVal: rootSplitVal,
+                        cellCount: 0, 
+                        leftPtr: treeletLeftPtr, 
+                        rightPtr: treeletRightPtr
+                    }
+                });
+                // debugger;
+                console.log("loaded node treelet");
+            } else {
+                // link tree node directly to cells
+                nodeCache.updateBlockAt(node.thisPtr, {
+                    "nodes": {cellCount: fullNode.cellCount, leftPtr: blockIndex}
+                });
+
+            }
     
-            // update node in the dynamic cache
-            nodeCache.updateBlockAt(node.thisPtr, {
-                "nodes": {cellCount: fullNode.cellCount, leftPtr: blockIndex}
-            });
         }
     }
 

@@ -19,6 +19,15 @@ export const ColourScales = {
     BL_C_G_Y_R: 2
 };
 
+
+// how a leaf node's cells location can be specified
+export const CellsPtrTypes = {
+    NORMAL: 0,
+    BLOCK: 1,
+    TREELET_BLOCK: 2,
+};
+
+
 export function WebGPURayMarchingEngine(webGPUBase) {
     var webGPU = webGPUBase;
 
@@ -409,14 +418,28 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         passData.dMatInv = dataObj.getdMatInv();
         passData.cornerValType = dataObj.cornerValType;
 
-        passData.usesBlockMesh = dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED;
+        // passData.usesBlockMesh = dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED;
+        
+        if (dataObj.usesTreelets) {
+            passData.cellsPtrType = CellsPtrTypes.TREELET_BLOCK;
+            console.log("LEAF TYPE: treelet block");
+        } else if (dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
+            passData.cellsPtrType = CellsPtrTypes.BLOCK;
+            console.log("LEAF TYPE: block");
+        } else {
+            passData.cellsPtrType = CellsPtrTypes.NORMAL;
+            console.log("LEAF TYPE: normal");
+        }
+
+        const dataBlockSizes = dataObj.getBufferBlockSizes();
+
         passData.blockSizes = {
-            positions: dataObj.meshBlockSizes?.positions ?? 0,
-            cellOffsets: dataObj.meshBlockSizes?.cellOffsets ?? 0,
-            cellConnectivity: dataObj.meshBlockSizes?.cellConnectivity ?? 0,
-            valuesA: dataObj.meshBlockSizes?.positions/3 ?? 0,
-            valuesB: dataObj.meshBlockSizes?.positions/3 ?? 0,
+            ...dataBlockSizes,
+            valuesA: dataBlockSizes?.positions/3,
+            valuesB: dataBlockSizes?.positions/3,
         };
+
+        console.log(passData.blockSizes);
         
         // buffers and other data 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -468,19 +491,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         renderable.serialisedMaterials = webGPU.serialiseMaterials(this.materials.frontMaterial, this.materials.backMaterial);
 
         // write the tree buffer
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
-            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.dynamicTreeNodes), usage, "data dynamic tree nodes");
-        } else {
-            renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.data.treeNodes), usage, "data tree nodes");
-        }
+        renderData.buffers.treeNodes = webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.getNodeBuffer()), usage, "data tree nodes");
+        renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.getTreeCells(), usage, "data tree cells");
         
         if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            renderData.buffers.treeCells = webGPU.makeBuffer(0, usage, "empty tree cells");
             renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.dynamicPositions, usage, "data dynamic vert positions");
             renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellConnectivity, usage, "data dynamic cell connectivity");
             renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellOffsets, usage, "data dynamic cell offsets");
         } else {
-            renderData.buffers.treeCells = webGPU.createFilledBuffer("u32", dataObj.data.treeCells, usage, "data tree cells");
             renderData.buffers.positions = webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
             renderData.buffers.cellConnectivity = webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
             renderData.buffers.cellOffsets = webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
@@ -690,6 +708,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         // update the data renderable first 
         let dataRenderable;
         let valueBufferCreated = false;
+        let treeCellsResized = false;
 
         for (let renderable of dataObj.renderables) {
             // reset offset optimisation if bounding box has changed
@@ -741,11 +760,44 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
+
+                if (dataObj.usesTreelets) {
+                    
+                    // update tree cells block size
+                    const newVal = dataObj.getBufferBlockSizes()["treeletCells"];
+                    passData.blockSizes["treeletCells"] = newVal;
+
+                    // update tree cells (resizable)
+                    const loadResult = webGPU.writeOrCreateNewBuffer(
+                        renderable.renderData.buffers.treeCells,
+                        dataObj.getTreeCells().buffer,
+                        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+                        "data tree cells"
+                    );
+
+                    treeCellsResized = loadResult.created;
+                    renderable.renderData.buffers.treeCells = loadResult.buffer;
+
+                    // if (newVal != passData.blockSizes["treeletCells"]) {
+                    //     // resized, have to make new buffer
+                    //     console.log("new tc slot: " + newVal);
+                    //     webGPU.deleteBuffer(renderable.renderData.buffers.treeCells);
+                    //     renderable.renderData.buffers.treeCells = webGPU.createFilledBuffer(
+                    //         "u32", 
+                    //         dataObj.getTreeCells(), 
+                    //         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, 
+                    //         "data tree cells"
+                    //     );
+                    // } else {
+                    //     // just write new data
+                    //     webGPU.writeDataToBuffer(renderable.renderData.buffers.treeCells, [dataObj.getTreeCells()]);
+                    // }
+                }
             }
 
             if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
                 // update the nodes buffer
-                webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.data.dynamicTreeNodes)]);
+                webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.getNodeBuffer())]);
             }
 
             if (dataObj.resolutionMode != ResolutionModes.FULL) {
@@ -773,17 +825,33 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
         if (!dataRenderable) return;
 
-        if (dataRenderable.type == RenderableTypes.UNSTRUCTURED_DATA && valueBufferCreated) {
-            // recreate bindgroup 2 from the compute pass
-            dataRenderable.renderData.bindGroups.compute2 = webGPU.generateBG(
-                this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
-                [
-                    dataRenderable.renderData.buffers.values[0],
-                    dataRenderable.renderData.buffers.values[1],
-                    dataRenderable.renderData.buffers.cornerValues[0],
-                    dataRenderable.renderData.buffers.cornerValues[1],
-                ]
-            );
+        if (dataRenderable.type == RenderableTypes.UNSTRUCTURED_DATA){
+            if (treeCellsResized) {
+                dataRenderable.renderData.bindGroups.compute1 = webGPU.generateBG(
+                    this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
+                    [
+                        dataRenderable.renderData.buffers.treeNodes,
+                        dataRenderable.renderData.buffers.treeCells,
+                        dataRenderable.renderData.buffers.positions,
+                        dataRenderable.renderData.buffers.cellConnectivity,
+                        dataRenderable.renderData.buffers.cellOffsets,
+                    ]
+                );
+            }
+
+            if (valueBufferCreated) {
+                // recreate bindgroup 2 from the compute pass
+                dataRenderable.renderData.bindGroups.compute2 = webGPU.generateBG(
+                    this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
+                    [
+                        dataRenderable.renderData.buffers.values[0],
+                        dataRenderable.renderData.buffers.values[1],
+                        dataRenderable.renderData.buffers.cornerValues[0],
+                        dataRenderable.renderData.buffers.cornerValues[1],
+                    ]
+                );
+            }
+            
         }
 
         
@@ -1057,8 +1125,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     renderable.passData.blockSizes.cellConnectivity,
                     renderable.passData.blockSizes.valuesA,
                     renderable.passData.blockSizes.valuesB,
-                    0, 0, 0,
-                    renderable.passData.usesBlockMesh,
+                    renderable.passData.blockSizes.treeletCells, 
+                    0, 0,
+                    renderable.passData.cellsPtrType,
                 ]),
             ]
         );

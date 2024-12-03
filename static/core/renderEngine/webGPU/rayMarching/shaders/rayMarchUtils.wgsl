@@ -22,8 +22,8 @@ struct RayMarchPassInfo {
     @size(4)  colourScale : u32,
     @size(4)  cornerValType : u32,
     @size(64) transferFunction : array<TransferFunctionPoint, 4>,
-    @size(20) blockSizes : MeshBlockSizes,
-    @size(4)  @align(16) usesBlockMesh : u32,
+    @size(24) blockSizes : MeshBlockSizes,
+    @size(4)  @align(16) cellsPtrType : u32,
 };
 
 struct MeshBlockSizes {
@@ -31,7 +31,8 @@ struct MeshBlockSizes {
     cellOffsets: u32,
     cellConnectivity: u32,
     valueA: u32,
-    valueB: u32
+    valueB: u32,
+    treeletCells: u32,
 };
 
 struct TransferFunctionPoint {
@@ -96,22 +97,28 @@ struct RayIntersectionResult {
 
 // constants ======================================================================================
 
-const DATA_SRC_NONE    = 0;
-const DATA_SRC_VALUE_A = 1;
-const DATA_SRC_VALUE_B = 2;
-const DATA_SRC_AXIS_X  = 3;
-const DATA_SRC_AXIS_Y  = 4;
-const DATA_SRC_AXIS_Z  = 5;
+const DATA_SRC_NONE    = 0u;
+const DATA_SRC_VALUE_A = 1u;
+const DATA_SRC_VALUE_B = 2u;
+const DATA_SRC_AXIS_X  = 3u;
+const DATA_SRC_AXIS_Y  = 4u;
+const DATA_SRC_AXIS_Z  = 5u;
 
-const COL_SCALE_B_W = 0;
-const COL_SCALE_BL_W_R = 1;
-const COL_SCALE_BL_C_G_Y_R = 2;
+const COL_SCALE_B_W = 0u;
+const COL_SCALE_BL_W_R = 1u;
+const COL_SCALE_BL_C_G_Y_R = 2u;
 
-const CORNER_VAL_SAMPLE = 1;
-const CORNER_VAL_POLYNOMIAL = 2;
+const CORNER_VAL_SAMPLE = 1u;
+const CORNER_VAL_POLYNOMIAL = 2u;
 
 // placeholder value to indicate a sample is outside of the cells of the dataset
 const F32_OUTSIDE_CELLS : f32 = -exp2(32);
+
+// types of cells pointer
+const CELLS_PTR_NORMAL = 0u;
+const CELLS_PTR_BLOCK = 1u;
+const CELLS_PTR_TREELET_BLOCK = 2u;
+
 
 // functions ======================================================================================
 

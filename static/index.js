@@ -142,6 +142,7 @@ async function main() {
                 maxTreeDepth: parseInt(opts.maxDepth.value),
                 kdTreeType: opts.kdTreeType.value,
                 cornerValType: parseInt(opts.cornerValType.value),
+                treeletDepth: parseInt(opts.treeletDepth?.value)
             }
         );
 

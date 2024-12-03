@@ -453,15 +453,15 @@ export function WebGPUBase (verbose = false) {
             // create new buffer in this slot
             this.deleteBuffer(buffer);
             resultBuffer = this.createFilledBuffer(
-                "f32",
-                new Float32Array(data),
+                "u8",
+                new Uint8Array(data),
                 usage,
                 label
             );
             created = true;
         } else {
             this.log("write " + label);
-            this.writeDataToBuffer(buffer, [new Float32Array(data)]);
+            this.writeDataToBuffer(buffer, [new Uint8Array(data)]);
             resultBuffer = buffer;
         }
         return {
