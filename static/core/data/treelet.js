@@ -1,6 +1,7 @@
 // treelet.js
 // handles the generation of treelets
 
+import { copyBox } from "../boxUtils.js";
 import { checkCellPosition, NODE_BYTE_LENGTH, writeNodeToBuffer } from "./cellTreeUtils.js";
 
 // where the top left and right nodes will be written inside every treelet
@@ -90,10 +91,11 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
         }
 
         // write left and right nodes
-        const leftBox = {
-            min: [...currNode.box.min],
-            max: [...currNode.box.max],
-        };
+        // const leftBox = {
+        //     min: [...currNode.box.min],
+        //     max: [...currNode.box.max],
+        // };
+        const leftBox = copyBox(currNode.box);
         leftBox.max[currNode.depth%3] = currNode.splitVal;
         const leftNode = {
             box: leftBox,
@@ -105,10 +107,11 @@ export function generateTreelet(mesh, cellCount, box, treeletRootDepth, treeletD
         writeNodeToBuffer(nodesBuff, (leftPtr - nodePtrOffset) * NODE_BYTE_LENGTH, 0, leftNode.cells.length, slotNum, 0, 0);
         nodes.unshift(leftNode);
         
-        const rightBox = {
-            min: [...currNode.box.min],
-            max: [...currNode.box.max],
-        };
+        // const rightBox = {
+        //     min: [...currNode.box.min],
+        //     max: [...currNode.box.max],
+        // };
+        const rightBox = copyBox(currNode.box);
         rightBox.min[currNode.depth%3] = currNode.splitVal;
         const rightNode = {
             box: rightBox,

@@ -1,5 +1,6 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
+import { copyBox } from "../boxUtils.js";
 import { downloadObject, toCSVStr } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
@@ -523,15 +524,17 @@ const treeBuilders = {
             // find the pivot 
             parentNode.splitVal = 0.5 * (parentNode.box.min[currentDimension] + parentNode.box.max[currentDimension]);
 
-            var leftBox = {
-                min: [...parentNode.box.min],
-                max: [...parentNode.box.max],
-            };
+            // var leftBox = {
+            //     min: [...parentNode.box.min],
+            //     max: [...parentNode.box.max],
+            // };
+            const leftBox = copyBox(parentNode.box);
             leftBox.max[currentDimension] = parentNode.splitVal;
-            var rightBox = {
-                min: [...parentNode.box.min],
-                max: [...parentNode.box.max],
-            };
+            // var rightBox = {
+            //     min: [...parentNode.box.min],
+            //     max: [...parentNode.box.max],
+            // };
+            const rightBox = copyBox(parentNode.box);
             rightBox.min[currentDimension] = parentNode.splitVal;
 
 
@@ -589,10 +592,12 @@ const treeBuilders = {
             var NA = 0;
             var NB = 0;
 
-            var boxA = { min: [...node.box.min], max: [...node.box.max] };
+            // var boxA = { min: [...node.box.min], max: [...node.box.max] };
+            const boxA = copyBox(node.box);
             boxA.max[dimension] = splitVal;
 
-            var boxB = { min: [...node.box.min], max: [...node.box.max] };
+            // var boxB = { min: [...node.box.min], max: [...node.box.max] };
+            const boxB = copyBox(node.box);
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both
@@ -722,10 +727,12 @@ const treeBuilders = {
             var NA = 0;
             var NB = 0;
 
-            var boxA = { min: [...node.box.min], max: [...node.box.max] };
+            // var boxA = { min: [...node.box.min], max: [...node.box.max] };
+            const boxA = copyBox(node.box);
             boxA.max[dimension] = splitVal;
 
-            var boxB = { min: [...node.box.min], max: [...node.box.max] };
+            // var boxB = { min: [...node.box.min], max: [...node.box.max] };
+            const boxB = copyBox(node.box);
             boxB.min[dimension] = splitVal;
             for (let cellID of node.cells) {
                 // see if cell is <= pivot, > pivot or both

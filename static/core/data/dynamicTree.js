@@ -9,7 +9,7 @@ import { VecMath } from "../VecMath.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { generateTreelet } from "./treelet.js";
 import { MeshCache } from "./meshCache.js";
-import { boxVolume } from "../utils.js";
+import { boxVolume, copyBox } from "../boxUtils.js";
 
 
 const NodeStates = {
@@ -60,10 +60,11 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
 
     var rootNode = readNodeFromBuffer(dynamicNodes, 0);
     rootNode.depth = 0;
-    rootNode.box = {
-        min: [...extentBox.min],
-        max: [...extentBox.max],
-    };
+    rootNode.box = copyBox(extentBox);
+    // rootNode.box = {
+    //     min: [...extentBox.min],
+    //     max: [...extentBox.max],
+    // };
 
     // the next nodes to process
     var nodes = [rootNode];

@@ -4,6 +4,7 @@ import { ResolutionModes } from "./dataConstants.js";
 
 import { mat4, vec4 } from "../gl-matrix.js";
 import { VecMath } from "../VecMath.js";
+import { copyBox } from "../boxUtils.js";
 
 export const NODE_BYTE_LENGTH = 5 * 4;
 
@@ -128,9 +129,11 @@ export const traverseNodeBufferDepthBox = (buff, fullBox, alwaysFunc, leafFunc, 
                 readNodeFromBuffer(buff, currNode.rightPtr * NODE_BYTE_LENGTH),
             );
             depthQueue.push(currDepth + 1, currDepth + 1);
-            const leftBox = {min: [...currBox.min], max: [...currBox.max]};
+            // const leftBox = {min: [...currBox.min], max: [...currBox.max]};
+            const leftBox = copyBox(currBox);
             leftBox.max[currDepth % 3] = currNode.splitVal;
-            const rightBox = {min: [...currBox.min], max: [...currBox.max]};
+            // const rightBox = {min: [...currBox.min], max: [...currBox.max]};
+            const rightBox = copyBox(currBox);
             rightBox.min[currDepth % 3] = currNode.splitVal;
 
             boxQueue.push(leftBox, rightBox);

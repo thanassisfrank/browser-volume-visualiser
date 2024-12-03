@@ -1,6 +1,5 @@
 // meshCache.js
 
-import { boxesOverlap, boxVolume } from "../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer } from "./cellTreeUtils.js";
 import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";

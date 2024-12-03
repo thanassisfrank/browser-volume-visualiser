@@ -1,6 +1,7 @@
 // treeNodeValues.js
 // contains functions to manage values associated with cell tree nodes for partial resolution rendering
 
+import { copyBox } from "../boxUtils.js";
 import { smoothStep } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
@@ -112,7 +113,7 @@ var createNodeSampleCornerValuesBuffer = (dataBuff, tree) => {
         // console.log(currNode);
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
-            return {min: [...tree.extentBox.min], max: [...tree.extentBox.max], uses: 0};
+            return {...copyBox(tree.extentBox), uses: 0};
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);
@@ -307,7 +308,7 @@ var createNodePolyCornerValuesBuffer = (dataArray, tree) => {
     var getThisBox = (currNode) => {
         if (currNode.parentPtr == currNode.thisPtr) {
             // root node
-            return {min: [...tree.extentBox.min], max: [...tree.extentBox.max], uses: 0};
+            return {...copyBox(tree.extentBox), uses: 0};
         }
         var parentBox = currBoxes[currBoxes.length - 1];
         return getNodeBox(parentBox, currNode.childType, (currDepth - 1) % 3, currNode.parentSplit);

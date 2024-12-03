@@ -3,7 +3,8 @@
 
 import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
-import { boxesEqual, clamp, clampBox } from "../../../utils.js";
+import { clamp } from "../../../utils.js";
+import { boxesEqual, copyBox } from "../../../boxUtils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
 
@@ -713,10 +714,11 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         for (let renderable of dataObj.renderables) {
             // reset offset optimisation if bounding box has changed
             if (!boxesEqual(renderable.passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
-            renderable.passData.clippedDataBox = {
-                min: [...updateObj.clippedDataBox.min],
-                max: [...updateObj.clippedDataBox.max],
-            };
+            // renderable.passData.clippedDataBox = {
+            //     min: [...updateObj.clippedDataBox.min],
+            //     max: [...updateObj.clippedDataBox.max],
+            // };
+            renderable.passData.clippedDataBox = copyBox(updateObj.clippedDataBox);
 
             renderable.passData.volumeTransferFunction = {
                 colour: [...updateObj.volumeTransferFunction.colour],
