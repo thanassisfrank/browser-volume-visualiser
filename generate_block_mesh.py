@@ -2,15 +2,13 @@ import h5py
 import argparse
 import numpy as np
 import cProfile
-
-# for cell-split plane checks
-LEFT_BIT  = 0b01
-RIGHT_BIT = 0b10
+import dis
 
 
 
 def charcodes_to_string(charcodes):
     return "".join(map(chr, charcodes))
+
 
 class Mesh:
     box = {
@@ -27,10 +25,14 @@ class Mesh:
         self.cell_count = len(connectivity)//4
 
     def __str__(self):
-        s = "Mesh object\n"
-        s += f" {len(self.positions)} points\n"
-        s += f" {self.cell_count} cells\n"
-        s += f" {len(self.values.keys())} val arrays"
+        s = "".join([
+            "Mesh object\n",
+            f" {self.positions.shape}\n"
+            f" {len(self.positions)} points\n",
+            f" {self.cell_count} cells\n",
+            f" {len(self.values.keys())} val arrays"
+        ])
+
         return s
     
     @staticmethod
@@ -44,9 +46,18 @@ class Mesh:
         
         coords_node = zone_node["GridCoordinates"]
         # print(list(coords_node.keys()))
-        x_pos = np.array(coords_node["CoordinateX/ data"], copy=True)
-        y_pos = np.array(coords_node["CoordinateY/ data"], copy=True)
-        z_pos = np.array(coords_node["CoordinateZ/ data"], copy=True)
+        x_dset = coords_node["CoordinateX/ data"]
+        x_pos = np.empty(x_dset.shape, dtype=x_dset.dtype)
+        x_dset.read_direct(x_pos)
+        
+        y_dset = coords_node["CoordinateY/ data"]
+        y_pos = np.empty(y_dset.shape, dtype=y_dset.dtype)
+        y_dset.read_direct(y_pos)
+        
+        z_dset = coords_node["CoordinateZ/ data"]
+        z_pos = np.empty(z_dset.shape, dtype=z_dset.dtype)
+        z_dset.read_direct(y_pos)
+
         positions = np.array([x_pos, y_pos, z_pos]).transpose()
         # positions = np.array([
         #     coords_node["CoordinateX/ data"],
@@ -55,7 +66,10 @@ class Mesh:
         # ], copy=True).transpose()
 
         # get the connectivity information, correcting for one based indexing
-        connectivity = np.array(zone_node["GridElements/ElementConnectivity/ data"], copy=True) - 1
+        con_dset = zone_node["GridElements/ElementConnectivity/ data"]
+        connectivity = np.empty(con_dset.shape, dtype=con_dset.dtype)
+        con_dset.read_direct(connectivity)
+        connectivity -= 1
 
         values = {}
         for name in val_names:
@@ -78,78 +92,48 @@ class Mesh:
         pass
 
 
-
 def copy_box(box):
     return {
         "min": [box["min"][0], box["min"][1], box["min"][2]],
         "max": [box["max"][0], box["max"][1], box["max"][2]],
     }
 
-def get_vert(pos, con, offset):
-    return pos[con[offset]]
 
-def check_cell_positions(pos, con, cell_id, dim, val):
-    # only tetra for now
-    points_length = 4
-
-    points_offset = cell_id * points_length
-    result = 0
-    # this_point_value = 0
-    for i in range(points_length):
-        # the position of this point in the dimension that is being checked
-        # this_point_value = mesh.positions[mesh.connectivity[points_offset + i]][dim]
-        if pos[con[points_offset + i]][dim] <= val:
-            result |= LEFT_BIT
-        else:
-            result |= RIGHT_BIT
-
-    return result
-
-
-def split_cells(node, curr_dim, mesh_pos, mesh_con):
+def split_cells(node, pos_part, mesh_con):
     # split the cells into left and right
     left_cells = []
     right_cells = []
     l_app = left_cells.append
     r_app = right_cells.append
-    s_val = node["split_val"]
+    s_val = np.float32(node["split_val"])
+    cells = node["cells"]
 
-    for cell_id in node["cells"]:
+    # points_offset = 0
+    # left_side = False
+    # right_side = False
+
+    for cell_id in cells:
         # see if cell is <= pivot, > pivot or both
         # only tets for now
-        points_length = 4
+        points_offset = cell_id * 4
 
-        points_offset = cell_id * points_length
-
-        left_side = False
-        right_side = False
-
-        if mesh_pos[mesh_con[points_offset + 0]][curr_dim] <= s_val:
-            left_side = True
-        else:
-            right_side = True
-
-        if mesh_pos[mesh_con[points_offset + 1]][curr_dim] <= s_val:
-            left_side = True
-        else:
-            right_side = True
-
-        if mesh_pos[mesh_con[points_offset + 2]][curr_dim] <= s_val:
-            left_side = True    
-        else:
-            right_side = True
-
-        if mesh_pos[mesh_con[points_offset + 3]][curr_dim] <= s_val:
-            left_side = True
-        else:
-            right_side = True
-
-        if left_side:
-            l_app(cell_id)
-        if right_side:
+        if pos_part[mesh_con[points_offset + 0]] > s_val:
             r_app(cell_id)
+
+            if (pos_part[mesh_con[points_offset + 1]] <= s_val or 
+                pos_part[mesh_con[points_offset + 2]] <= s_val or 
+                pos_part[mesh_con[points_offset + 3]] <= s_val):
+                l_app(cell_id)
+        else:
+            l_app(cell_id)
+
+            if (pos_part[mesh_con[points_offset + 1]] > s_val or 
+                pos_part[mesh_con[points_offset + 2]] > s_val or 
+                pos_part[mesh_con[points_offset + 3]] > s_val):
+                r_app(cell_id)
     
     return (left_cells, right_cells)
+
 
 class Tree:
     def __init__(self, root):
@@ -182,13 +166,20 @@ class Tree:
         mesh_pos = mesh.positions
         mesh_con = mesh.connectivity
 
-        while len(node_queue) > 0:
-            # progress indicator
-            processed += 1
-            if processed % 100 == 0:
-                print(processed, "nodes processed", processed/mesh.cell_count * 100, "%")
+        print("Starting tree build, target cells: %i" % max_cells)
+        cells_est = []
 
+        while len(node_queue) > 0:
             parent_node = node_queue.pop()
+
+            # progress indicator
+            cells_est.insert(0, len(parent_node["cells"]))
+            if len(cells_est) > 10: cells_est.pop()
+
+            if processed % 500 == 0:
+                print("nodes processed %i, cells est: %i" % (processed, sum(cells_est)/len(cells_est)))
+            processed += 1
+
             current_depth = parent_node["depth"] + 1
             # stop the expansion of this node if the tree is deep enough
             # or stop if the # cells is already low enough
@@ -213,7 +204,7 @@ class Tree:
 
 
             # split the cells into left and right
-            (left_cells, right_cells) = split_cells(parent_node, curr_dim, mesh_pos, mesh_con)
+            (left_cells, right_cells) = split_cells(parent_node, mesh_pos[:, curr_dim], mesh_con)
 
             # create the new left and right nodes
             left_node = {
@@ -253,6 +244,9 @@ class Tree:
         return Tree(root)
         
 
+def get_vert(pos, con, offset):
+    return pos[con[offset]]
+
 
 
 
@@ -276,10 +270,6 @@ def filter_value_names(value_names):
     
     return chosen
 
-
-# generates a node median KD tree over the mesh domain
-def generate_tree(mesh, depth, max_cells):
-    return Tree()
 
 
 # splits the given mesh into the blocks for each leaf node
@@ -317,7 +307,8 @@ def main():
     print(mesh)
 
     # generate the tree
-    # cProfile.runctx("Tree.generate_node_median(mesh, 3, args['max_cells'])", globals(), locals())
+    # dis.dis(split_cells)
+    # cProfile.runctx("Tree.generate_node_median(mesh, 12, args['max_cells'])", globals(), locals())
     tree = Tree.generate_node_median(mesh, args["depth"], args["max_cells"])
     return
 
