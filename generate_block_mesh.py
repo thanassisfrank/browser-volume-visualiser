@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import cProfile
 import dis
+from collections import namedtuple
 
 
 
@@ -30,7 +31,9 @@ class Mesh:
             f" {self.positions.shape}\n"
             f" {len(self.positions)} points\n",
             f" {self.cell_count} cells\n",
-            f" {len(self.values.keys())} val arrays"
+            f" {len(self.values.keys())} val arrays\n",
+            f" box min: {self.box["min"]}\n"
+            f" box max: {self.box["max"]}\n"
         ])
 
         return s
@@ -56,7 +59,9 @@ class Mesh:
         
         z_dset = coords_node["CoordinateZ/ data"]
         z_pos = np.empty(z_dset.shape, dtype=z_dset.dtype)
-        z_dset.read_direct(y_pos)
+        z_dset.read_direct(z_pos)
+
+        print(len(x_pos), len(y_pos), len(z_pos))
 
         positions = np.array([x_pos, y_pos, z_pos]).transpose()
         # positions = np.array([
@@ -136,8 +141,71 @@ def split_cells(node, pos_part, mesh_con):
 
 
 class Tree:
-    def __init__(self, root):
+    def __init__(self, root, node_count):
         self.root = root
+        self.node_count = node_count
+
+    # creates a packed buffer representation of the tree
+    def serialise(self):
+        # create the node buffer
+        node_buffer = np.empty(self.node_count, dtype=self.node_dtype)
+
+        node_queue = [self.root]
+
+        curr_ptr = 0
+
+        while len(node_queue) > 0:
+            node = node_queue.pop()
+            node["this_ptr"] = curr_ptr
+
+            node_buffer[curr_ptr]["split_val"] = node["split_val"]
+            node_buffer[curr_ptr]["left_ptr"] = 0
+            node_buffer[curr_ptr]["right_ptr"] = 0
+            
+            # write node to the buffer
+            if node["cells"] is not None:
+                node_buffer[curr_ptr]["cell_count"] = len(node["cells"])
+            else:
+                node_buffer[curr_ptr]["cell_count"] = 0
+            
+            
+            if node["parent"] is not None:
+                node_buffer[curr_ptr]["parent_ptr"] = node["parent"]["this_ptr"]
+                # update the node's parent
+                if node["parent"]["left"] == node:
+                    node_buffer[node["parent"]["this_ptr"]]["left_ptr"] = curr_ptr
+                else:
+                    node_buffer[node["parent"]["this_ptr"]]["right_ptr"] = curr_ptr
+            else:
+               node_buffer[curr_ptr]["parent_ptr"] = 0                 
+
+            if node["left"] is not None:
+                node_queue.append(node["left"])
+            if node["right"] is not None:
+                node_queue.append(node["right"])
+            curr_ptr += 1
+        
+        return node_buffer
+            
+            
+
+    # definition of the datatype for a single node
+    # struct KDTreeNode {
+    #     splitVal : f32,
+    #     cellCount : u32,
+    #     parentPtr : u32,
+    #     leftPtr : u32,
+    #     rightPtr : u32,
+    # };
+    node_dtype = np.dtype([
+        ("split_val", np.float32),
+        ("cell_count", np.uint32),
+        ("parent_ptr", np.uint32),
+        ("left_ptr", np.uint32),
+        ("right_ptr", np.uint32),
+    ])
+
+    # Node = namedtuple("Node", (node_dtype[0][0]))
 
     @staticmethod
     def generate_node_median(mesh, max_depth, max_cells):
@@ -150,10 +218,12 @@ class Tree:
         max_leaf_depth = 0
         # make a root node with the whole dataset
         root = {
+            "this_ptr": 0,
             "split_val": 0, 
             "depth": 0,
             "box": copy_box(mesh.box),
             "cells": [],
+            "parent": None,
             "left": None,
             "right": None,
         }
@@ -172,18 +242,25 @@ class Tree:
         while len(node_queue) > 0:
             parent_node = node_queue.pop()
 
-            # progress indicator
-            cells_est.insert(0, len(parent_node["cells"]))
-            if len(cells_est) > 10: cells_est.pop()
+            # print(parent_node["box"])
 
+            # progress indicator
+            # cells_est.insert(0, len(parent_node["cells"]))
+            # if len(cells_est) > 10: cells_est.pop()
             if processed % 500 == 0:
-                print("nodes processed %i, cells est: %i" % (processed, sum(cells_est)/len(cells_est)))
+                # print("nodes processed %i, cells est: %i" % (processed, sum(cells_est)/len(cells_est)))
+                avg_queue_depth = sum([node["depth"] for node in node_queue])/max(1, len(node_queue))
+                # print(" ".join([str(len(node["cells"])) for node in node_queue]))
+                print(
+                    "nodes done: %i, leaves found: %i, in queue: %i, queue depth: %i" % 
+                    (processed, leaves_count, len(node_queue), avg_queue_depth)
+                )
             processed += 1
 
-            current_depth = parent_node["depth"] + 1
+            curr_depth = parent_node["depth"]
             # stop the expansion of this node if the tree is deep enough
             # or stop if the # cells is already low enough
-            if current_depth > max_depth or len(parent_node["cells"]) <= max_cells:
+            if curr_depth + 1 > max_depth or len(parent_node["cells"]) <= max_cells:
                 # console.log(parentNode.points.length);
                 max_cell_count = max(max_cell_count, len(parent_node["cells"]))
                 max_leaf_depth = max(max_leaf_depth, parent_node["depth"])
@@ -195,21 +272,27 @@ class Tree:
             curr_dim = parent_node["depth"] % 3
 
             # find the pivot 
-            parent_node["split_val"] = 0.5 * (parent_node["box"]["min"][curr_dim] + parent_node["box"]["max"][curr_dim])
+            parent_node["split_val"] = np.float32(0.5 * (parent_node["box"]["min"][curr_dim] + parent_node["box"]["max"][curr_dim]))
+
+
+            # split the cells into left and right
+            left_cells, right_cells = split_cells(parent_node, mesh_pos[:, curr_dim], mesh_con)
+
+            # print(len(left_cells), len(right_cells))
+            # print(parent_node["split_val"], curr_dim, curr_depth)
 
             left_box = copy_box(parent_node["box"])
             left_box["max"][curr_dim] = parent_node["split_val"]
             right_box = copy_box(parent_node["box"])
             right_box["min"][curr_dim] = parent_node["split_val"]
 
-
-            # split the cells into left and right
-            (left_cells, right_cells) = split_cells(parent_node, mesh_pos[:, curr_dim], mesh_con)
-
+            # print(left_box, right_box)
+            
             # create the new left and right nodes
             left_node = {
+                "this_ptr": 0,
                 "split_val": 0, 
-                "depth": parent_node["depth"] + 1,
+                "depth": curr_depth + 1,
                 "box": left_box,
                 "cells": left_cells,
                 "parent": parent_node,
@@ -218,8 +301,9 @@ class Tree:
             }
 
             right_node = {
+                "this_ptr": 0,
                 "split_val": 0, 
-                "depth": parent_node["depth"] + 1,
+                "depth": curr_depth + 1,
                 "box": right_box,
                 "cells": right_cells,
                 "parent": parent_node,
@@ -240,8 +324,10 @@ class Tree:
         print("avg cells in leaves:", cells_count_sum / leaves_count)
         print("max cells in leaves:", max_cell_count)
         print("max tree depth:", max_leaf_depth)
+        print("nodes created: %i" % processed)
+        print("leaves created: %i" % leaves_count)
 
-        return Tree(root)
+        return Tree(root, processed)
         
 
 def get_vert(pos, con, offset):
@@ -304,12 +390,17 @@ def main():
 
     # extract mesh
     mesh = Mesh.from_zone_node(zone_node, selected_value_names)
+    mesh.calculate_box()
     print(mesh)
 
     # generate the tree
     # dis.dis(split_cells)
     # cProfile.runctx("Tree.generate_node_median(mesh, 12, args['max_cells'])", globals(), locals())
     tree = Tree.generate_node_median(mesh, args["depth"], args["max_cells"])
+    # tree = Tree.generate_node_median(mesh, 3, args["max_cells"])
+
+    node_buffer = tree.serialise()
+    # print(node_buffer)
     return
 
     # split the mesh into blocks using the tree
