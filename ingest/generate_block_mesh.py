@@ -4,6 +4,7 @@ import numpy as np
 import cProfile
 import dis
 from collections import namedtuple
+import csv
 
 
 
@@ -17,7 +18,7 @@ class Mesh:
         "max": [0, 0, 0]
     }
 
-    def __init__(self, positions, connectivity, values):
+    def __init__(self, positions, connectivity, values=None):
         self.positions = positions
         self.connectivity = connectivity
         self.values = values
@@ -141,18 +142,23 @@ def split_cells(node, pos_part, mesh_con):
 
 
 class Tree:
-    def __init__(self, root, node_count):
+    def __init__(self, root, node_count, leaf_count, max_cells, total_cell_count):
         self.root = root
         self.node_count = node_count
+        self.leaf_count = leaf_count
+        self.max_cells = max_cells
+        self.total_cell_count = total_cell_count
 
     # creates a packed buffer representation of the tree
     def serialise(self):
         # create the node buffer
         node_buffer = np.empty(self.node_count, dtype=self.node_dtype)
+        cells_buffer = np.empty(self.total_cell_count, dtype=np.uint32)
 
         node_queue = [self.root]
 
         curr_ptr = 0
+        curr_cells_ptr = 0
 
         while len(node_queue) > 0:
             node = node_queue.pop()
@@ -165,6 +171,11 @@ class Tree:
             # write node to the buffer
             if node["cells"] is not None:
                 node_buffer[curr_ptr]["cell_count"] = len(node["cells"])
+
+                # write the cells data to that buffer
+                cells_buffer[curr_cells_ptr : curr_cells_ptr + len(node["cells"])] = node["cells"]
+                node_buffer[curr_ptr]["left_ptr"] = curr_cells_ptr
+                curr_cells_ptr += len(node["cells"])
             else:
                 node_buffer[curr_ptr]["cell_count"] = 0
             
@@ -183,9 +194,10 @@ class Tree:
                 node_queue.append(node["left"])
             if node["right"] is not None:
                 node_queue.append(node["right"])
+
             curr_ptr += 1
         
-        return node_buffer
+        return (node_buffer, cells_buffer)
             
             
 
@@ -327,7 +339,7 @@ class Tree:
         print("nodes created: %i" % processed)
         print("leaves created: %i" % leaves_count)
 
-        return Tree(root, processed)
+        return Tree(root, processed, leaves_count, max_cell_count, cells_count_sum)
         
 
 def get_vert(pos, con, offset):
@@ -359,8 +371,70 @@ def filter_value_names(value_names):
 
 
 # splits the given mesh into the blocks for each leaf node
-def split_mesh_at_leaves(mesh, tree):
-    return [Mesh()]
+def split_mesh_at_leaves(mesh, tree, node_buff, cells_buff):
+    block_meshes = []
+
+    block_node_buff = np.array(node_buff, copy=True)
+
+    curr_leaf_index = 0
+
+    # iterate through nodes, check for leaf
+    for i in range(tree.node_count):
+        node = node_buff[i];
+        if 0 != node["right_ptr"]: continue
+        
+        # this is a leaf node
+
+        # This is needed to be able to properly address a leaf node's cells
+        block_node_buff[i]["left_ptr"] = curr_leaf_index
+
+        # create the buffers for this mesh segment
+        block_con_buff = np.empty(node["cell_count"] * 4, np.uint32)
+        curr_con_index = 0
+        next_vert_index = 0
+        unique_verts = {}
+        cells_ptr = node["left_ptr"]
+
+        this_cells = cells_buff[cells_ptr : cells_ptr + node["cell_count"]]
+
+
+        # iterate through all cells in this leaf node
+        for cell_id in this_cells:
+            # iterate through the cell vertices
+            for j in range(4):
+                point_full_index = mesh.connectivity[cell_id * 4 + j]
+                # check if the offset points to a vert already pulled in
+                if point_full_index in unique_verts:
+                    # get the local block-level position
+                    point_block_index = unique_verts[point_full_index]
+                else:
+                    # its position is the next free space
+                    point_block_index = next_vert_index
+                    # add to unique verts
+                    unique_verts[point_full_index] = next_vert_index
+                    next_vert_index += 1
+                
+                # add connectivity entry for vert position within the block
+                block_con_buff[curr_con_index] = point_block_index
+                curr_con_index += 1
+        
+        # write the verts for this block using the mapping
+        block_pos_buff = np.empty((next_vert_index, 3), dtype=np.float32)
+        for full_index, block_index in unique_verts.items():
+            block_pos_buff[block_index] = mesh.positions[full_index]
+        
+        block_meshes.append(Mesh(block_pos_buff, block_con_buff))
+
+    return block_meshes
+
+
+def export_meshes_info(meshes):
+    with open("filled_slots.csv", "w", newline="") as file:
+        writer = csv.writer(file, dialect="excel")
+        writer.writerow(["Full Vertices", "Full Cells"])
+        for mesh in meshes:
+            writer.writerow([len(mesh.positions), len(mesh.connectivity)//4])
+
 
 def main():
     parser = argparse.ArgumentParser(prog="generate_block_mesh")
@@ -399,12 +473,14 @@ def main():
     tree = Tree.generate_node_median(mesh, args["depth"], args["max_cells"])
     # tree = Tree.generate_node_median(mesh, 3, args["max_cells"])
 
-    node_buffer = tree.serialise()
+    node_buffer, cells_buffer = tree.serialise()
     # print(node_buffer)
-    return
 
     # split the mesh into blocks using the tree
-    leaf_meshes = split_mesh_at_leaves(mesh, tree)
+    leaf_meshes = split_mesh_at_leaves(mesh, tree, node_buffer, cells_buffer)
+
+    export_meshes_info(leaf_meshes)
+    return
 
     # create new hdf5 file
     new_file = h5py.File(args["output"], "w")

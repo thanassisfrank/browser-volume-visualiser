@@ -7,4 +7,4 @@ static/data/*_cornerVals.raw
 old/
 .vscode
 build/
-convertDataset
+cpp/
