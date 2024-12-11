@@ -8,3 +8,4 @@ old/
 .vscode
 build/
 cpp/
+__pycache__
