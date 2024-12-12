@@ -66,13 +66,13 @@ class Mesh:
         
     
     @staticmethod
-    def from_zone_node(zone_node, val_names):
-        zone_type_node = zone_node["ZoneType"]
+    def from_zone_group(zone_grp, val_names):
+        zone_type_node = zone_grp["ZoneType"]
         # check if this is unstructured
         if charcodes_to_string(zone_type_node[" data"]) != "Unstructured":
             raise TypeError("Dataset mesh is not unstructured")
         
-        coords_node = zone_node["GridCoordinates"]
+        coords_node = zone_grp["GridCoordinates"]
         # print(list(coords_node.keys()))
         x_dset = coords_node["CoordinateX/ data"]
         x_pos = np.empty(x_dset.shape, dtype=x_dset.dtype)
@@ -89,7 +89,7 @@ class Mesh:
         positions = np.array([x_pos, y_pos, z_pos]).transpose()
 
         # get the connectivity information, correcting for one based indexing
-        con_dset = zone_node["GridElements/ElementConnectivity/ data"]
+        con_dset = zone_grp["GridElements/ElementConnectivity/ data"]
         connectivity = np.empty(con_dset.shape, dtype=con_dset.dtype)
         con_dset.read_direct(connectivity)
         connectivity -= 1
@@ -97,7 +97,8 @@ class Mesh:
         values = {}
         for name in val_names:
             try:
-                values[name] = np.array(zone_node["FlowSolution"][name][" data"], copy=True)
+                values[name] = np.array(zone_grp
+    ["FlowSolution"][name][" data"], copy=True)
             except:
                 print("Couldn't load array", name)
 

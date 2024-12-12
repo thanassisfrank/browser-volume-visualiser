@@ -5,10 +5,12 @@ from modules.mesh import Mesh
 
 
 def get_containing_cell(pos, node, mesh, tree):
+    m_con = mesh.connectivity
+    m_pos = mesh.positions
     cell = {
-        "points" : np.empty((4, 3), dtype=np.float32),
+        "points" : [None, None, None, None],
         "points_indices": np.empty(4, dtype=np.uint32),
-        "factors": np.empty(4, dtype=np.float32)
+        "factors": [0, 0, 0, 0]
     }
 
     cells = tree.cell_buffer[node["left_ptr"] : node["left_ptr"] + node["cell_count"]]
@@ -16,9 +18,9 @@ def get_containing_cell(pos, node, mesh, tree):
         # read all the point positions
         for j in range(4):
             # get the coords of the point as an array 3
-            this_point_index = mesh.connectivity[cell_id * 4 + j]
+            this_point_index = m_con[cell_id * 4 + j]
             cell["points_indices"][j] = this_point_index
-            cell["points"][j] = mesh.positions[this_point_index]
+            cell["points"][j] = m_pos[this_point_index]
         
         
         if not point_in_tet_bounds(pos, cell): continue
@@ -28,7 +30,6 @@ def get_containing_cell(pos, node, mesh, tree):
 
         return cell
     
-
     # no containing cell found
     return None
 
@@ -186,7 +187,7 @@ def split_mesh_at_leaves(mesh, tree):
 
     # iterate through nodes, check for leaf
     for i in range(tree.node_count):
-        node = tree.node_buff[i]
+        node = tree.node_buffer[i]
         if 0 != node["right_ptr"]: continue
         
         # this is a leaf node
@@ -201,7 +202,7 @@ def split_mesh_at_leaves(mesh, tree):
         unique_verts = {}
         cells_ptr = node["left_ptr"]
 
-        this_cells = tree.cells_buff[cells_ptr : cells_ptr + node["cell_count"]]
+        this_cells = tree.cell_buffer[cells_ptr : cells_ptr + node["cell_count"]]
 
 
         # iterate through all cells in this leaf node

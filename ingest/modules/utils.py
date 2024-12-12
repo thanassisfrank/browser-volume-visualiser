@@ -40,14 +40,15 @@ def point_in_box(p, box):
 
 
 def point_in_tet_bounds(point, cell):
+    cell_p = cell["points"]
     bound = {
         "min": np.minimum(
-            np.minimum(cell["points"][0], cell["points"][1]),
-            np.minimum(cell["points"][2], cell["points"][3])
+            np.minimum(cell_p[0], cell_p[1]),
+            np.minimum(cell_p[2], cell_p[3])
         ),
         "max": np.maximum(
-            np.maximum(cell["points"][0], cell["points"][1]),
-            np.maximum(cell["points"][2], cell["points"][3])
+            np.maximum(cell_p[0], cell_p[1]),
+            np.maximum(cell_p[2], cell_p[3])
         ),
     }
 
