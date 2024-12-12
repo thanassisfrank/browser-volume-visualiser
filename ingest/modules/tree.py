@@ -95,9 +95,14 @@ class Tree:
 
             curr_ptr += 1
         
-        return (node_buffer, cells_buffer)
+        return node_buffer, cells_buffer
             
             
+    def convert_to_buffers(self):
+        self.node_buffer, self.cell_buffer = self.serialise()
+        self.root = None
+
+        return self.node_buffer, self.cell_buffer
 
     # definition of the datatype for a single node
     # struct KDTreeNode {
@@ -118,7 +123,7 @@ class Tree:
     # Node = namedtuple("Node", (node_dtype[0][0]))
 
     @staticmethod
-    def generate_node_median(mesh, max_depth, max_cells):
+    def generate_node_median(mesh, max_depth, max_cells, verbose):
         node_queue = []
         n_app = node_queue.append
         cells_count_sum = 0
@@ -146,7 +151,7 @@ class Tree:
         mesh_pos = mesh.positions
         mesh_con = mesh.connectivity
 
-        print("Starting tree build, target cells: %i" % max_cells)
+        if (verbose): print("Starting tree build, target cells: %i" % max_cells)
         cells_est = []
 
         while len(node_queue) > 0:
@@ -157,7 +162,7 @@ class Tree:
             # progress indicator
             # cells_est.insert(0, len(parent_node["cells"]))
             # if len(cells_est) > 10: cells_est.pop()
-            if processed % 500 == 0:
+            if processed % 500 == 0 and verbose:
                 # print("nodes processed %i, cells est: %i" % (processed, sum(cells_est)/len(cells_est)))
                 avg_queue_depth = sum([node["depth"] for node in node_queue])/max(1, len(node_queue))
                 # print(" ".join([str(len(node["cells"])) for node in node_queue]))
@@ -230,12 +235,12 @@ class Tree:
             n_app(left_node)
             n_app(right_node)
         
-
-        print("avg cells in leaves:", cells_count_sum / leaves_count)
-        print("max cells in leaves:", max_cell_count)
-        print("max tree depth:", max_leaf_depth)
-        print("nodes created: %i" % processed)
-        print("leaves created: %i" % leaves_count)
+        if verbose:
+            print("avg cells in leaves:", cells_count_sum / leaves_count)
+            print("max cells in leaves:", max_cell_count)
+            print("max tree depth:", max_leaf_depth)
+            print("nodes created: %i" % processed)
+            print("leaves created: %i" % leaves_count)
 
         return Tree(root, processed, leaves_count, max_cell_count, cells_count_sum)
         

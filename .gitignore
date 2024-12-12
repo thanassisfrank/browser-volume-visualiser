@@ -9,3 +9,4 @@ old/
 build/
 cpp/
 __pycache__
+ingest/*.cgns
