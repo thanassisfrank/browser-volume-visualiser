@@ -58,7 +58,7 @@ def export_meshes_info(meshes):
 def create_node_zone_group(base_grp, tree, node_buff, corner_values):
     # indicate that there are no verts inside this
     node_zone_grp = create_cgns_subgroup(base_grp, "NodeZone", "Zone_t", "I4", np.array([0, 0, 0], dtype=np.int32))
-    create_cgns_subgroup(node_zone_grp, "ZoneType", "ZoneType_t", "C1", string_to_np_char("ZoneTypeNull"))
+    create_cgns_subgroup(node_zone_grp, "ZoneType", "ZoneType_t", "C1", string_to_np_char("ZoneTypeUserDefined"))
 
     # write node tree to this new zone
     create_cgns_subgroup(node_zone_grp, "NodeTree", "UserDefinedData_t", "C1", node_buff)
@@ -76,12 +76,39 @@ def create_node_zone_group(base_grp, tree, node_buff, corner_values):
 
     for name, buff in corner_values.items():
         create_cgns_subgroup(flow_sol_grp, name, "DataArray_t", "R4", buff)
+    
+    return node_zone_grp
 
 
 # writes the data that the client will access directly to a file
 # contains the node and corner buffers as well as what sizes to expect for the mesh
-def save_partial_data():
-    ...
+def save_partial_data(out_name, tree, max_verts, corner_values):
+    with h5py.File(f"{out_name}_partial.cgns", "w") as file:
+        create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
+        
+        base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
+
+        # create zone for partial information
+        zone_grp = create_node_zone_group(base_grp, tree, tree.node_buffer, corner_values)
+
+        # write information about max verts and max cells in all zones
+        prim_data = np.array([tree.max_cells, max_verts], dtype=np.uint32)
+        create_cgns_subgroup(zone_grp, "MaxPrimitives", "UserDefinedData_t", "I4", prim_data)
+
+        # write dataset box information
+        box_data = np.array(tree.box["min"] + tree.box["max"], dtype=np.float32)
+        create_cgns_subgroup(zone_grp, "ZoneBounds", "UserDefinedData_t", "R4", box_data)
+
+
+def save_block_mesh_data(out_name, meshes):
+    with h5py.File(f"{out_name}_block_mesh.cgns", "w") as file:
+        create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
+    
+        base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
+
+        # create the zones for each mesh
+        for i, mesh in enumerate(meshes):
+            mesh.create_zone_subgroup(base_grp, "Zone%i" % i)
 
 # writes each of the given meshes to the hdf5 file as separate zones
 # also writes the node buffer
@@ -108,7 +135,7 @@ def main():
     parser.add_argument("-s", "--scalars", nargs="*", default=["pick"], help="flow solution scalar datasets to include")
     parser.add_argument("-d", "--depth", type=int, default=40, help="max depth of the tree")
     parser.add_argument("-c", "--max-cells", type=int, default=1024, help="max cells in the leaf nodes")
-    parser.add_argument("-o", "--output", default="out.cgns", help="output file path")
+    parser.add_argument("-o", "--output", default="out", help="output file path")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose output")
 
     args = vars(parser.parse_args())
@@ -161,13 +188,24 @@ def main():
     max_verts = max(map(lambda m : len(m.positions), leaf_meshes))
     # export_meshes_info(leaf_meshes)
 
-    # create output cgns file
-    if args["verbose"]: print("Creating output file...")
-    new_file = h5py.File(args["output"], "w")
-    # write a new zone for each leaf block
-    write_block_mesh_data(new_file, leaf_meshes, max_verts, tree, node_buffer, corner_values)
 
-    new_file.close()
+    # create partial cgns file for client to load
+    if args["verbose"]: print("Creating partial out file...")
+    save_partial_data(args["output"], tree, max_verts, corner_values)
+
+    # create mesh cgns file for server to serve blocks from
+    if args["verbose"]: print("Creating full mesh out file...")
+    save_block_mesh_data(args["output"], leaf_meshes)
+
+
+
+
+    # # create output cgns file
+    # new_file = h5py.File(args["output"], "w")
+    # # write a new zone for each leaf block
+    # write_block_mesh_data(new_file,  max_verts, tree, node_buffer, corner_values)
+
+    # new_file.close()
 
     # generate and output the json required
 

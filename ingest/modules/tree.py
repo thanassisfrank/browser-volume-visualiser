@@ -40,12 +40,13 @@ def split_cells(node, pos_part, mesh_con):
 
 
 class Tree:
-    def __init__(self, root, node_count, leaf_count, max_cells, total_cell_count):
+    def __init__(self, root, node_count, leaf_count, max_cells, total_cell_count, box):
         self.root = root
         self.node_count = node_count
         self.leaf_count = leaf_count
         self.max_cells = max_cells
         self.total_cell_count = total_cell_count
+        self.box = box
 
     # creates a packed buffer representation of the tree
     def serialise(self):
@@ -242,5 +243,5 @@ class Tree:
             print("nodes created: %i" % processed)
             print("leaves created: %i" % leaves_count)
 
-        return Tree(root, processed, leaves_count, max_cell_count, cells_count_sum)
+        return Tree(root, processed, leaves_count, max_cell_count, cells_count_sum, copy_box(mesh.box))
         
