@@ -4,6 +4,8 @@ static/data/hcci_oh_560x560x560_float32.raw
 static/data/*_treeCells.raw
 static/data/*_treeNodes.raw
 static/data/*_cornerVals.raw
+static/data/*_blocks.raw
+static/data/*_limits.raw
 old/
 .vscode
 build/
