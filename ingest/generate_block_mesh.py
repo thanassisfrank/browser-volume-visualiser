@@ -140,7 +140,11 @@ def main():
 
     args = vars(parser.parse_args())
     # load the cgns file
-    file = h5py.File(args["file-path"], "r")
+    try:
+        file = h5py.File(args["file-path"], "r")
+    except OSError:
+        print("Could not open file, exiting...")
+        return
     # print(list(file.keys()))
 
     print("File information:")
