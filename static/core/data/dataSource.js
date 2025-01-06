@@ -388,6 +388,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         // create the json request
         const request = {
             name: this.name,
+            mode: "meshblocks",
             blocks: indices,
             geometry: !!geometry,
             scalars: scalarNames
