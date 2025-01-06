@@ -296,6 +296,9 @@ export class PartialCGNSDataSource extends EmptyDataSource {
 
     cornerFlowSolution;
 
+    // all cells are tetrahedra
+    vertsPerCell = 4;
+
 
 
     constructor(name, path) {
@@ -349,15 +352,57 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         this.maxVertCount = primCountBuff[1];
     }
 
-    // requests the mesh block from the server with this leaf index
-    // returns the geometry (vert positions, connectivity)
-    async getMeshBlockGeometry(index) {
-        
+    // takes the monolithic buffer returned by the server and splits it
+    // returns an object with geometry and scala buffers broken out
+    splitRespBuffer(buff, blockCount, geometry, scalarNames) {
+        let byteOffset = 0;
+        const extractSection = (type, elementCount) => {
+            const thisBuff = new type(buff, byteOffset, elementCount);
+            byteOffset += elementCount * type.BYTES_PER_ELEMENT;
+
+            return thisBuff;
+        }
+
+        let result = {};
+
+        if (geometry) {
+            // extract vertex positions and connectivity
+            result.positions = extractSection(Float32Array, this.maxVertCount * 3 * blockCount);
+            result.cellConnectivity = extractSection(Float32Array, this.maxCellCount * this.vertsPerCell * blockCount);
+        }
+
+        result.values = {};
+        for (let i = 0; i < scalarNames.length; i++) {
+            const name = scalarNames[i];
+            result.values[name] = extractSection(Float32Array, this.maxVertCount * blockCount);
+        }
+
+        return result;
     }
 
     // requests the mesh block from the server with this leaf index
+    // waits for the response from the server
+    // can return the geometry (vert positions, connectivity)
     // returns the vert-centred data with the supplied identifiers
-    async getMeshBlockData(index, name) {
+    async getMeshBlocks(indices, geometry, scalarNames) {
+        // create the json request
+        const request = {
+            name: this.name,
+            blocks: indices,
+            geometry: !!geometry,
+            scalars: scalarNames
+        }
+        console.log(request);
+
+        // send the request
+        const resp = fetch("/meshBlocks", {
+            method: "POST",
+            body: JSON.stringify(request)
+        });
+        const buff = await resp.arrayBuffer();
+
+        // pull out the different buffers
+        return this.splitRespBuffer(buff, indices.length, geometry, scalarNames)
 
     }
 
