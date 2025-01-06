@@ -418,8 +418,6 @@ class Data extends SceneObject {
 
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             // if the data is in the normal mesh format, reformat to block mesh
-            // this.convertValuesToBlockMesh(newSlotNum);
-            // console.log("converted values");
             // create new entry in the dynamic mesh cache object
             this.createDynamicBlockValues(newSlotNum);
             console.log("created dynamic values");

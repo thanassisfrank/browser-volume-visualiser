@@ -22,9 +22,19 @@ class EmptyDataSource {
     dataTransformMat = mat4.create();
     
     constructor() {}
+
+    // initialises the dataset, fetching information from the server if required
     init() {}
+
+    // returns a list of descriptors of all the scalar data arrays that are
+    // a part of this dataset
     getAvailableDataArrays() {}
-    getDataArray(name) {}
+
+    // returns the data for whole dataset for the given descriptor that is available
+    // > could return the vertex-centred data buffer is this is available as one
+    // > could return the corner values if available/required
+    // > also retreives/calculates the min/max (limits) of this set of scalar data
+    getDataArray(desc) {}
 }
 
 
@@ -220,9 +230,9 @@ export class CGNSDataSource extends EmptyDataSource {
 
         const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
 
-        FS.writeFile("yf17_hdf5.cgns", new Uint8Array(responseBuffer));
+        FS.writeFile(this.name, new Uint8Array(responseBuffer));
         // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
-        let f = new h5wasm.File("yf17_hdf5.cgns", "r");
+        let f = new h5wasm.File(this.name, "r");
 
         var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
         var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
@@ -263,6 +273,106 @@ export class CGNSDataSource extends EmptyDataSource {
         return {
             name: desc.name,
             data,
+            limits,
+        };
+    }
+}
+
+// provides an interface to a partial CGNS dataset
+export class PartialCGNSDataSource extends EmptyDataSource {
+    format = DataFormats.UNSTRUCTURED;
+    tree = null;
+    
+    extentBox = {
+        min: [0, 0, 0],
+        max: [0, 0, 0]
+    };
+
+    nodeCount;
+    leafCount;
+
+    maxCellCount;
+    maxVertCount;
+
+    cornerFlowSolution;
+
+
+
+    constructor(name, path) {
+        super();
+        this.name = name;
+        this.path = path;
+    }
+
+    // initialises the dataset with the partial CGNS file
+    // > requests the partial CGNS file from the server
+    // > extracts information about the node tree and mesh block sizes
+    // > keeps a reference to the corner value flow solution node for pulling data arrays from
+    async init() {
+        const { FS } = await h5wasm.ready;
+
+        const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
+
+        FS.writeFile(this.name, new Uint8Array(responseBuffer));
+        // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
+        let f = new h5wasm.File(this.name, "r");
+
+        var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
+        var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
+        var zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
+        
+        // only unstructured zones are currently supported
+        var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
+        const testZoneType = "ZoneTypeUserDefined";
+        if (zoneTypeStr != testZoneType) {
+            throw "Unsupported ZoneType of '" + zoneTypeStr + "', expected '" + testZoneType + "'";
+        }
+
+        // get the physical extent of the dataset
+        const extentBuff = CGNSZoneNode.get("ZoneBounds/ data").value;
+        this.extentBox.min = [extentBuff[0], extentBuff[1], extentBuff[2]];
+        this.extentBox.max = [extentBuff[3], extentBuff[4], extentBuff[5]];
+
+        // extract node count information
+        const nodeCountBuff = CGNSZoneNode.get("TreeData/ data").value;
+        this.nodeCount = nodeCountBuff[0];
+        this.leafCount = nodeCountBuff[1];
+
+        // extract the node tree from the file
+
+        // get the corner value flow solutions
+        this.cornerFlowSolution = CGNSZoneNode.get("FlowSolution");
+
+        // extract leaf mesh max vert and cell info
+        const primCountBuff = CGNSZoneNode.get("MaxPrimitives/ data").value;
+        this.maxCellCount = primCountBuff[0];
+        this.maxVertCount = primCountBuff[1];
+    }
+
+    // requests the mesh block from the server with this leaf index
+    // returns the geometry (vert positions, connectivity)
+    async getMeshBlockGeometry(index) {
+        
+    }
+
+    // requests the mesh block from the server with this leaf index
+    // returns the vert-centred data with the supplied identifiers
+    async getMeshBlockData(index, name) {
+
+    }
+
+    // returns only the corner value buffer for this data array name
+    async getDataArray(desc) {
+        const data = this.cornerFlowSolution.get(desc.name + "/ data")?.value;
+        if (!data) return;
+        let limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+        for (let i = 0; i < data.length; i++) {
+            limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
+        }
+
+        return {
+            name: desc.name,
+            cornerValues: data,
             limits,
         };
     }
