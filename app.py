@@ -5,8 +5,7 @@ import os
 import sys
 import json
 import threading
-import socketserver
-import socket
+import h5py
 import numpy as np
 from http.server import *
 import time
@@ -278,64 +277,60 @@ class requestHandler(BaseHTTPRequestHandler):
     # use the full dataset cgns files to 
     def handleMeshBlocksDataRequest(self, request):
         start_time = time.time()
+
+        block_count = len(request["blocks"])
+
+        # information stored about the dataset on the server
         data_info = datasets[request["name"]]
-        # load the dataset TODO: load chunks at a time
-        
-        stride = 1
-        # check if its point data
-        if ("fileName" in request) and ("points" in request) and request["points"]:
-            # if it is, set stride = 3
-            stride = 3
-            file_name = request["fileName"]
-            path = static_path + data_info["path"] + file_name + "_positions_blocks.raw"
-            data_type = np.float32
-        # check for filename and data
-        elif ("fileName" in request) and ("data" in request):
-            # is from a sg dataset
-            file_name = request["fileName"]
-            data_name = request["data"]
-            stride = data_info["data"][data_name]["components"]
-            path = static_path + data_info["path"] + file_name + "_" + data_name + "_blocks.raw"
-            data_type = np_data_formats[data_info["data"][data_name]["dataType"]]
-        else:
-            path = static_path + data_info["path"].split(".")[0] + "_blocks.raw"
-            data_type = np_data_formats[data_info["dataType"]]
 
+        # get the h5py file object
+        with h5py.File(static_path + data_info["meshPath"]) as file:
+            base_grp = file["Base"]
+            # load info about max verts and cells per mesh block
+            max_verts, max_cells = base_grp["MaxPrimitives/ data"]
 
-        # data_file = open(path, "rb")
-        data_file = file_manager.getFile(path, "rb")
+            # create the buffers to hold all the response data
+            if request["geometry"]:
+                # vert position information
+                block_vert_pos_buff = np.empty((block_count, 3 * max_verts), dtype=np.float32)
+                # cell connectivity information
+                block_cell_con_buff = np.empty((block_count, 4 * max_cells), dtype=np.uint32)
+            
+            scalar_buffs = {}
+            for name in request["scalars"]:
+                scalar_buffs[name] = np.empty((block_count, max_verts), dtype=np.float32)
 
-        data = np.frombuffer(data_file, dtype=data_type)
+            # iterate through all the blocks requested
+            for i, block_index in enumerate(request["blocks"]):
+                # get the zone node for this block
+                block_grp = base_grp["Zone%i" % block_index]
+                if request["geometry"]:
+                    # write geometry information
+                    coord_grp = block_grp["GridCoordinates"]
+                    block_vert_pos_buff[i] = np.array([
+                        coord_grp["CoordinateX/ data"], 
+                        coord_grp["CoordinateY/ data"], 
+                        coord_grp["CoordinateZ/ data"]
+                    ]).transpose()
+                    block_cell_con_buff[i] = block_grp["GridElements/ElementConnectivity/ data"]
+                # write scalar data
+                for j, name in enumerate(request["scalars"]):
+                    scalar_buffs[name][j] = block_grp["FlowSolution/%s/ data" % name]
 
-        blockSize = {
-            "x": 4,
-            "y": 4,
-            "z": 4
-        }
-        block_vol = blockSize["x"] * blockSize["y"] * blockSize["z"]
+            
+            # send reponse headers
+            self.send_response(200)
+            self.send_header("content-type", "application/octet-stream")
+            self.end_headers()
+            
+            # send response body
+            if request["geometry"]:
+                self.wfile.write(block_vert_pos_buff.data)
+                self.wfile.write(block_cell_con_buff.data)
+            
+            for name in request["scalars"]:
+                self.wfile.write(scalar_buffs[name].data)
 
-        # active_ids = []
-        fine_data = np.empty(len(request["blocks"])*blockSize["x"]*blockSize["y"]*blockSize["z"]*stride, dtype=data_type)
-
-        
-        for i in range(len(request["blocks"])):
-            id = request["blocks"][i]
-            if type(id) is not int:
-                print(type(id))
-                continue
-            fine_data[i*block_vol*stride:(i+1)*block_vol*stride] = data[id*block_vol*stride:(id+1)*block_vol*stride]
-
-        
-        print("for", len(request["blocks"]), "blocks")
-        self.send_response(200)
-        self.send_header("content-type", "applcation/octet-stream")
-        self.end_headers()
-        
-        #print(fine_data[:40])
-        self.wfile.write(fine_data.data)
-
-        # data_file.close()
-        file_manager.releaseFile(path, "rb")
         print("took " + "%.3f" % (time.time()-start_time) + "s")
 
 def main():

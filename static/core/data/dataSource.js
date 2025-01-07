@@ -391,7 +391,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
             mode: "meshblocks",
             blocks: indices,
             geometry: !!geometry,
-            scalars: scalarNames
+            scalars: scalarNames ?? []
         }
         console.log(request);
 
