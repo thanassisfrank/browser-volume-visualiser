@@ -1,11 +1,8 @@
 import h5py
 import argparse
 import numpy as np
-import cProfile
-import dis
 from collections import namedtuple
 import csv
-import json
 
 from modules.utils import *
 from modules.mesh import Mesh
@@ -100,33 +97,21 @@ def save_partial_data(out_name, tree, max_verts, corner_values):
         create_cgns_subgroup(zone_grp, "ZoneBounds", "UserDefinedData_t", "R4", box_data)
 
 
-def save_block_mesh_data(out_name, meshes):
+# writes the data that the server will read from to a file
+# contains the mesh data for each of the tree leaf nodes
+def save_block_mesh_data(out_name, meshes, tree, max_verts):
     with h5py.File(f"{out_name}_block_mesh.cgns", "w") as file:
         create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
     
         base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
 
+        # write information about max verts and max cells across all zones
+        prim_data = np.array([tree.max_cells, max_verts], dtype=np.uint32)
+        create_cgns_subgroup(base_grp, "MaxPrimitives", "UserDefinedData_t", "I4", prim_data)
+
         # create the zones for each mesh
         for i, mesh in enumerate(meshes):
             mesh.create_zone_subgroup(base_grp, "Zone%i" % i)
-
-# writes each of the given meshes to the hdf5 file as separate zones
-# also writes the node buffer
-def write_block_mesh_data(file, meshes, max_verts, tree, node_buff, corner_values):
-    create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
-    
-    base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
-
-    # create section for node information and corner vals in the file
-    create_node_zone_group(base_grp, tree, node_buff, corner_values)
-
-    # write information about max verts and max cells in all zones
-    prim_data = np.array([tree.max_cells, max_verts], dtype=np.uint32)
-    create_cgns_subgroup(base_grp, "MaxPrimitives", "UserDefinedData_t", "I4", prim_data)
-
-    # create the zones for each mesh
-    for i, mesh in enumerate(meshes):
-        mesh.create_zone_subgroup(base_grp, "Zone%i" % i)
 
 
 def main():
@@ -199,19 +184,7 @@ def main():
 
     # create mesh cgns file for server to serve blocks from
     if args["verbose"]: print("Creating full mesh out file...")
-    save_block_mesh_data(args["output"], leaf_meshes)
-
-
-
-
-    # # create output cgns file
-    # new_file = h5py.File(args["output"], "w")
-    # # write a new zone for each leaf block
-    # write_block_mesh_data(new_file,  max_verts, tree, node_buffer, corner_values)
-
-    # new_file.close()
-
-    # generate and output the json required
+    save_block_mesh_data(args["output"], leaf_meshes, tree, max_verts)
 
 
 
