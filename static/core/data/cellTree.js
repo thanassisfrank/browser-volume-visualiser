@@ -930,15 +930,14 @@ export class UnstructuredTree {
 
     dimensions = 3;
 
-    constructor(dataSource, splitType, maxDepth, maxCells) {
+    constructor(splitType, maxDepth, maxCells, extentBox, mesh={}) {
         // mesh buffers
-        this.points = dataSource.mesh?.positions;
-        this.cellConnectivity = dataSource.mesh?.cellConnectivity;
-        this.cellOffsets = dataSource.mesh?.cellOffsets;
-        // this.cellTypes = dataSource.mesh.cellTypes;
+        this.points = mesh?.positions;
+        this.cellConnectivity = mesh?.cellConnectivity;
+        this.cellOffsets = mesh?.cellOffsets;
 
         // bounding box
-        this.extentBox = dataSource.extentBox;
+        this.extentBox = extentBox;
 
         // tree generation/load parameters
         this.splitType = splitType;

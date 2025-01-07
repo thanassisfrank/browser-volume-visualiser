@@ -253,8 +253,8 @@
 	},
 	"yf17_partial": {
 		"name": "YF17p",
-		"path": "yf17_partial.cgns",
-		"meshPath": "yf17_block_mesh.cgns", 
+		"path": "data/yf17_partial.cgns",
+		"meshPath": "data/yf17_block_mesh.cgns", 
 		"type": "cgns-partial"
 	}
 }

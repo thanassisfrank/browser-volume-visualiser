@@ -280,7 +280,7 @@ export class CGNSDataSource extends EmptyDataSource {
 
 // provides an interface to a partial CGNS dataset
 export class PartialCGNSDataSource extends EmptyDataSource {
-    format = DataFormats.UNSTRUCTURED;
+    format = DataFormats.BLOCK_UNSTRUCTURED;
     tree = null;
     
     extentBox = {
@@ -301,10 +301,11 @@ export class PartialCGNSDataSource extends EmptyDataSource {
 
 
 
-    constructor(name, path) {
+    constructor(name, path, meshPath) {
         super();
         this.name = name;
         this.path = path;
+        this.meshPath = meshPath;
     }
 
     // initialises the dataset with the partial CGNS file
@@ -342,6 +343,12 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         this.leafCount = nodeCountBuff[1];
 
         // extract the node tree from the file
+        // create empty tree object
+        this.tree = new UnstructuredTree(this.splitType, this.maxDepth, this.maxCells, this.extentBox);
+        // load buffers from file
+        const nodesBuff = CGNSZoneNode.get("NodeTree/ data").value;
+        // set the buffers in the tree object
+        this.tree.setBuffers(nodesBuff, null, this.nodeCount);
 
         // get the corner value flow solutions
         this.cornerFlowSolution = CGNSZoneNode.get("FlowSolution");
@@ -350,6 +357,10 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         const primCountBuff = CGNSZoneNode.get("MaxPrimitives/ data").value;
         this.maxCellCount = primCountBuff[0];
         this.maxVertCount = primCountBuff[1];
+
+
+        // do a test request from the server
+        console.log(await this.getMeshBlocks([0], true, ["Pressure"]));
     }
 
     // takes the monolithic buffer returned by the server and splits it
@@ -368,7 +379,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         if (geometry) {
             // extract vertex positions and connectivity
             result.positions = extractSection(Float32Array, this.maxVertCount * 3 * blockCount);
-            result.cellConnectivity = extractSection(Float32Array, this.maxCellCount * this.vertsPerCell * blockCount);
+            result.cellConnectivity = extractSection(Uint32Array, this.maxCellCount * this.vertsPerCell * blockCount);
         }
 
         result.values = {};
@@ -387,8 +398,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     async getMeshBlocks(indices, geometry, scalarNames) {
         // create the json request
         const request = {
-            name: this.name,
             mode: "meshblocks",
+            path: this.meshPath,
             blocks: indices,
             geometry: !!geometry,
             scalars: scalarNames ?? []
@@ -396,10 +407,15 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         console.log(request);
 
         // send the request
-        const resp = fetch("/meshBlocks", {
+        const resp = await fetch("/data", {
             method: "POST",
             body: JSON.stringify(request)
         });
+        console.log(resp.status);
+        if (!resp.ok) {
+            console.warn("Couldn't get the requested block data");
+            return {};
+        }
         const buff = await resp.arrayBuffer();
 
         // pull out the different buffers
@@ -643,7 +659,7 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
         await super.init();
 
         // create the tree object
-        this.tree = new UnstructuredTree(this.dataSource, this.splitType, this.maxDepth, this.maxCells);
+        this.tree = new UnstructuredTree(this.splitType, this.maxDepth, this.maxCells, this.dataSource.extentBox, this.dataSource.mesh);
 
         // load or build the tree
         this.loadedTreeInfo = await loadUnstructuredTree(this.tree, this.availableTrees);

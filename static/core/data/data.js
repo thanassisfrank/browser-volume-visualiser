@@ -2,7 +2,7 @@
 // handles the storing of the data object, normals etc
 
 import { DataFormats, DataArrayTypes, ResolutionModes } from "./dataConstants.js";
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource, BlockFromUnstructDataSource } from "./dataSource.js";
+import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource, BlockFromUnstructDataSource, PartialCGNSDataSource } from "./dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
@@ -56,6 +56,8 @@ const dataManager = {
             case "cgns":
                 dataSource = new CGNSDataSource(config.name, config.path);
                 break;
+            case "cgns-partial":
+                dataSource = new PartialCGNSDataSource(config.name, config.path, config.meshPath)
         }
 
         // add downsampling transform if required
@@ -72,7 +74,7 @@ const dataManager = {
             }
         }
 
-        if (dataSource.format == DataFormats.UNSTRUCTURED) {
+        if (dataSource.format == DataFormats.UNSTRUCTURED && !dataSource.tree) {
             // if unstructured here, create a tree
             dataSource = new TreeUnstructDataSource(
                 dataSource, 
@@ -84,7 +86,7 @@ const dataManager = {
             );
         }
 
-        if (opts.dynamicMesh) {
+        if (opts.dynamicMesh && dataSource.format == DataFormats.UNSTRUCTURED) {
             dataSource = new BlockFromUnstructDataSource(dataSource);
         }
 

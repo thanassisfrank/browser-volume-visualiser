@@ -264,12 +264,10 @@ class requestHandler(BaseHTTPRequestHandler):
                 start_time = time.time()
                 request = json.loads(self.rfile.read(content_length))
                 print("json took " + "%.3f" % (time.time()-start_time) + "s")
-                # check if the name given corresponds to a dataset
-                if request["name"] in datasets:
-                    if request["mode"] == "meshblocks":
-                        # just data around the threshold
-                        self.handleMeshBlocksDataRequest(request)
-                        return
+                if request["mode"] == "meshblocks":
+                    # just data around the threshold
+                    self.handleMeshBlocksDataRequest(request)
+                    return
         # if failed at any point, its a bad request (400)
         self.send_response(400)
         self.end_headers()
@@ -280,19 +278,16 @@ class requestHandler(BaseHTTPRequestHandler):
 
         block_count = len(request["blocks"])
 
-        # information stored about the dataset on the server
-        data_info = datasets[request["name"]]
-
         # get the h5py file object
-        with h5py.File(static_path + data_info["meshPath"]) as file:
+        with h5py.File(static_path + request["path"]) as file:
             base_grp = file["Base"]
             # load info about max verts and cells per mesh block
-            max_verts, max_cells = base_grp["MaxPrimitives/ data"]
+            (max_cells, max_verts) = base_grp["MaxPrimitives/ data"]
 
             # create the buffers to hold all the response data
             if request["geometry"]:
                 # vert position information
-                block_vert_pos_buff = np.empty((block_count, 3 * max_verts), dtype=np.float32)
+                block_vert_pos_buff = np.empty((block_count, max_verts, 3), dtype=np.float32)
                 # cell connectivity information
                 block_cell_con_buff = np.empty((block_count, 4 * max_cells), dtype=np.uint32)
             
@@ -307,15 +302,19 @@ class requestHandler(BaseHTTPRequestHandler):
                 if request["geometry"]:
                     # write geometry information
                     coord_grp = block_grp["GridCoordinates"]
-                    block_vert_pos_buff[i] = np.array([
+                    coord_arr = np.array([
                         coord_grp["CoordinateX/ data"], 
                         coord_grp["CoordinateY/ data"], 
                         coord_grp["CoordinateZ/ data"]
                     ]).transpose()
-                    block_cell_con_buff[i] = block_grp["GridElements/ElementConnectivity/ data"]
+                    block_vert_pos_buff[i][:len(coord_arr)] = coord_arr 
+
+                    con_arr = block_grp["GridElements/ElementConnectivity/ data"]
+                    block_cell_con_buff[i][:len(con_arr)] = con_arr
                 # write scalar data
                 for j, name in enumerate(request["scalars"]):
-                    scalar_buffs[name][j] = block_grp["FlowSolution/%s/ data" % name]
+                    scal_arr = block_grp["FlowSolution/%s/ data" % name]
+                    scalar_buffs[name][j][:len(scal_arr)] = scal_arr
 
             
             # send reponse headers
