@@ -250,5 +250,11 @@
 		"name": "YF17",
 		"path": "data/yf17_hdf5.cgns",
 		"type": "cgns"
+	},
+	"yf17_partial": {
+		"name": "YF17p",
+		"path": "yf17_partial.cgns",
+		"meshPath": "yf17_block_mesh.cgns", 
+		"type": "cgns-partial"
 	}
 }

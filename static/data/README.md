@@ -68,6 +68,7 @@ If your CGNS file is large then you'll want to take advantage of the dynamic loa
     "{unique identifier}": {
 		"name": "{dataset name}",
 		"path": "data/{partial file name}",
+        "meshPath": "data/{block mesh file name}",
 		"type": "cgns-partial"
 	}
     ```
