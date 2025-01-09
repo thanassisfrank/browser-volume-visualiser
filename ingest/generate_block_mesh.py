@@ -110,8 +110,9 @@ def save_block_mesh_data(out_name, meshes, tree, max_verts):
         create_cgns_subgroup(base_grp, "MaxPrimitives", "UserDefinedData_t", "I4", prim_data)
 
         # create the zones for each mesh
-        for i, mesh in enumerate(meshes):
-            mesh.create_zone_subgroup(base_grp, "Zone%i" % i)
+        for mesh in meshes:
+            # name each after its node index rather than mesh (leaf) index
+            mesh.create_zone_subgroup(base_grp, "Zone%i" % mesh.id)
 
 
 def main():

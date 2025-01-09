@@ -235,6 +235,6 @@ def split_mesh_at_leaves(mesh, tree):
                 buff[block_index] = mesh.values[val_name][full_index]
 
         
-        block_meshes.append(Mesh(block_pos_buff, block_con_buff, block_values))
+        block_meshes.append(Mesh(block_pos_buff, block_con_buff, block_values, id=i))
 
     return block_meshes

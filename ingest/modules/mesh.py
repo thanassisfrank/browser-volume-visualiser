@@ -7,10 +7,11 @@ class Mesh:
         "max": [0, 0, 0]
     }
 
-    def __init__(self, positions, connectivity, values=None):
+    def __init__(self, positions, connectivity, values=None, id=0):
         self.positions = positions
         self.connectivity = connectivity
         self.values = values
+        self.id = id
 
         # assume fully tetrahedral mesh
         self.cell_count = len(connectivity)//4
