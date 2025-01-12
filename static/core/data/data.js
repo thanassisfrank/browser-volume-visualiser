@@ -281,12 +281,14 @@ class Data extends SceneObject {
         // axis aligned (data space) maximum extent
         this.extentBox = this.dataSource.extentBox;
 
-        if (this.dataFormat == DataFormats.UNSTRUCTURED || this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
+        if (this.dataSource.mesh) {
             // get the mesh buffers
             this.data.positions = this.dataSource.mesh.positions;
             this.data.cellOffsets = this.dataSource.mesh.cellOffsets;
             this.data.cellConnectivity = this.dataSource.mesh.cellConnectivity;
             this.data.cellTypes = this.dataSource.mesh.cellTypes;
+        }
+        if (this.dataSource.mesh) {
             // any additional mesh geometry that is part of the dataset but not part of the mesh
             this.geometry = this.dataSource.geometry;
         }
@@ -361,6 +363,9 @@ class Data extends SceneObject {
     updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
+        if (PartialCGNSDataSource == this.dataSource.constructor) {
+            // get mesh information di
+        }
         this.dynamicTree.update(
             cameraChanged, 
             focusCoords, 
@@ -413,21 +418,29 @@ class Data extends SceneObject {
             console.warn(e);
             return -1;
         }
-        // get the histogram if required
-        if (binCount) {
-            this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
-        }
+        
 
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
-            // if the data is in the normal mesh format, reformat to block mesh
+            // dynamic cells, need to 
             // create new entry in the dynamic mesh cache object
             this.createDynamicBlockValues(newSlotNum);
             console.log("created dynamic values");
+        } else {
+            // not dynamic cells, need to have the whole scalar data set on hand here
+            
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
         if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
             this.createDynamicCornerValues(newSlotNum);
             console.log("created dynamic corners");
+        } else {
+            // not dynamic nodes, need to have the whole corner values buffer on hand here
+        }
+
+
+        // get the histogram if required
+        if (binCount) {
+            this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
         }
 
         return newSlotNum;

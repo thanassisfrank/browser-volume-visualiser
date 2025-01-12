@@ -83,7 +83,7 @@ export class MeshCache {
         return loadResult.slot;     
     }
 
-    updateLoadedBlocks(nodeCache, getMeshBlockFunc, fullNodes, scores, activeValueSlots) {
+    updateLoadedBlocksOld(nodeCache, getMeshBlockFunc, fullNodes, scores, activeValueSlots) {
         for (let node of scores) {
             if (node.rightPtr != 0) continue;
             // node is a leaf in dynamic tree
@@ -136,6 +136,92 @@ export class MeshCache {
         }
     }
 
+    updateLoadedBlocks(nodeCache, getMeshBlocksFunc, fullNodes, scores, scalarNames) {
+        let neededMeshBlocks = new Set();
+
+        for (let node of scores) {
+            if (node.rightPtr != 0) continue;
+            // node is a leaf in dynamic tree
+            const fullNode = readNodeFromBuffer(fullNodes, node.thisFullPtr * NODE_BYTE_LENGTH);
+            if (fullNode.rightPtr != 0) continue;
+            // this is a true leaf
+    
+            if (node.cellCount > 0) continue;
+            // node is not connected with its mesh block
+
+            let blockIndex = this.#cache.getTagSlotNum(node.thisFullPtr);
+            if (-1 == blockIndex) {
+                // not already loaded
+
+                if (!this.#shouldScoreBeLoaded(node.score)) continue;
+                // score high enough to load
+
+                // write score and node index into the mesh cache (empty mesh)
+                const loadResult = this.#cache.insertNewBlock(node.score, node.thisFullPtr, {});
+
+                // add node index to neededBlocks
+                neededMeshBlocks.add(node.thisFullPtr);
+
+                if (undefined === loadResult.evicted) continue;
+                // there was a mesh block replaced
+                
+                // if a block was evicted and in neededBlocks, remove it
+                neededMeshBlocks.delete(loadResult.evicted);
+
+                const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
+                if (-1 == evictedTagNodeSlot) continue;
+                // it is loaded, make sure that it becomes a pruned leaf with no cells
+                // have to make sure the ptrs are set to indicate a leaf node too
+                nodeCache.updateBlockAt(evictedTagNodeSlot, {"nodes": {
+                    cellCount: 0,
+                    leftPtr: 0,
+                    rightPtr: 0,
+                }});
+            }    
+        }
+
+        const neededMeshBlocksArr = Array.from(neededMeshBlocks);
+
+        // request the needed blocks using supplied function
+        const meshData = getMeshBlocksFunc(neededMeshBlocksArr, true, scalarNames)
+
+        // process received data
+        for (let i = 0; i < neededMeshBlocksArr.length; i++) {
+            const meshBlockIndex = neededMeshBlocksArr[i];
+            
+            // extract the mesh data from the response
+            // load the mesh data into the cache
+            this.#cache.updateBlockAt(meshBlockSlot, mesh)
+
+
+            // build treelets if needed
+            if (this.#treeletDepth > 0) {
+                // link tree node to the treelet
+                const nodePtrOffset = nodeCache.slotCount + cacheIndex * this.#treeletNodesPerSlot
+                const treeletLeftPtr = nodePtrOffset + InternalTreeletTopLeftPtr;
+                const treeletRightPtr = nodePtrOffset + InternalTreeletTopRightPtr;
+
+                // retrieve the treelet root split val
+                const rootSplitVal = this.#cache.readBuffSlotAt("treeletRootSplit", cacheIndex)[0];
+                nodeCache.updateBlockAt(node.thisPtr, {
+                    "nodes": {
+                        splitVal: rootSplitVal,
+                        cellCount: 0, 
+                        leftPtr: treeletLeftPtr, 
+                        rightPtr: treeletRightPtr
+                    }
+                });
+            } else {
+                const fullNode = readNodeFromBuffer(fullNodes, meshBlockIndex * NODE_BYTE_LENGTH);
+                // link tree node directly to cells
+                nodeCache.updateBlockAt(node.thisPtr, {
+                    "nodes": {cellCount: fullNode.cellCount, leftPtr: cacheIndex}
+                });
+
+            }
+        }
+    }
+
     updateScores(scores) {
         // create a map from full pointer -> node score
         const fullPtrScoreMap = new Map();
@@ -149,20 +235,20 @@ export class MeshCache {
         );
     }
 
-    updateValuesBuff(getMeshBlockFuncExt, slotNum) {
-        const buffName = "values" + slotNum; 
+    async updateValuesBuff(getMeshBlocksFunc, scalarName) {
+        const buffName = "values " + scalarName; 
         if (!this.#cache.getBuffers()[buffName] ) {
             // create if not present
             this.#cache.createBuffer(buffName, Float32Array, this.#cache.blockSizes.positions/3);
         }
 
+        // request the scalar data for all of the blocks 
+        const nodeIndices = Array.from(this.#cache.directory.keys());
+        const meshData = await getMeshBlocksFunc(nodeIndices, false, [scalarName]);
+
         // make sure that the corner buffer is synchronised to the currently loaded nodes
         this.#cache.syncBuffer(
-            buffName, 
-            (fullPtr) => {
-                const meshBlock = getMeshBlockFuncExt(fullPtr, [slotNum]);
-                return meshBlock[buffName];
-            }
+            buffName, (fullPtr) => meshData[fullPtr][scalarName]
         );
         
         return this.#cache.getBuffers()[buffName];

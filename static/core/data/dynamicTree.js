@@ -248,9 +248,6 @@ export class DynamicTree {
 
     fullNodes;
 
-    meshCache;
-
-
     constructor(resolutionMode, treeletDepth) {
         this.resolutionMode = resolutionMode;
         this.treeletDepth = treeletDepth;

@@ -28,6 +28,10 @@ export class AssociativeCache {
     }
 
     // getters
+    get directory() {
+        return this.#directory;
+    }
+
     get tags() {
         return this.#tags;
     }
@@ -230,6 +234,10 @@ export class ScoredCacheManager extends EmptyCacheManager {
             this.#bestScore = Number.NEGATIVE_INFINITY;
 
         }
+    }
+
+    get directory() {
+        return this.cache.directory;
     }
 
     // returns true is a is a better score that b
