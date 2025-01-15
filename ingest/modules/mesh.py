@@ -7,6 +7,8 @@ class Mesh:
         "max": [0, 0, 0]
     }
 
+    limits = {}
+
     def __init__(self, positions, connectivity, values=None, id=0):
         self.positions = positions
         self.connectivity = connectivity
@@ -36,6 +38,13 @@ class Mesh:
         for point in self.positions:
             self.box["min"] = np.minimum(self.box["min"], point)
             self.box["max"] = np.maximum(self.box["max"], point)
+    
+    def calculate_limits(self):
+        for name, buff in self.values.items():
+            self.limits[name] = {
+                "min": np.min(buff), 
+                "max": np.max(buff)
+            } 
     
     # fills the supplied hdf5 zone group
     def create_zone_subgroup(self, base_grp, zone_grp_name):
@@ -98,8 +107,7 @@ class Mesh:
         values = {}
         for name in val_names:
             try:
-                values[name] = np.array(zone_grp
-    ["FlowSolution"][name][" data"], copy=True)
+                values[name] = np.array(zone_grp["FlowSolution"][name][" data"], copy=True)
             except:
                 print("Couldn't load array", name)
 

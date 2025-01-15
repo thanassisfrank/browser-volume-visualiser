@@ -52,7 +52,7 @@ def export_meshes_info(meshes):
 
 
 # write the node and corner value information
-def create_node_zone_group(base_grp, tree, node_buff, corner_values):
+def create_node_zone_group(base_grp, tree, node_buff, corner_values, limits):
     # indicate that there are no verts inside this
     node_zone_grp = create_cgns_subgroup(base_grp, "NodeZone", "Zone_t", "I4", np.array([0, 0, 0], dtype=np.int32))
     create_cgns_subgroup(node_zone_grp, "ZoneType", "ZoneType_t", "C1", string_to_np_char("ZoneTypeUserDefined"))
@@ -68,25 +68,33 @@ def create_node_zone_group(base_grp, tree, node_buff, corner_values):
     # write corner value type information
     create_cgns_subgroup(node_zone_grp, "CornerValueType", "UserDefinedData_t", "C1", string_to_np_char("Sample"))
 
-    # write the corner values
+    # write the corner values and limits
     flow_sol_grp = create_cgns_subgroup(node_zone_grp, "FlowSolution", "FlowSolution_t", "MT")
 
     for name, buff in corner_values.items():
         create_cgns_subgroup(flow_sol_grp, name, "DataArray_t", "R4", buff)
     
+    # write the limits
+    limits_grp = create_cgns_subgroup(node_zone_grp, "FlowSolutionLimits", "UserDefinedData_t", "MT")
+
+    for name, val in limits.items():
+        create_cgns_subgroup(limits_grp, name, "DataArray_t", "R4", np.array(
+            [val["min"], val["max"]], dtype=np.float32
+        ))
+
     return node_zone_grp
 
 
 # writes the data that the client will access directly to a file
 # contains the node and corner buffers as well as what sizes to expect for the mesh
-def save_partial_data(out_name, tree, max_verts, corner_values):
+def save_partial_data(out_name, tree, max_verts, corner_values, limits):
     with h5py.File(f"{out_name}_partial.cgns", "w") as file:
         create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
         
         base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
 
         # create zone for partial information
-        zone_grp = create_node_zone_group(base_grp, tree, tree.node_buffer, corner_values)
+        zone_grp = create_node_zone_group(base_grp, tree, tree.node_buffer.view(np.uint8), corner_values, limits)
 
         # write information about max verts and max cells in all zones
         prim_data = np.array([tree.max_cells, max_verts], dtype=np.uint32)
@@ -149,6 +157,7 @@ def main():
     # extract mesh
     mesh = Mesh.from_zone_group(zone_grp, selected_value_names)
     mesh.calculate_box()
+    mesh.calculate_limits()
     if args["verbose"]: print(mesh)
 
     # close original file
@@ -181,7 +190,7 @@ def main():
 
     # create partial cgns file for client to load
     if args["verbose"]: print("Creating partial out file...")
-    save_partial_data(args["output"], tree, max_verts, corner_values)
+    save_partial_data(args["output"], tree, max_verts, corner_values, mesh.limits)
 
     # create mesh cgns file for server to serve blocks from
     if args["verbose"]: print("Creating full mesh out file...")
