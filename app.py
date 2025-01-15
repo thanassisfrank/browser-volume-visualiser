@@ -314,7 +314,7 @@ class requestHandler(BaseHTTPRequestHandler):
                 # write scalar data
                 for j, name in enumerate(request["scalars"]):
                     scal_arr = block_grp["FlowSolution/%s/ data" % name]
-                    scalar_buffs[name][j][:len(scal_arr)] = scal_arr
+                    scalar_buffs[name][i][:len(scal_arr)] = scal_arr
 
             
             # send reponse headers
