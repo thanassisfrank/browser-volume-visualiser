@@ -148,7 +148,8 @@ const dataManager = {
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
-        console.log(dataObj.data.treeNodes);
+        console.log(dataObj.dataSource.tree);
+        console.log(dataObj.data);
         if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
         if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
@@ -253,6 +254,9 @@ class Data extends SceneObject {
         leafVerts: null,
     };
 
+    // mapping from value name -> slot number
+    valueDirectory = {};
+
     valueCounts = [];
 
     // matrix that captures data space -> object space
@@ -306,8 +310,10 @@ class Data extends SceneObject {
             // the lengths of the blocks in the mesh buffers if a block mesh is being used
             this.meshBlockSizes = this.dataSource.meshBlockSizes
 
-            // set the tree nodes to be the version for the block mesh
-            this.data.treeNodes = this.dataSource.blockNodes;
+            if (this.dataSource.constructor == BlockFromUnstructDataSource) {
+                // set the tree nodes to be the version for the block mesh
+                this.data.treeNodes = this.dataSource.blockNodes;
+            }
         }
 
         this.usesTreelets = this.dynamicTree?.usesTreelets ?? false;
@@ -348,32 +354,53 @@ class Data extends SceneObject {
         return this.data.treeCells;
     }
 
-    getNodeBlock(nodeIndex, valueSlots) {
-        let nodeBlock = this.dataSource.getNodeMeshBlock(nodeIndex);
-        // slice the needed value buffers
-        for (const slotNum of valueSlots) {
-            const values = this.getFullValues(slotNum);
-            if (!values) continue;
-            nodeBlock.buffers["values" + slotNum] = values.slice(...nodeBlock.valueSliceRange);
-        }
+    // returns the correct function for requesting node mesh blocks
+    // the returned function has expects (blockIndices, geometry, valueNames)
+    getNodeBlockRequestFunc() {
+        if (PartialCGNSDataSource == this.dataSource.constructor) {
+            // get mesh information directly from the data source
+            return this.dataSource.getMeshBlocks.bind(this.dataSource);
+        } else {
+            return function(blockIndices, geometry, valueNames) {
+                let result = {};
+                for (let index of blockIndices) {
+                    // index is the full block index
+                    let mesh = this.dataSource.getNodeMeshBlock(index);
+                    if (!mesh) continue;
+                    result[index] = {};
 
-        return nodeBlock.buffers
+                    if (geometry) result[index] = mesh.buffers;
+
+                    // slice the needed value buffers
+                    const valueSlots = valueNames.map(s => this.valueDirectory[s]);
+                    for (const slotNum of valueSlots) {
+                        const scalarBuff = this.getFullValues(slotNum);
+                        if (!scalarBuff) continue;
+
+                        result[index][this.data.values[slotNum].name] = scalarBuff.slice(...mesh.valueSliceRange);
+                    }
+                }
+        
+                return result;
+            };
+        }
     }
 
     updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
-        // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-        if (PartialCGNSDataSource == this.dataSource.constructor) {
-            // get mesh information di
+        const getCornerVals = (valueName) => {
+            // perform mapping from value name => slot num
+            return this.getFullCornerValues(this.valueDirectory[valueName]);
         }
+        // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
         this.dynamicTree.update(
             cameraChanged, 
             focusCoords, 
             camCoords, 
             this.extentBox, 
-            this.getFullCornerValues.bind(this), 
-            this.getNodeBlock.bind(this), 
-            activeValueSlots
+            getCornerVals,
+            this.getNodeBlockRequestFunc().bind(this), 
+            activeValueSlots.map(i => this.data.values[i].name)
         );
     }
 
@@ -400,8 +427,8 @@ class Data extends SceneObject {
     // if it is already is loaded, return its slot number
     async loadDataArray(desc, binCount) {
         // check if already loaded
-        let loadedIndex = this.data.values.findIndex(elem => elem.name == desc.name);
-        if (loadedIndex != -1) return loadedIndex;
+        let loadedIndex = this.valueDirectory[desc.name];
+        if (loadedIndex !== undefined) return loadedIndex;
 
         let newSlotNum;
         try {
@@ -418,16 +445,17 @@ class Data extends SceneObject {
             console.warn(e);
             return -1;
         }
+
+        this.valueDirectory[desc.name] = newSlotNum;
         
 
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             // dynamic cells, need to 
             // create new entry in the dynamic mesh cache object
-            this.createDynamicBlockValues(newSlotNum);
+            await this.createDynamicBlockValues(newSlotNum);
             console.log("created dynamic values");
         } else {
             // not dynamic cells, need to have the whole scalar data set on hand here
-            
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
         if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
@@ -439,9 +467,9 @@ class Data extends SceneObject {
 
 
         // get the histogram if required
-        if (binCount) {
-            this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
-        }
+        // if (binCount) {
+        //     this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
+        // }
 
         return newSlotNum;
     };
@@ -454,13 +482,16 @@ class Data extends SceneObject {
     // matches the nodes currently loaded in dynamic tree
     createDynamicCornerValues(slotNum) {
         const fullCornerValues = this.getFullCornerValues(slotNum);
-        this.data.values[slotNum].dynamicCornerValues = this.dynamicTree.createMatchedDynamicCornerValues(fullCornerValues, slotNum);
+        this.data.values[slotNum].dynamicCornerValues = this.dynamicTree.createMatchedDynamicCornerValues(
+            fullCornerValues, 
+            this.data.values[slotNum].name
+        );
     };
 
-    createDynamicBlockValues(slotNum) {
-        this.data.values[slotNum].dynamicData = this.dynamicTree.createMatchedDynamicMeshValueArray(
-            this.getNodeBlock.bind(this), 
-            slotNum
+    async createDynamicBlockValues(slotNum) {
+        this.data.values[slotNum].dynamicData = await this.dynamicTree.createMatchedDynamicMeshValueArray(
+            this.getNodeBlockRequestFunc().bind(this), 
+            this.data.values[slotNum].name
         );
     };
 

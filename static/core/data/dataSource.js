@@ -6,7 +6,7 @@ import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "./dataConstants.js";
 import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
-import { createNodeCornerValuesBuffer, loadCornerValues } from "./treeNodeValues.js";
+import { CornerValTypes, createNodeCornerValuesBuffer, loadCornerValues } from "./treeNodeValues.js";
 import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
 
 
@@ -299,6 +299,9 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     // all cells are tetrahedra
     vertsPerCell = 4;
 
+    // TODO: extract from cgns file
+    totalCellCount = 0;
+
 
 
     constructor(name, path, meshPath) {
@@ -345,29 +348,44 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         // extract the node tree from the file
         // create empty tree object
         this.tree = new UnstructuredTree(this.splitType, this.maxDepth, this.maxCells, this.extentBox);
-        // load buffers from file
-        const nodesBuff = CGNSZoneNode.get("NodeTree/ data").value;
+        // load the node tree as an array buffer
+        const nodesBuff = CGNSZoneNode.get("NodeTree/ data").value.buffer;
+        console.log(CGNSZoneNode.get("NodeTree/ data"));
         // set the buffers in the tree object
         this.tree.setBuffers(nodesBuff, null, this.nodeCount);
 
+        // get corner val type
+        const cornTypeStr = String.fromCharCode(...CGNSZoneNode.get("CornerValueType/ data").value);
+
+        if ("Sample" == cornTypeStr) {
+            this.cornerValType = CornerValTypes.SAMPLE;
+        } else {
+            console.warn(`Unsupported corner value type found: ${cornTypeStr}`);
+        }
+
         // get the corner value flow solutions
         this.cornerFlowSolution = CGNSZoneNode.get("FlowSolution");
+        // ...and limits
+        this.flowSolutionLimits = CGNSZoneNode.get("FlowSolutionLimits");
+
 
         // extract leaf mesh max vert and cell info
         const primCountBuff = CGNSZoneNode.get("MaxPrimitives/ data").value;
         this.maxCellCount = primCountBuff[0];
         this.maxVertCount = primCountBuff[1];
 
-
-        // do a test request from the server
-        console.time("block-req");
-        console.log(await this.getMeshBlocks([0, 1, 2, 3, 4, 5, 6, 7], true, ["Pressure"]));
-        console.timeEnd("block-req");
+        // convert to block sizes
+        this.meshBlockSizes = {
+            positions: this.maxVertCount * 3,
+            values: this.maxVertCount,
+            cellOffsets: this.maxCellCount,
+            cellConnectivity: this.maxCellCount * this.vertsPerCell
+        };
     }
 
     // takes the monolithic buffer returned by the server and splits it
     // returns an object with geometry and scala buffers broken out
-    splitRespBuffer(buff, indices, geometry, scalarNames) {
+    parseRespBuffer(buff, indices, geometry, scalarNames) {
         let result = {};
         for (let i = 0; i < indices.length; i++) {
             result[indices[i]] = {};
@@ -375,25 +393,31 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         
         let byteOffset = 0;
         const extractSection = (name, type, elementCount) => {
+            if ("cellConnectivity" == name) {
+                // take 1 from every entry to go from 1-based -> 0-based
+                const conn = new type(buff, byteOffset, elementCount * indices.length)
+                for (let i = 0; i < conn.length; i++) {
+                    conn[i]--;
+                }
+            }
+
             for (let i = 0; i < indices.length; i++) {
                 result[indices[i]][name] = new type(buff, byteOffset, elementCount);
-                byteOffset += elementCount * type.BYTES_PER_ELEMENT * indices.length;
+                
+                byteOffset += elementCount * type.BYTES_PER_ELEMENT;
             }
         }
 
         // split the buffer into the different semantic parts
         if (geometry) {
             // extract vertex positions and connectivity
-            extractSection("position", Float32Array, this.maxVertCount * 3);
+            extractSection("positions", Float32Array, this.maxVertCount * 3);
             extractSection("cellConnectivity", Uint32Array, this.maxCellCount * this.vertsPerCell);
         }
 
-        bufferSections.values = {};
         for (let i = 0; i < scalarNames.length; i++) {
             extractSection(scalarNames[i], Float32Array, this.maxVertCount);
         }
-
-        // split the semantic buffers into per-block chunks
 
         return result;
     }
@@ -425,18 +449,26 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         const buff = await resp.arrayBuffer();
 
         // pull out the different buffers
-        return this.splitRespBuffer(buff, indices, geometry, scalarNames)
+        const parsed = this.parseRespBuffer(buff, indices, geometry, scalarNames);
 
+        // console.log(parsed);
+
+        return parsed;
+    }
+
+    getAvailableDataArrays() {
+        var dataNodes = cgns.getChildrenWithLabel(this.cornerFlowSolution, "DataArray_t");
+
+        return dataNodes.map(node => {
+            return {name: node.attrs.name.value, arrayType: DataArrayTypes.DATA};
+        });
     }
 
     // returns only the corner value buffer for this data array name
     async getDataArray(desc) {
         const data = this.cornerFlowSolution.get(desc.name + "/ data")?.value;
         if (!data) return;
-        let limits = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-        for (let i = 0; i < data.length; i++) {
-            limits = [Math.min(limits[0], data[i]), Math.max(limits[1], data[i])];
-        }
+        const limits = this.flowSolutionLimits.get(desc.name + "/ data")?.value;
 
         return {
             name: desc.name,

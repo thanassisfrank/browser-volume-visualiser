@@ -190,7 +190,7 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
 };
 
 
-const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeValueSlots, mergeSplit, noCells) => {
+const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeValueNames, mergeSplit, noCells) => {
     // find the amount of changes we can now make
     const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
 
@@ -231,8 +231,8 @@ const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeV
                 "state": NodeStates.SPLIT
             };
             
-            for (let slotNum of activeValueSlots) {
-                newData["corners" + slotNum] = getCornerValsFunc(childNode.thisPtr, slotNum);
+            for (let valueName of activeValueNames) {
+                newData["corners" + valueName] = getCornerValsFunc(childNode.thisPtr, valueName);
             }
 
             nodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
@@ -359,8 +359,8 @@ export class DynamicTree {
     // creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
     // dynamic mesh buffers for the mesh geometry
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    createMatchedDynamicMeshValueArray (getMeshBlockFuncExt, slotNum) {
-        return this.meshCache.updateValuesBuff(getMeshBlockFuncExt, slotNum);
+    createMatchedDynamicMeshValueArray(getMeshBlockFuncExt, scalarName) {
+        return this.meshCache.updateValuesBuff(getMeshBlockFuncExt, scalarName);
     }
 
 
@@ -368,7 +368,7 @@ export class DynamicTree {
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueSlots) {
+    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
         if (cameraChanged) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
@@ -382,21 +382,21 @@ export class DynamicTree {
                 this.meshCache.updateScores(scores);
     
                 // update the mesh blocks that are loaded in the cache
-                this.meshCache.updateLoadedBlocks(this.nodeCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueSlots);
+                this.meshCache.updateLoadedBlocks(this.nodeCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueNames);
             }
     
             scores.sort((a, b) => a.score - b.score);
             const mergeSplitLists = createMergeSplitLists(this.fullNodes, scores, 20);
             
-            const getCornerValsFunc = (index, slotNum) => {
-                return readCornerVals(getCornerValsFuncExt(slotNum), index)
+            const getCornerValsFunc = (index, valueName) => {
+                return readCornerVals(getCornerValsFuncExt(valueName), index)
             };
             // update the dynamic buffer contents
             updateDynamicNodeCache(
                 this.nodeCache,
                 getCornerValsFunc,
                 this.fullNodes, 
-                activeValueSlots,
+                activeValueNames,
                 mergeSplitLists,
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
             );   
