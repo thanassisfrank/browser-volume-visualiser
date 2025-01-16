@@ -329,7 +329,6 @@ fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dat
 
     // check the cells in the leaf node found
     let blockPtr : u32 = leafNode.leftPtr; // the index of the mesh block
-    let offPtr : u32 = blockPtr * passInfo.blockSizes.cellOffsets;
     let posPtr : u32 = blockPtr * passInfo.blockSizes.positions/3;
     let conPtr : u32 = blockPtr * passInfo.blockSizes.cellConnectivity;
 
@@ -340,8 +339,8 @@ fn getContainingCellBlockMesh(queryPoint : vec3<f32>, leafNode : KDTreeNode, dat
     var p2 : array<f32, 3>;
     var p3 : array<f32, 3>;
     for (var i = 0u; i < leafNode.cellCount; i++) {
-        // local offset into connectivity inside the block
-        pointsOffset = cellOffsets.buffer[offPtr + i];
+        // local offset into connectivity inside the block (tetrahedra only)
+        pointsOffset = i * 4;
 
         p0 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
         p1 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
