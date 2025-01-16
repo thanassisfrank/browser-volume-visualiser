@@ -427,7 +427,7 @@ function View(id, camera, data, renderMode) {
                 // update the limits of slider
                 limits = this.data.getLimits(slotNum);
                 show(this.elems.densityGraph);
-                this.updateDensityGraph(slotNum);
+                // this.updateDensityGraph(slotNum);
                 break;
             default:
                 hide(this.elems.densityGraph);
