@@ -243,9 +243,11 @@ const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeV
 
 
 export class DynamicTree {
+    /** @type {AssociativeCache} */
     nodeCache;
+    /** @type {MeshCache} */
     meshCache;
-
+    /** @type {ArrayBuffer} */
     fullNodes;
 
     constructor(resolutionMode, treeletDepth) {
@@ -253,6 +255,7 @@ export class DynamicTree {
         this.treeletDepth = treeletDepth;
         this.usesTreelets = treeletDepth > 0;
     }
+
     // create the buffers used for dynamic data resolution
     // fills dynamic nodes from full nodes breadth first
     createDynamicNodeCache (fullNodes, maxNodes) {
@@ -327,8 +330,6 @@ export class DynamicTree {
         return this.nodeCache;
     }
 
-
-
     // creates or modifies the dynamic corner values buffer 
     // agnostic to samples vs poly
     // extends the cache object used for dynamic nodes
@@ -379,10 +380,14 @@ export class DynamicTree {
             const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, focusCoords, camCoords);
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                this.meshCache.updateScores(scores);
-    
-                // update the mesh blocks that are loaded in the cache
-                this.meshCache.updateLoadedBlocks(this.nodeCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueNames);
+                
+                if (!this.meshCacheBusy) {
+                    this.meshCacheBusy = true;
+                    this.meshCache.updateScores(scores);
+                    // update the mesh blocks that are loaded in the cache
+                    this.meshCache.updateLoadedBlocks(this.nodeCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueNames)
+                    .then(() => this.meshCacheBusy = false);
+                }
             }
     
             scores.sort((a, b) => a.score - b.score);
