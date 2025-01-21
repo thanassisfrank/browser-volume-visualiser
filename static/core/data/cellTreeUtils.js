@@ -313,7 +313,7 @@ export const checkCellPosition = (mesh, id, checkDimension, splitVal) => {
     // only tetra for now
     const pointsLength = 4;
 
-    const pointsOffset = mesh.cellOffsets[id];
+    const pointsOffset = id * pointsLength;
     const results = [false, false];
     let thisPointValue;
     for (let i = 0; i < pointsLength; i++) {

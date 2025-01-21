@@ -407,8 +407,8 @@ fn getContainingCellTreeletBlock(queryPoint : vec3<f32>, leafNode : KDTreeNode, 
     for (var i = 0u; i < leafNode.cellCount; i++) {
         // go through and check all the contained cells
         cellID = treeCells.buffer[cellsPtr + leafNode.leftPtr + i];
-        // local offset into connectivity inside the block
-        pointsOffset = cellOffsets.buffer[offPtr + cellID];
+        // local offset into connectivity inside the block (terahedra only)
+        pointsOffset = 4 * cellID;
 
         p0 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 0]];
         p1 = vertexPositions.buffer[posPtr + cellConnectivity.buffer[conPtr + pointsOffset + 1]];
