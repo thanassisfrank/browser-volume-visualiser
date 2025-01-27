@@ -203,7 +203,15 @@ fn fragment_main(
         discard;
     }
     // do ray-marching step
-    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, passInfo.maxLength);
+    if (passFlags.showSurface && !passFlags.showVolume) {
+        var maxLength = passInfo.maxLength;
+        if (prevOffsetSample.depth != 0) {
+            maxLength = min(maxLength, prevOffsetSample.depth);
+        }
+        marchResult = marchRaySurfOnly(passInfo, ray, passInfo.dataBox, seed, maxLength);
+    } else {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, passInfo.maxLength);
+    }
 
     if (marchResult.foundSurface && (marchResult.ray.length < prevOffsetSample.depth || prevOffsetSample.depth == 0)) {
         // new best depth/best uninitialised (surface not previously found)

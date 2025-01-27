@@ -322,7 +322,8 @@ fn marchRay(
     startInDataset : bool, 
     offset : f32,
     maxLength : f32
-) -> RayMarchResult {
+) -> RayMarchResult 
+{
     var ray = rayStub;
     var enteredDataset = startInDataset;
 
@@ -436,6 +437,44 @@ fn marchRay(
     }                    
 
     return RayMarchResult(foundSurface, ray, volCol, normalFac, cellsTested);
+}
+
+// performs a simplified version of ray marching that samples the 
+fn marchRaySurfOnly(
+    passInfo : RayMarchPassInfo, 
+    ray : Ray, 
+    dataBox : AABB,
+    randSeed : u32,
+    maxLength : f32
+) -> RayMarchResult 
+{
+    // sample at the ray entrypoint
+    var tipDataPos : vec3<f32> = toDataSpace(ray.tip);
+    let entryVal : f32 = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+    // get the distance from ray entrypoint to dataset back face
+    let backFaceDist : f32 = intersectAABB(ray, dataBox).tFar;
+    let distRange : f32 = min(maxLength, backFaceDist) - ray.length;
+    // sample at a random point on this line
+    let t : f32 = getRandF32(randSeed);
+    let newRay = extendRay(ray, distRange * t);
+    tipDataPos = toDataSpace(newRay.tip);
+    let sampleVal : f32 = sampleDataValue(tipDataPos.x, tipDataPos.y, tipDataPos.z, passInfo.isoSurfaceSrc);
+    // get cells tested
+    let cellsTested : f32 = entryVal + sampleVal;
+    // determine if the threshold was crossed in this range
+    if (entryVal > passInfo.threshold) {
+        if (sampleVal > passInfo.threshold) {
+            return RayMarchResult(false, newRay, vec4<f32>(1), -1.0, cellsTested);
+        } else {
+            return RayMarchResult(true, newRay, vec4<f32>(1), -1.0, cellsTested);
+        }
+    } else {
+        if (sampleVal > passInfo.threshold) {
+            return RayMarchResult(true, newRay, vec4<f32>(1), 1.0, cellsTested);
+        } else {
+            return RayMarchResult(false, newRay, vec4<f32>(1), 1.0, cellsTested);
+        }
+    }
 }
 
 

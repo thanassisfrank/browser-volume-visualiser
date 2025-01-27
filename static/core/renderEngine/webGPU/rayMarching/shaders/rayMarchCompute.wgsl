@@ -771,7 +771,7 @@ fn main(
             return;
         }
         // extend to the closest touch of bounding box
-        ray = extendRay(ray, max(0, dataIntersect.tNear + 0.1));
+        ray = extendRay(ray, max(0, dataIntersect.tNear + 0.01));
 
     }
 
@@ -807,7 +807,7 @@ fn main(
 
 
 
-    var seed : u32 = (wgid.x << 12) ^ (wgid.y << 8) ^ (id.x << 4) ^ (id.y) ^ 782035u;
+    let seed : u32 = (wgid.x << 12) ^ (wgid.y << 8) ^ (id.x << 4) ^ (id.y) ^ 782035u;
 
     var marchResult : RayMarchResult;
     var prevOffsetSample = getPrevOptimisationSample(id.x, id.y);
@@ -829,7 +829,15 @@ fn main(
         return;
     }
     // do ray-marching step
-    marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y)));
+    if (passFlags.showSurface && !passFlags.showVolume) {
+        var maxLength = min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y));
+        if (prevOffsetSample.depth != 0) {
+            maxLength = min(maxLength, prevOffsetSample.depth);
+        }
+        marchResult = marchRaySurfOnly(passInfo, ray, passInfo.dataBox, seed, maxLength);
+    } else {
+        marchResult = marchRay(passFlags, passInfo, ray, passInfo.dataBox, startInside, offset, min(passInfo.maxLength, getWorldSpaceSceneDistance(id.x, id.y)));
+    }
 
     if (passFlags.showTestedCells) {
         var count = marchResult.cellsTested;
