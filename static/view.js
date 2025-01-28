@@ -390,7 +390,7 @@ function View(id, camera, data, renderMode) {
     this.updateSlider = function(limits) {
         this.elems.slider.min = limits[0];
         this.elems.slider.max = limits[1];
-        this.elems.slider.step = (limits[1] - limits[0]) / 1000;
+        this.elems.slider.step = (limits[1] - limits[0]) / 5000;
 
         this.updateThreshold((limits[0] + limits[1]) / 2);
     };
@@ -434,6 +434,7 @@ function View(id, camera, data, renderMode) {
                 break;
         }
         this.updateSlider(limits);
+        if (desc.name == "Pressure") this.updateThreshold(101353.322975);
         // change the source
         this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits: limits, slotNum: slotNum};
     };
@@ -524,7 +525,8 @@ function View(id, camera, data, renderMode) {
                 cameraChanged,
                 focusPoint,  
                 this.sceneGraph.activeCamera.getEyePos(),
-                activeValueSlots
+                activeValueSlots,
+                this.sceneGraph.activeCamera.cameraMat
             );
         }
 

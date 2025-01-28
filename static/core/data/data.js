@@ -386,7 +386,7 @@ class Data extends SceneObject {
         }
     }
 
-    updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots) {
+    updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots, camMat) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
@@ -400,7 +400,8 @@ class Data extends SceneObject {
             this.extentBox, 
             getCornerVals,
             this.getNodeBlockRequestFunc().bind(this), 
-            activeValueSlots.map(i => this.data.values[i].name)
+            activeValueSlots.map(i => this.data.values[i].name),
+            camMat
         );
     }
 

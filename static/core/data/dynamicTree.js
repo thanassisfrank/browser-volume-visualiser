@@ -10,6 +10,7 @@ import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { generateTreelet } from "./treelet.js";
 import { MeshCache } from "./meshCache.js";
 import { boxVolume, copyBox } from "../boxUtils.js";
+import { vec4 } from "../gl-matrix.js";
 
 
 const NodeStates = {
@@ -46,15 +47,43 @@ const calcBoxScore = (box, focusCoords, camToFocDist) => {
     return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
 };
 
+const calcBoxScoreFrustrum = (box, camPos, camMat, camToFocDist) => {
+    // check if box is inside the view frustrum
+    const mid = [
+        (box.min[0] + box.max[0]) * 0.5,
+        (box.min[1] + box.max[1]) * 0.5,
+        (box.min[2] + box.max[2]) * 0.5
+    ];
+    const clipPos = vec4.create();
+    vec4.transformMat4(clipPos, [mid[0], mid[1], mid[2], 1], camMat);
+    const ndc = [
+        clipPos[0]/clipPos[3],
+        clipPos[1]/clipPos[3],
+        clipPos[2]/clipPos[3],
+    ];
+    if (ndc[0] < -1 || ndc[0] > 1 || ndc[1] < -1 || ndc[1] > 1 ||ndc[2] < 0) {
+        // outside frustrum
+        return 0;
+    }
+    const distToCam =  VecMath.magnitude(VecMath.vecMinus(camPos, mid));
+    if (distToCam > 2*camToFocDist) {
+        // too far away
+        return 0;
+    }
+    // calculate box effective pixel area
+    const lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
+    // a more accurate estimate of the pixel area would be (lMax/dist)^2
+    // since ^2 is monotonic on [0, inf), this is skipped since only relative score is important
+    return lMax/distToCam;
+}
+
 
 // calculate the scores for the current leaf nodes, true leaf or pruned
 // returns a list of leaf node objects containing their score
 // assumes camera coords is in the dataset coordinate space
-function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords) {
+function getNodeScores (nodeCache, fullNodes, extentBox, scoreFn) {
     var dynamicNodes = nodeCache.getBuffers()["nodes"];
     var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
-
-    const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));;
 
     var scores = [];
 
@@ -77,7 +106,7 @@ function getNodeScores (nodeCache, fullNodes, extentBox, focusCoords, camCoords)
 
         if (isDynamicLeaf(currNode, nodeCount)) {
             // this is a leaf node, get its score
-            currNode.score = calcBoxScore(currBox, focusCoords, camToFocDist);
+            currNode.score = scoreFn(currBox);
             currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
             scores.push(currNode);
             // if (currNode.thisPtr == 511) console.log(structuredClone(currNode));
@@ -138,8 +167,8 @@ const createMergeSplitLists = (fullNodes, scores, maxCount) => {
     var splitList = [];
 
     // dual thresholding for hysteresis
-    const splitThreshold = 0;
-    const mergeThreshold = -0;
+    const splitThreshold = Number.NEGATIVE_INFINITY;
+    const mergeThreshold = Number.POSITIVE_INFINITY;
 
     let currNode, currFullNode;
 
@@ -369,15 +398,24 @@ export class DynamicTree {
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
+    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames, camMat) {
         if (cameraChanged) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
         }
     
         if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
+            const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
+
+            // function scoreFn (box) {
+            //     return calcBoxScore(box, focusCoords, camToFocDist);
+            // }
+
+            function scoreFn (box) {
+                return calcBoxScoreFrustrum(box, camCoords, camMat, camToFocDist);
+            }
             // get a list of all nodes in the dynamic node tree with their scores
-            const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, focusCoords, camCoords);
+            const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, scoreFn);
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 

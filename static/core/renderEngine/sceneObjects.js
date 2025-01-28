@@ -243,6 +243,12 @@ export class Camera extends SceneObject {
         return this.#viewMat;
     }
 
+    get cameraMat() {
+        const camMat = mat4.create();
+        mat4.mul(camMat, this.projMat, this.viewMat);
+        return camMat;
+    }
+
     // these two functions actually move the camera and invalidate the view matrix
     setEyePos(vec) {
         this.eye = vec;

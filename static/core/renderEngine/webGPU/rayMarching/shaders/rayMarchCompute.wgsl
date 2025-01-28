@@ -572,64 +572,69 @@ fn sampleNodeVirtual(p : vec3<f32>, leafBox : AABB, dataSrc : u32) -> f32 {
 // have to traverse tree and interpolate within the cell
 // returns -1 if point is not in a cell
 fn sampleDataValue(x : f32, y: f32, z : f32, dataSrc : u32) -> f32 {
-    switch (dataSrc) {
-        case DATA_SRC_AXIS_X {return x;}
-        case DATA_SRC_AXIS_Y {return y;}
-        case DATA_SRC_AXIS_Z {return z;}
-        default {}
-    }
-
-    var queryPoint = vec3<f32>(x, y, z);
-
-    var currLeafNode : KDTreeNode;
-    var currLeafBox : AABB;
-
-    // look at the previous leaf nodes found
-    if (pointInAABB(queryPoint, lastLeafBoxes[threadIndex])) {
-        currLeafNode = lastLeafNodes[threadIndex];
-        currLeafBox = lastLeafBoxes[threadIndex];
-    } else {
-        // gone to new leaf
-        var result = getContainingLeafNode(queryPoint);
-        currLeafNode = result.node;
-        currLeafBox = result.box;
-        // cache the leaf node for the next sample along the ray
-        lastLeafNodes[threadIndex] = result.node;
-        lastLeafBoxes[threadIndex] = result.box;
-    }
-
     var sampleVal : f32;
-
-    if (passFlags.showTestedCells) {
-        sampleVal =  f32(currLeafNode.cellCount);
-    } else if (currLeafNode.cellCount > 0) {
-        // sample the leaf depending on what type it is
-        // true leaf, sample the cells within
-
-        var cell : InterpolationCell;
-
-        if (passInfo.cellsPtrType == CELLS_PTR_BLOCK) {
-            cell = getContainingCellBlockMesh(queryPoint, currLeafNode, dataSrc);
-        } else if (passInfo.cellsPtrType == CELLS_PTR_TREELET_BLOCK) {
-            cell = getContainingCellTreeletBlock(queryPoint, currLeafNode, dataSrc);
-        } else {
-            cell = getContainingCell(queryPoint, currLeafNode, dataSrc);
+    switch (dataSrc) {
+        case DATA_SRC_AXIS_X {
+            sampleVal = x;
         }
-        // interpolate value
-        if (!cell.valid) {
-            sampleVal = F32_OUTSIDE_CELLS;
-        } else {
-            sampleVal =  dot(cell.values, cell.factors);
+        case DATA_SRC_AXIS_Y {
+            sampleVal = y;
         }
-    } else if (passFlags.renderNodeVals) {
-        // pruned leaf, sample the node as a cell from its corner values
-        sampleVal = currLeafNode.splitVal;
-    } else if (passFlags.contCornerVals) {
-        // interpolate the corner values using continuity correction
-        sampleVal = sampleNodeVirtual(queryPoint, currLeafBox, dataSrc);
-    } else {
-        // interpolate inside of the containing leaf node
-        sampleVal = sampleNodeCornerVals(queryPoint, currLeafBox, dataSrc);
+        case DATA_SRC_AXIS_Z {
+            sampleVal = z;
+        }
+        default {
+            var queryPoint = vec3<f32>(x, y, z);
+
+            var currLeafNode : KDTreeNode;
+            var currLeafBox : AABB;
+
+            // look at the previous leaf nodes found
+            if (pointInAABB(queryPoint, lastLeafBoxes[threadIndex])) {
+                currLeafNode = lastLeafNodes[threadIndex];
+                currLeafBox = lastLeafBoxes[threadIndex];
+            } else {
+                // gone to new leaf
+                var result = getContainingLeafNode(queryPoint);
+                currLeafNode = result.node;
+                currLeafBox = result.box;
+                // cache the leaf node for the next sample along the ray
+                lastLeafNodes[threadIndex] = result.node;
+                lastLeafBoxes[threadIndex] = result.box;
+            }
+
+            if (passFlags.showTestedCells) {
+                sampleVal =  f32(currLeafNode.cellCount);
+            } else if (currLeafNode.cellCount > 0) {
+                // sample the leaf depending on what type it is
+                // true leaf, sample the cells within
+
+                var cell : InterpolationCell;
+
+                if (passInfo.cellsPtrType == CELLS_PTR_BLOCK) {
+                    cell = getContainingCellBlockMesh(queryPoint, currLeafNode, dataSrc);
+                } else if (passInfo.cellsPtrType == CELLS_PTR_TREELET_BLOCK) {
+                    cell = getContainingCellTreeletBlock(queryPoint, currLeafNode, dataSrc);
+                } else {
+                    cell = getContainingCell(queryPoint, currLeafNode, dataSrc);
+                }
+                // interpolate value
+                if (!cell.valid) {
+                    sampleVal = F32_OUTSIDE_CELLS;
+                } else {
+                    sampleVal =  dot(cell.values, cell.factors);
+                }
+            } else if (passFlags.renderNodeVals) {
+                // pruned leaf, sample the node as a cell from its corner values
+                sampleVal = currLeafNode.splitVal;
+            } else if (passFlags.contCornerVals) {
+                // interpolate the corner values using continuity correction
+                sampleVal = sampleNodeVirtual(queryPoint, currLeafBox, dataSrc);
+            } else {
+                // interpolate inside of the containing leaf node
+                sampleVal = sampleNodeCornerVals(queryPoint, currLeafBox, dataSrc);
+            }
+        }
     }
 
     return sampleVal;
@@ -749,14 +754,16 @@ fn main(
 
     datasetBox = passInfo.dataBox;
     threadIndex = localIndex;
-    workgroupBarrier();
 
     // A NEW ==========================================================
+
+    var notRendering = false;
 
     var imageSize : vec2<u32> = textureDimensions(outputImage);
     // check if this thread is within the input image and on the mesh
     if (id.x > imageSize.x - 1 || id.y > imageSize.y - 1) {
         // outside the image
+        // notRendering = true;
         return;
     }
 
@@ -768,6 +775,7 @@ fn main(
         var dataIntersect : RayIntersectionResult = intersectAABB(ray, datasetBox);
         if (dataIntersect.tNear > dataIntersect.tFar || dataIntersect.tNear < 0) {
             // ray does not intersect bounding box
+            notRendering = true;
             return;
         }
         // extend to the closest touch of bounding box
@@ -775,7 +783,8 @@ fn main(
 
     }
 
-    var startInside = true;
+    // workgroupBarrier();
+
 
     if (passFlags.showRayDirs) {
         setPixel(id.xy, vec4<f32>(ray.direction, 1));
@@ -805,6 +814,7 @@ fn main(
     }
     
 
+    let startInside = true;
 
 
     let seed : u32 = (wgid.x << 12) ^ (wgid.y << 8) ^ (id.x << 4) ^ (id.y) ^ 782035u;
