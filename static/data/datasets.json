@@ -256,5 +256,11 @@
 		"path": "data/yf17_partial.cgns",
 		"meshPath": "data/yf17_block_mesh.cgns", 
 		"type": "cgns-partial"
+	},
+	"partial_test": {
+		"name": "unstruct_test",
+		"path": "data/out_partial.cgns",
+		"meshPath": "data/out_block_mesh.cgns", 
+		"type": "cgns-partial"
 	}
 }

@@ -1,5 +1,6 @@
 from modules.utils import *
 import numpy as np
+import math
 
 class Mesh:
     box = {
@@ -46,6 +47,61 @@ class Mesh:
                 "max": np.max(buff)
             } 
     
+    def create_values_from_raw(self, name, data, dims):
+        valAt = lambda i, j, k : data[i + j * dims[0] + k * dims[0] * dims[1]]
+
+        # trilinear interpolation
+        def sampleAt(p):
+            x, y, z = p
+            xf = math.floor(x)
+            yf = math.floor(y)
+            zf = math.floor(z)
+
+            xc = math.ceil(x)
+            yc = math.ceil(y)
+            zc = math.ceil(z)
+
+            fff = valAt(xf, yf, zf)
+            ffc = valAt(xf, yf, zc)
+            fcf = valAt(xf, yc, zf)
+            fcc = valAt(xf, yc, zc)
+            cff = valAt(xc, yf, zf)
+            cfc = valAt(xc, yf, zc)
+            ccf = valAt(xc, yc, zf)
+            ccc = valAt(xc, yc, zc)
+
+            xfp = x - xf
+            yfp = y - yf
+            zfp = z - zf
+
+            xcp = 1 - xfp
+            ycp = 1 - yfp
+            zcp = 1 - zfp
+
+            return fff * xfp * yfp * zfp + \
+                   ffc * xfp * yfp * zcp + \
+                   fcf * xfp * ycp * zfp + \
+                   fcc * xfp * ycp * zcp + \
+                   cff * xcp * yfp * zfp + \
+                   cfc * xcp * yfp * zcp + \
+                   ccf * xcp * ycp * zfp + \
+                   ccc * xcp * ycp * zcp
+        
+        # transform from this bounds to test data bounds
+        def transformPoint(p):
+            return (
+                (p[0] - self.box["min"][0])/(self.box["max"][0] - self.box["min"][0]) * (dims[0] - 1),
+                (p[1] - self.box["min"][1])/(self.box["max"][1] - self.box["min"][1]) * (dims[1] - 1),
+                (p[2] - self.box["min"][2])/(self.box["max"][2] - self.box["min"][2]) * (dims[2] - 1),
+            )
+        
+        newArray = np.empty(len(self.positions), dtype=np.float32)
+
+        for i, point in enumerate(self.positions):
+            newArray[i] = sampleAt(transformPoint(point))
+
+        self.values[name] = newArray
+
     # fills the supplied hdf5 zone group
     def create_zone_subgroup(self, base_grp, zone_grp_name):
         zone_data = np.array((len(self.positions), len(self.connectivity)//4, 0), dtype=np.int32)

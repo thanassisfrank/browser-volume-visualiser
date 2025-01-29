@@ -43,6 +43,13 @@ def filter_value_names(value_names, choices):
     return chosen
 
 
+def add_test_data(mesh):
+    # 256x256x256 f32
+    with open("test.raw", "rb") as file:
+        data = np.frombuffer(file.read(), dtype=np.uint8)
+        mesh.create_values_from_raw("test", data, (302, 302, 302))
+
+
 def export_meshes_info(meshes):
     with open("filled_slots.csv", "w", newline="") as file:
         writer = csv.writer(file, dialect="excel")
@@ -129,8 +136,9 @@ def main():
     parser.add_argument("-s", "--scalars", nargs="*", default=["pick"], help="flow solution scalar datasets to include")
     parser.add_argument("-d", "--depth", type=int, default=40, help="max depth of the tree")
     parser.add_argument("-c", "--max-cells", type=int, default=1024, help="max cells in the leaf nodes")
-    parser.add_argument("-o", "--output", default="out", help="output file path")
+    parser.add_argument("-o", "--output", default="out", help="output file prefix")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose output")
+    parser.add_argument("-t", "--transfer", action="store_true", help="creates additional scalar array with test-data transferred onto the mesh")
 
     args = vars(parser.parse_args())
     # load the cgns file
@@ -157,11 +165,17 @@ def main():
     # extract mesh
     mesh = Mesh.from_zone_group(zone_grp, selected_value_names)
     mesh.calculate_box()
-    mesh.calculate_limits()
-    if args["verbose"]: print(mesh)
 
     # close original file
     file.close()
+
+    # if -t is set, transfer the test data onto the mesh too
+    if args["transfer"]:
+        if args["verbose"]: print("Transferring test data to mesh...")
+        add_test_data(mesh)
+
+    mesh.calculate_limits()
+    if args["verbose"]: print(mesh)
 
     # generate the tree
     # dis.dis(split_cells)
@@ -179,7 +193,6 @@ def main():
     # cProfile.runctx("corner_values = generate_corner_values(mesh, tree)", globals(), locals())
     # return
     corner_values = generate_corner_values(mesh, tree)
-    if args["verbose"]: print(corner_values["Density"][:10])
 
     # split the mesh into blocks using the tree
     if args["verbose"]: print("Splitting mesh...")
