@@ -144,7 +144,7 @@ class Tree:
             "right": None,
         }
 
-        root["cells"] = [i for i in range(mesh.cell_count)]
+        root["cells"] = [i for i in range(mesh.get_cell_count())]
 
         n_app(root)
         processed = 0

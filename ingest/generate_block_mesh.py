@@ -44,7 +44,6 @@ def filter_value_names(value_names, choices):
 
 
 def add_test_data(mesh):
-    # 256x256x256 f32
     with open("test.raw", "rb") as file:
         data = np.frombuffer(file.read(), dtype=np.uint8)
         mesh.create_values_from_raw("test", data, (302, 302, 302))
@@ -139,8 +138,13 @@ def main():
     parser.add_argument("-o", "--output", default="out", help="output file prefix")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose output")
     parser.add_argument("-t", "--transfer", action="store_true", help="creates additional scalar array with test-data transferred onto the mesh")
+    parser.add_argument("--mirror-x", type=float, default=None, help="position of optional x mirror")
+    parser.add_argument("--mirror-y", type=float, default=None, help="position of optional y mirror")
+    parser.add_argument("--mirror-z", type=float, default=None, help="position of optional z mirror")
 
     args = vars(parser.parse_args())
+
+    if args["verbose"]: print(args)
     # load the cgns file
     try:
         file = h5py.File(args["file-path"], "r")
@@ -164,15 +168,24 @@ def main():
 
     # extract mesh
     mesh = Mesh.from_zone_group(zone_grp, selected_value_names)
-    mesh.calculate_box()
-
+    
     # close original file
     file.close()
+
+    # if any mirrors are supplied with -m*, calculate their effect
+    mirror_arr = [args["mirror_x"], args["mirror_y"], args["mirror_z"]]
+    if mirror_arr is not [None, None, None]:
+        if args["verbose"]: print("Mirroring mesh..")
+        mesh.mirror(mirror_arr, args["verbose"])
+
+    mesh.calculate_box()
+    if args["verbose"]: print(mesh.box)
 
     # if -t is set, transfer the test data onto the mesh too
     if args["transfer"]:
         if args["verbose"]: print("Transferring test data to mesh...")
         add_test_data(mesh)
+    
 
     mesh.calculate_limits()
     if args["verbose"]: print(mesh)

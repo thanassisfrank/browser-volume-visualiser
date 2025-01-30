@@ -1,6 +1,7 @@
 from modules.utils import *
 import numpy as np
 import math
+from functools import reduce
 
 class Mesh:
     box = {
@@ -16,21 +17,22 @@ class Mesh:
         self.values = values
         self.id = id
 
-        # assume fully tetrahedral mesh
-        self.cell_count = len(connectivity)//4
-
     def __str__(self):
         s = "".join([
             "Mesh object\n",
             f" {self.positions.shape}\n"
             f" {len(self.positions)} points\n",
-            f" {self.cell_count} cells\n",
+            f" {self.get_cell_count()} cells\n",
             f" {len(self.values.keys())} val arrays\n",
             f" box min: {self.box["min"]}\n"
             f" box max: {self.box["max"]}\n"
         ])
 
         return s
+
+    def get_cell_count(self):
+        # fully tetrahedral mesh
+        return len(self.connectivity)//4
     
     def calculate_box(self):
         self.box["min"] = self.positions[0]
@@ -46,9 +48,52 @@ class Mesh:
                 "min": np.min(buff), 
                 "max": np.max(buff)
             } 
-    
+
+    # mirrors this mesh object around the supplied mirror planes
+    def mirror(self, mirrors, verbose=False):
+        dupe_fact = 2**sum(x != None for x in mirrors)
+
+        # duplicate arrays to required number of times
+        orig_cell_count = self.get_cell_count()
+        orig_conn_len = len(self.connectivity)
+        self.connectivity = np.tile(self.connectivity, dupe_fact)
+        orig_pos_len = len(self.positions)
+        self.positions = np.tile(self.positions, (dupe_fact, 1))
+        for name in self.values:
+            self.values[name] = np.tile(self.values[name], dupe_fact)
+        
+        # offset the copies of the connectivity array
+        for i in range(1, dupe_fact):
+            offset = orig_pos_len * i
+            for j in range(orig_conn_len * i, orig_conn_len * (i + 1)):
+                self.connectivity[j] += offset
+
+        # mirror vertices
+        mirrors_done = 0
+        for dim, plane in enumerate(mirrors):
+            if plane is None: continue
+
+            plane = np.float32(plane)
+            print(mirrors)
+            if verbose:
+                print("mirroring about", ("x", "y", "z")[dim], "at", plane)
+                
+            for i in range(1, dupe_fact):
+                # flip only when the check bit is 1
+                if i & 0b1 << mirrors_done == 0: continue
+
+                # mirror the vertices in this duplicate array section
+                for j in range(orig_pos_len * i, orig_pos_len * (i + 1)):
+                    self.positions[j][dim] = 2*plane - self.positions[j][dim]
+            
+            mirrors_done += 1
+
+        if verbose:
+            print("verts:", orig_pos_len, "->", len(self.positions), "(x", dupe_fact, ")")
+            print("cells:", orig_cell_count, "->", self.get_cell_count(), "(x", dupe_fact, ")")
+
     def create_values_from_raw(self, name, data, dims):
-        valAt = lambda i, j, k : data[i + j * dims[0] + k * dims[0] * dims[1]]
+        valAt = lambda i, j, k : float(data[i + j * dims[0] + k * dims[0] * dims[1]])
 
         # trilinear interpolation
         def sampleAt(p):
@@ -168,6 +213,4 @@ class Mesh:
                 print("Couldn't load array", name)
 
         return Mesh(positions, connectivity, values)
-    
-    
 

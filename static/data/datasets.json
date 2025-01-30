@@ -262,5 +262,11 @@
 		"path": "data/out_partial.cgns",
 		"meshPath": "data/out_block_mesh.cgns", 
 		"type": "cgns-partial"
+	},
+	"big": {
+		"name": "Big Unstruct",
+		"path": "data/big_xyz_partial.cgns",
+		"meshPath": "data/big_xyz_block_mesh.cgns", 
+		"type": "cgns-partial"
 	}
 }

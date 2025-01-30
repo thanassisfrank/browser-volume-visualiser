@@ -101,16 +101,13 @@ def point_in_tet_det(point, cell):
         lambda1 <= EPSILON_CELL_TEST and 
         lambda2 <= EPSILON_CELL_TEST and 
         lambda3 <= EPSILON_CELL_TEST and 
-        lambda4 <= EPSILON_CELL_TEST
-    ):
-        return [-lambda1/vol, -lambda2/vol, -lambda3/vol, -lambda4/vol];
-    elif (
+        lambda4 <= EPSILON_CELL_TEST or
         lambda1 >= -EPSILON_CELL_TEST and
         lambda2 >= -EPSILON_CELL_TEST and
         lambda3 >= -EPSILON_CELL_TEST and
         lambda4 >= -EPSILON_CELL_TEST
     ):
-        return [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol];
+        return [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol]
     else:
         # not in this cell
         return [0, 0, 0, 0]
