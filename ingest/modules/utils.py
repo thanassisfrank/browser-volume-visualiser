@@ -2,6 +2,11 @@
 import numpy as np
 
 
+CGNS_ELEMENT_INTS = {
+    "tet": 10,
+    "tri": 5
+}
+
 def charcodes_to_string(charcodes):
     return "".join(map(chr, charcodes))
 

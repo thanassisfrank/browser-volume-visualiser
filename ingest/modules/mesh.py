@@ -53,6 +53,8 @@ class Mesh:
     def mirror(self, mirrors, verbose=False):
         dupe_fact = 2**sum(x != None for x in mirrors)
 
+        if dupe_fact == 0: return
+
         # duplicate arrays to required number of times
         orig_cell_count = self.get_cell_count()
         orig_conn_len = len(self.connectivity)
@@ -178,9 +180,8 @@ class Mesh:
     
     @staticmethod
     def from_zone_group(zone_grp, val_names):
-        zone_type_node = zone_grp["ZoneType"]
         # check if this is unstructured
-        if charcodes_to_string(zone_type_node[" data"]) != "Unstructured":
+        if charcodes_to_string(zone_grp["ZoneType/ data"]) != "Unstructured":
             raise TypeError("Dataset mesh is not unstructured")
         
         coords_node = zone_grp["GridCoordinates"]
@@ -199,18 +200,45 @@ class Mesh:
 
         positions = np.array([x_pos, y_pos, z_pos]).transpose()
 
-        # get the connectivity information, correcting for one based indexing
-        con_dset = zone_grp["GridElements/ElementConnectivity/ data"]
-        connectivity = np.empty(con_dset.shape, dtype=con_dset.dtype)
-        con_dset.read_direct(connectivity)
-        connectivity -= 1
-
+        
+        # retrieve vertex scalar data
         values = {}
         for name in val_names:
             try:
                 values[name] = np.array(zone_grp["FlowSolution"][name][" data"], copy=True)
             except:
                 print("Couldn't load array", name)
+
+        
+        elements_groups = []
+        conn_len = 0
+
+        # get the total connectivity array length
+        for child in zone_grp.values():
+            if type(child) != type(zone_grp): continue
+            # child is group
+            if child.attrs["label"] != b'Elements_t': continue
+            # group is elements group
+            if child[" data"][0] != CGNS_ELEMENT_INTS["tet"]: continue
+            # group contains tets
+            
+            elements_groups.append(child)
+            conn_len += len(child["ElementConnectivity/ data"])
+
+        
+
+        connectivity = np.empty(conn_len, dtype=np.uint32)
+        curr_offset = 0
+
+        for group in elements_groups:
+            # read connectivity information
+            con_dset = group["ElementConnectivity/ data"]
+            con_dset.read_direct(connectivity, np.s_[:], np.s_[curr_offset:curr_offset + len(con_dset)])
+            curr_offset += len(con_dset)
+
+        # correct for 1-based indexing
+        connectivity -= 1
+        
 
         return Mesh(positions, connectivity, values)
 
