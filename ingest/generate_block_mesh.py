@@ -1,18 +1,75 @@
-import h5py
 import argparse
 import numpy as np
-from collections import namedtuple
+
+import h5py
+import modules.fun3d_data as f3d
+import modules.ugrid as ugrid
+
 import csv
 
+from modules.cgns import *
 from modules.utils import *
 from modules.mesh import Mesh
 from modules.tree import Tree
 from modules.leaf_mesh import *
 
 
-def get_value_names(zone_node):
-    flow_sol = zone_node["FlowSolution"]
-    return list(flow_sol.keys())
+def load_mesh_from_file(path, scalars, verbose = False):
+    # buffers to populate from the file
+    positions = None
+    connectivity = None
+    values = None
+
+    if path.split(".")[-1].lower() == "cgns":
+        if verbose: print("Opening CGNS file...")
+        try:
+            file = h5py.File(path, "r")
+        except OSError:
+            print("Could not open file")
+            return
+
+        if verbose:
+            print("File information:")
+            print("CGNS Version", file["CGNSLibraryVersion"][" data"][0])
+            print(charcodes_to_string(file[" hdf5version"][:]))
+
+        # get the zone group to be used
+        zone_grp = file["Base"]["Zone1"]
+
+        # extract the names of the data arrays
+        value_names = get_zone_value_names(zone_grp)
+        selected_value_names = filter_value_names(value_names, scalars)
+
+        # extract the buffers from the file
+        positions = get_zone_positions(zone_grp)
+        connectivity = get_zone_tet_conn(zone_grp) - 1
+        values = get_zone_values(zone_grp, selected_value_names)
+        
+        # close original file
+        file.close()
+
+    elif ".lb4" in path:
+        if verbose: print("Opening binary UGRID file...")
+
+        # get mesh
+        mesh_file = ugrid.File(path)
+        positions = mesh_file.get_positions()
+        connectivity = mesh_file.get_tet_con() - 1
+        mesh_file.close()
+
+
+        # get values
+        val_path = path.replace("_mesh.lb4", "_volume_data")
+        val_file = f3d.File(val_path)
+
+        selected_value_names = filter_value_names(val_file.get_variable_names(), scalars)
+        values = {name: val_file.get_value_array(name) for name in selected_value_names}
+
+    else:
+        print("Could not open this file type, try a file with .cgns or .lb4 extension")
+        return
+    
+    return Mesh(positions, connectivity, values)
 
 
 def filter_value_names(value_names, choices):
@@ -115,7 +172,9 @@ def save_partial_data(out_name, tree, max_verts, corner_values, limits):
 # contains the mesh data for each of the tree leaf nodes
 def save_block_mesh_data(out_name, meshes, tree, max_verts):
     with h5py.File(f"{out_name}_block_mesh.cgns", "w") as file:
-        create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array(3.3, dtype=np.float32))
+        file.create_dataset("format", data=string_to_np_char("IEEE_LITTLE_32\0"))
+        file.create_dataset("hdf5version", data=string_to_np_char("HDF5 Version 1.10.4" + "\0"*14))
+        create_cgns_subgroup(file, "CGNSLibraryVersion", "CGNSLibraryVersion_t", "R4", np.array([3.3], dtype=np.float32))
     
         base_grp = create_cgns_subgroup(file, "Base", "CGNSBase_t", "I4", np.array([3, 3], dtype=np.int32))
 
@@ -145,32 +204,11 @@ def main():
     args = vars(parser.parse_args())
 
     if args["verbose"]: print(args)
-    # load the cgns file
-    try:
-        file = h5py.File(args["file-path"], "r")
-    except OSError:
-        print("Could not open file, exiting...")
+
+    mesh = load_mesh_from_file(args["file-path"], args["scalars"])
+    if mesh is None: 
+        print("Could not load mesh, exiting...")
         return
-    # print(list(file.keys()))
-
-    print("File information:")
-    print("CGNS Version", file["CGNSLibraryVersion"][" data"][0])
-    print(charcodes_to_string(file[" hdf5version"][:]))
-
-    # get the zone group to be used
-    zone_grp = file["Base"]["Zone1"]
-    # print(list(zone_node.keys()))
-
-    # extract the names of the data arrays
-    value_names = get_value_names(zone_grp)
-
-    selected_value_names = filter_value_names(value_names, args["scalars"])
-
-    # extract mesh
-    mesh = Mesh.from_zone_group(zone_grp, selected_value_names)
-    
-    # close original file
-    file.close()
 
     # if any mirrors are supplied with -m*, calculate their effect
     mirror_arr = [args["mirror_x"], args["mirror_y"], args["mirror_z"]]

@@ -21,18 +21,6 @@ def copy_box(box):
         "max": [box["max"][0], box["max"][1], box["max"][2]],
     }
 
-
-def create_cgns_subgroup(group, name, label, type, data=None):
-    sub_grp = group.create_group(name)
-    sub_grp.attrs["name"] = name
-    sub_grp.attrs["label"] = label
-    sub_grp.attrs["type"] = type
-    if data is not None:
-        sub_grp.create_dataset(" data", data=data)
-    
-    return sub_grp
-
-
 EPSILON_CELL_TEST = 0.005
 
 

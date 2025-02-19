@@ -103,7 +103,7 @@ def generate_corner_values_buffer(mesh, vals, tree):
             "merge": False
         }
     ]
-    processed = 0;
+    processed = 0
     while len(queue) > 0:
         processed += 1
         item = queue.pop()
