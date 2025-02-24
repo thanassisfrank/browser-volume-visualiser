@@ -258,7 +258,7 @@
 		"type": "cgns-partial"
 	},
 	"partial_test": {
-		"name": "unstruct_test",
+		"name": "unstruct test (out)",
 		"path": "data/out_partial.cgns",
 		"meshPath": "data/out_block_mesh.cgns", 
 		"type": "cgns-partial"
