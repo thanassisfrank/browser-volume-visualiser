@@ -11,6 +11,7 @@ import { generateTreelet } from "./treelet.js";
 import { MeshCache } from "./meshCache.js";
 import { boxVolume, copyBox } from "../boxUtils.js";
 import { vec4 } from "../gl-matrix.js";
+import { frameTimeStore, StopWatch } from "../utils.js";
 
 
 const NodeStates = {
@@ -399,6 +400,7 @@ export class DynamicTree {
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
     update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames, camMat) {
+        const nodeUpdateSW = new StopWatch();
         if (cameraChanged) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
@@ -407,10 +409,6 @@ export class DynamicTree {
         if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
             const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
 
-            // function scoreFn (box) {
-            //     return calcBoxScore(box, focusCoords, camToFocDist);
-            // }
-
             function scoreFn (box) {
                 return calcBoxScoreFrustrum(box, camCoords, camMat, camToFocDist);
             }
@@ -418,13 +416,29 @@ export class DynamicTree {
             const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, scoreFn);
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                
                 if (!this.meshCacheBusy) {
+                    nodeUpdateSW.stop();
+                    
+                    const meshUpdateSW = new StopWatch();
+                    // const meshCacheTimeStart = performance.now();
                     this.meshCacheBusy = true;
                     this.meshCache.updateScores(scores);
                     // update the mesh blocks that are loaded in the cache
-                    this.meshCache.updateLoadedBlocks(this.nodeCache, getMeshBlockFuncExt, this.fullNodes, scores, activeValueNames)
-                    .then(() => this.meshCacheBusy = false);
+                    this.meshCache.updateLoadedBlocks(
+                        this.nodeCache, 
+                        getMeshBlockFuncExt, 
+                        this.fullNodes, 
+                        scores, 
+                        activeValueNames, 
+                        meshUpdateSW
+                    )
+                    .then(() => {
+                        this.meshCacheBusy = false;
+                        frameTimeStore.add("mesh_update", meshUpdateSW.stop());
+                    });
+
+
+                    nodeUpdateSW.start();
                 }
             }
     
@@ -442,7 +456,9 @@ export class DynamicTree {
                 activeValueNames,
                 mergeSplitLists,
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
-            );   
+            );  
+            
+            frameTimeStore.add("node_update", nodeUpdateSW.stop());
         }
     }
 

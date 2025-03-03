@@ -462,7 +462,7 @@ async function main() {
 
         // update widgets
         frameTimeGraph.update(dt);
-        frameTimeStore.add("total", dt)
+        // frameTimeStore.add("total", dt)
         // update the scene
         viewManager.update(dt, renderEngine, cameraFollowPath);
 

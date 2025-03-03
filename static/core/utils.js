@@ -600,3 +600,18 @@ class CSVStore {
 // create singleton instance
 export const frameTimeStore = new CSVStore("frameTimes.csv", 200);
 
+export class StopWatch {
+    #elapsed;
+    #currStart;
+    constructor() {
+        this.start()
+    }
+    start() {
+        this.#elapsed = 0
+        this.#currStart = performance.now();
+    }
+    stop() {
+        return this.#elapsed += performance.now() - this.#currStart;
+    }
+}
+

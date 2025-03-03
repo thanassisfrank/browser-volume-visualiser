@@ -1,5 +1,6 @@
 // meshCache.js
 
+import { frameTimeStore, StopWatch } from "../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer } from "./cellTreeUtils.js";
 import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";
@@ -113,7 +114,7 @@ export class MeshCache {
      * @param {String[]} scalarNames 
      * @returns 
      */
-    async updateLoadedBlocks(nodeCache, getMeshBlocksFunc, fullNodes, scores, scalarNames) {
+    async updateLoadedBlocks(nodeCache, getMeshBlocksFunc, fullNodes, scores, scalarNames, sw) {
         // map of fullptr -> node obj for nodes that will be linked with their mesh
         let nodesToLink = new Map();
         // map of fullPtr -> node obj for nodes that will be requested from server
@@ -175,7 +176,11 @@ export class MeshCache {
         }
 
         if (nodesToRequest.size > 0) {
+            if (sw) sw.stop();
+            const reqSW = new StopWatch()
             const meshData = await getMeshBlocksFunc(Array.from(nodesToRequest.keys()), true, scalarNames);
+            frameTimeStore.add("server", reqSW.stop());
+            if (sw) sw.start();
             if (this.#treeletDepth > 0) {
                 this.#loadNodeMeshesTreelet(nodesToRequest, meshData, nodeCache.slotCount);
             } else {
