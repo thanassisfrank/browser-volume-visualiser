@@ -1,6 +1,6 @@
 // index.js
 // the main js file for index.html
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas} from "./core/utils.js";
+import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameTimeStore} from "./core/utils.js";
 
 import { DataFormats } from "./core/data/dataConstants.js";
 import { dataManager } from "./core/data/data.js";
@@ -325,11 +325,9 @@ async function main() {
             }
         },
         "f": {
-            description: "Print average frametime",
+            description: "Export frame times",
             f: function (e) {
-                const avg = frameTimeGraph.getAverage();
-                console.log("avg ft ", frameTimeGraph.historyLength, "samples:", avg, "ms");
-                alert(avg + "ms");
+                frameTimeStore.export();
             }
         },
         "g": {
@@ -464,6 +462,7 @@ async function main() {
 
         // update widgets
         frameTimeGraph.update(dt);
+        frameTimeStore.add("total", dt)
         // update the scene
         viewManager.update(dt, renderEngine, cameraFollowPath);
 

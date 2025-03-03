@@ -142,7 +142,7 @@ export function WebGPUBase (verbose = false) {
                 maxStorageBuffersPerShaderStage: this.adapter.limits.maxStorageBuffersPerShaderStage
 
             },
-            requiredFeatures: ["bgra8unorm-storage"]
+            requiredFeatures: ["bgra8unorm-storage", "timestamp-query"]
         });
         this.log(this.device.limits);
         this.maxStorageBufferBindingSize = this.device.limits.maxStorageBufferBindingSize;
@@ -755,6 +755,29 @@ export function WebGPUBase (verbose = false) {
         await this.device.queue.onSubmittedWorkDone();
         return;
     };
+
+    this.createTimingQueryPair = function() {
+        return this.device.createQuerySet({
+            type: "timestamp",
+            count: 2
+        });
+    }
+
+    // returns the duration encoded by a timing query set in ns
+    this.getPassTimingInfo = async function(passObj) {
+        if (!passObj.timingQuerySet) return;
+
+        for (let readBuff of passObj.timingReadBuffers) {
+            if (readBuff.mapState !== "unmapped") continue;
+
+            await readBuff.mapAsync(GPUMapMode.READ);
+            const times = new BigInt64Array(readBuff.getMappedRange());
+            const duration = Number(times[1] - times[0]);
+            readBuff.unmap();
+            return {duration}
+        }
+        console.log("couldn't read")
+    }
     
     // Pass and command encoder management ==================================================================
 
@@ -764,11 +787,56 @@ export function WebGPUBase (verbose = false) {
     
     // creates a pass descriptor object
     this.createPassDescriptor = function(passType, passOptions, bindGroupLayouts, code, label = "") {
-        var pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
-        var shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
+        let pipelineLayout = this.device.createPipelineLayout({bindGroupLayouts: bindGroupLayouts});
+        let shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
+        
+        // input to create*passEncoder()
+        let passEncoderDescriptor = {};
+        // input to create*pipeline()
+        let pipelineDescriptor = {};
+
+        // return value
+        let passDescriptor = {};
+
+        if (passOptions.timing) {
+            const querySet = this.createTimingQueryPair();
+            // write timestamps to here from query set
+            const resolveBuffer = this.device.createBuffer({
+                size: querySet.count * 8,
+                usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC
+            });
+
+            // copy from resolveBuffer to here for mapping
+            // start with one
+            const timingReadBuffers = [
+                this.device.createBuffer({
+                    size: resolveBuffer.size,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                })
+            ];
+
+            passEncoderDescriptor = {
+                ...passEncoderDescriptor,
+                timestampWrites: {
+                    querySet,
+                    beginningOfPassWriteIndex: 0,
+                    endOfPassWriteIndex: 1,
+                }
+            }
+
+            passDescriptor = {
+                ...passDescriptor,
+                timingQuerySet: querySet,
+                timingResolveBuffer: resolveBuffer,
+                timingReadBuffers
+            }
+        }
+
+
         if (passType == this.PassTypes.RENDER) {
             // create a render pass
-            var pipelineDescriptor = {
+            pipelineDescriptor = {
+                ...pipelineDescriptor,
                 label: label,
                 layout: pipelineLayout,
                 vertex: {
@@ -819,6 +887,8 @@ export function WebGPUBase (verbose = false) {
 
             // create the render pass object
             return {
+                ...passDescriptor,
+                passEncoderDescriptor,
                 passType: this.PassTypes.RENDER,
                 indexed: passOptions.indexed || false,
                 bindGroupLayouts: bindGroupLayouts,
@@ -826,7 +896,8 @@ export function WebGPUBase (verbose = false) {
             };
         } else if (passType == this.PassTypes.COMPUTE) {
             // create a compute pass
-            var pipelineDescriptor = {
+            pipelineDescriptor = {
+                ...pipelineDescriptor,
                 layout: pipelineLayout,
                 compute: {
                     module: shaderModule,
@@ -835,9 +906,12 @@ export function WebGPUBase (verbose = false) {
             }
             // create the compute pass object
             return {
+                ...passDescriptor,
+                passEncoderDescriptor,
                 passType: this.PassTypes.COMPUTE,
                 bindGroupLayouts: bindGroupLayouts,
                 pipeline: this.device.createComputePipeline(pipelineDescriptor),
+                
             }
         } else {
             // not a valid pass type
@@ -848,7 +922,7 @@ export function WebGPUBase (verbose = false) {
     // encodes a GPU pass onto the command encoder
     this.encodeGPUPass = function(commandEncoder, passObj) {
         if (passObj.passType == this.PassTypes.RENDER) {
-            const passEncoder = commandEncoder.beginRenderPass(passObj.renderDescriptor);
+            const passEncoder = commandEncoder.beginRenderPass(passObj.passEncoderDescriptor);
             var box = passObj.box;
             var bounds = passObj.boundingBox;
             passEncoder.setViewport(
@@ -881,13 +955,44 @@ export function WebGPUBase (verbose = false) {
             }
             passEncoder.end();
         } else if (passObj.passType == this.PassTypes.COMPUTE) {
-            const passEncoder = commandEncoder.beginComputePass();
+            const passEncoder = commandEncoder.beginComputePass(passObj.passEncoderDescriptor);
             passEncoder.setPipeline(passObj.pipeline);
             for (let i in passObj.bindGroups) {
                 passEncoder.setBindGroup(i, passObj.bindGroups[i]);
             }
             passEncoder.dispatchWorkgroups(...passObj.workGroups);
             passEncoder.end();
+        }
+
+        // encode the timing reading
+        if (passObj.passEncoderDescriptor.timestampWrites) {
+            commandEncoder.resolveQuerySet(
+                passObj.timingQuerySet, 
+                0, 
+                passObj.timingQuerySet.count, 
+                passObj.timingResolveBuffer, 
+                0
+            );
+            let thisReadBuff;
+
+            for (let readBuff of passObj.timingReadBuffers) {
+                if (readBuff.mapState !== "unmapped") continue;
+                thisReadBuff = readBuff;
+                break;
+            }
+
+            if (!thisReadBuff) {
+                const newBuff = this.device.createBuffer({
+                    size: passObj.timingResolveBuffer.size,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                });
+                passObj.timingReadBuffers.push(newBuff);
+                thisReadBuff = newBuff;
+            }
+
+            commandEncoder.copyBufferToBuffer(
+                passObj.timingResolveBuffer, 0, thisReadBuff, 0, thisReadBuff.size
+            );
         }
 
         return commandEncoder; 

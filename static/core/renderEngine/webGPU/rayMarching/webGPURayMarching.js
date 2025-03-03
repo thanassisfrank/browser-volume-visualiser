@@ -3,7 +3,7 @@
 
 import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
-import { clamp } from "../../../utils.js";
+import { clamp, frameTimeStore } from "../../../utils.js";
 import { boxesEqual, copyBox } from "../../../boxUtils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
@@ -45,6 +45,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
     // optimal seems to be 8x8
     // > 8x8 corresponds to 64 threads which is the size of 1 or 2 waves on Nvidia or AMD hardware
     this.WGSize = {x: 8, y: 8};
+
+    this.timestampQuerySet
 
 
     // materials used as the defaults for the ray-marched iso-surface
@@ -341,7 +343,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             .then((computeRayMarchCode) => {
                 return webGPU.createPassDescriptor(
                     webGPU.PassTypes.COMPUTE,
-                    {},
+                    {timing: true},
                     computeRayMarchBindGroupLayouts,
                     {str: computeRayMarchCode, formatObj: {WGSizeX: this.WGSize.x, WGSizeY: this.WGSize.y, WGVol: this.WGSize.x * this.WGSize.y}},
                     "ray march pass (compute)"
@@ -937,7 +939,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         
         var rayMarchRenderPass = {
             ...this.rayMarchPassDescriptor,
-            renderDescriptor: {
+            passEncoderDescriptor: {
                 colorAttachments: [
                     outputColourAttachment,
                     {
@@ -1120,6 +1122,14 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         );
 
         webGPU.submitCommandEncoder(commandEncoder);
+
+        // map timing information
+        const timing = await webGPU.getPassTimingInfo(rayMarchComputePass);
+        if (timing?.duration !== undefined) {
+            const durMS = timing.duration/10**6;
+            frameTimeStore.add("gpu", durMS);
+            // console.log(`GPU took ${(durMS).toPrecision(3)}ms`);
+        }
     };
 
     // reads the texture corresponding to the best found ray depth

@@ -226,7 +226,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                     [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
                 ),
             },
-            renderDescriptor: {
+            passEncoderDescriptor: {
                 colorAttachments: [outputColourAttachment],
                 depthStencilAttachment: outputDepthAttachment
             },

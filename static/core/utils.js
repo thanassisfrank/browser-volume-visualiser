@@ -518,6 +518,21 @@ export function toCSVStr(data, sep=",", endl="\r\n") {
     return str;
 }
 
+
+export function objToCSVStr(data, sep=",", endl="\r\n") {
+    let str = "";
+    // header row
+    str += Object.keys(data).join(sep) + endl;
+    
+    // main body
+    const maxLength = Math.max(...Object.values(data).map(v => v.length))
+    for (let i = 0; i < maxLength; i++) {
+        str += Object.values(data).map(v => v[i] ?? "").join(sep) + endl;
+    }
+
+    return str;
+}
+
 export function downloadCanvas(canvas, fileName, mimeType) {
     try {
         var dlElem = document.createElement('a');
@@ -548,3 +563,40 @@ export function downloadObject(obj, fileName, mimeType) {
         console.error(`Unable to download ${fileName}: ${e}`);
     }
 }
+
+class CSVStore {
+    #samples = {};
+    #indices = {};
+    #maxSamples;
+    fileName;
+
+    constructor(fileName, max) {
+        this.fileName = fileName;
+        this.#maxSamples = max;
+    }
+
+    add(name, value) {
+        if (this.#samples[name] === undefined) {
+            this.#samples[name] = new Array(this.#maxSamples)
+            this.#indices[name] = 0;
+        }
+
+        this.#samples[name][this.#indices[name]] = value;
+        this.#indices[name] = (this.#indices[name] + 1) % this.#maxSamples;
+    }
+
+    clear() {
+        for (let key in this.#samples) {
+            this.#samples[key] = new Array(this.#maxSamples);
+            this.#indices[key] = 0;
+        }
+    }
+
+    export() {
+        downloadObject(objToCSVStr(this.#samples), this.fileName, "text/csv");
+    }
+}
+
+// create singleton instance
+export const frameTimeStore = new CSVStore("frameTimes.csv", 200);
+
