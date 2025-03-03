@@ -1,7 +1,7 @@
 // dataSource.js
 // contains classes for handling different types of data sources, backing data objects
 import {mat4} from "../gl-matrix.js";
-import { DATA_TYPES } from "../utils.js";
+import { DATA_TYPES, FetchSocket } from "../utils.js";
 import h5wasm from "../h5wasm/hdf5_hl.js";
 import * as cgns from "./cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "./dataConstants.js";
@@ -302,6 +302,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     // TODO: extract from cgns file
     totalCellCount = 0;
 
+    #socket;
+
 
 
     constructor(name, path, meshPath) {
@@ -309,6 +311,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         this.name = name;
         this.path = path;
         this.meshPath = meshPath;
+
+        this.#socket = new FetchSocket("/data-blocks");
     }
 
     // initialises the dataset with the partial CGNS file
@@ -438,15 +442,9 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         }
 
         // send the request
-        const resp = await fetch("/data", {
-            method: "POST",
-            body: JSON.stringify(request)
-        });
-        if (!resp.ok) {
-            console.warn("Couldn't get the requested block data");
-            return {};
-        }
+        const resp = await this.#socket.fetch(JSON.stringify(request));
         const buff = await resp.arrayBuffer();
+        // console.log(buff);
 
         // pull out the different buffers
         const parsed = this.parseRespBuffer(buff, indices, geometry, scalarNames);
