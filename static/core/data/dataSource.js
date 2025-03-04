@@ -320,6 +320,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     // > extracts information about the node tree and mesh block sizes
     // > keeps a reference to the corner value flow solution node for pulling data arrays from
     async init() {
+        await this.#socket.waitForOpen();
+
         const { FS } = await h5wasm.ready;
 
         const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());

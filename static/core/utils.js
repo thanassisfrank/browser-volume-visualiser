@@ -618,15 +618,32 @@ export class StopWatch {
 // a WebSocket wrapper that implements a request-response model with a window.fetch promise equivalent
 export class FetchSocket {
     #socket;
+    #openWatcher;
     #pending;
     constructor(url, protocols = []) {
         this.#socket = new WebSocket(url, protocols)
+        this.#socket.addEventListener("open", this.#openCallBack.bind(this));
         this.#socket.addEventListener("message", this.#msgCallBack.bind(this));
         this.#socket.addEventListener("error", this.#errCallBack.bind(this));
         this.#socket.addEventListener("close", this.#closeCallBack.bind(this));
 
         // holds resolve and reject handlers for current pending requests
         this.#pending = []
+    }
+
+    waitForOpen() {
+        return new Promise((resolve, reject) => {
+            if (this.#socket === WebSocket.OPEN) {
+                resolve();
+            } else {
+                this.#openWatcher = {resolve, reject}
+            } 
+        });
+    }
+
+    #openCallBack() {
+        this.#openWatcher?.resolve();
+        this.#openWatcher = undefined;
     }
 
     // send a message and register a new pending request
@@ -640,25 +657,26 @@ export class FetchSocket {
         prom.resolve(e.data);
     }
 
-    #errCallBack(e) {
-        // calls all of the reject handlers that are pending
+    // calls all of the reject handlers that are pending
+    #rejectAll(msg) {
         let prom;
         while (prom = this.#pending.shift()) {
-            prom.reject(`Socket error: ${e}`);
+            prom.reject(msg);
         }
+        this.#openWatcher?.reject(msg);
+        this.#openWatcher = undefined;
     }
 
+    #errCallBack(e) {
+        this.#rejectAll(`Socket error: ${e}`)
+    }
+    
     #closeCallBack(e) {
-        // calls all of the reject handlers that are pending
-        let prom;
-        while (prom = this.#pending.shift()) {
-            prom.reject("Socket closed");
-        }
-        console.warn("FetchSocket closed")
+        this.#rejectAll(`Socket closed: ${e}`)
     }
 
     // mirrors the 
-    async fetch(msg) {
+    fetch(msg) {
         return new Promise((resolve, reject) => {
             // send message
             this.#send(msg, resolve, reject);
