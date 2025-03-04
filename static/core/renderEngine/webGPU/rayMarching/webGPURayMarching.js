@@ -799,7 +799,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                     doneNames.add(dataSrc.name);
 
                     let newData = {
-                        "cornerValues": dataObj.getDynamicCornerValues(dataSrc.slotNum),
+                        "cornerValues": dataObj.getCornerValues(dataSrc.slotNum),
                     };
                     if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                         newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);

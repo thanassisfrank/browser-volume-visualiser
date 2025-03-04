@@ -157,11 +157,7 @@ const dataManager = {
             return;
         }
 
-        const nodeCache = dataObj.dynamicTree.createDynamicNodeCache(
-            dataObj.data.treeNodes, 
-            dynamicNodeCount
-        );
-        dataObj.data.dynamicTreeNodes = nodeCache.getBuffers()["nodes"];
+        dataObj.dynamicTree.setFullNodes(dataObj.data.treeNodes, dynamicNodeCount);
     },
 
     // create dynamic mesh buffers that contain a varying subset of the leaves cell data
@@ -247,9 +243,6 @@ class Data extends SceneObject {
         treeNodes: null,
         treeCells: null,
         fullLeafCount: 0,
-
-        dynamicTreeNodes: null,
-        dynamicTreeCells: null,
 
         leafVerts: null,
     };
@@ -448,7 +441,6 @@ class Data extends SceneObject {
         }
 
         this.valueDirectory[desc.name] = newSlotNum;
-        
 
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             // dynamic cells, need to 
@@ -465,12 +457,6 @@ class Data extends SceneObject {
         } else {
             // not dynamic nodes, need to have the whole corner values buffer on hand here
         }
-
-
-        // get the histogram if required
-        // if (binCount) {
-        //     this.valueCounts[newSlotNum] = this.getValueCounts(newSlotNum, binCount);
-        // }
 
         return newSlotNum;
     };
@@ -598,7 +584,7 @@ class Data extends SceneObject {
 
     // fetching the corner values buffers
     getCornerValues(slotNum) {
-        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+        // if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
         return this.getFullCornerValues(slotNum);
     };
 

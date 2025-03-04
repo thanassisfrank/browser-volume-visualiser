@@ -6,9 +6,14 @@ static/data/*_treeNodes.raw
 static/data/*_cornerVals.raw
 static/data/*_blocks.raw
 static/data/*_limits.raw
+static/data/big*
+static/data/retro*
 old/
 .vscode
 build/
 cpp/
 __pycache__
 ingest/*.cgns
+ingest/cpp_hdf5
+ingest/retro
+ingest/test.raw

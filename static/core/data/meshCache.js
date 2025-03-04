@@ -2,7 +2,7 @@
 
 import { frameTimeStore, StopWatch } from "../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
-import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer } from "./cellTreeUtils.js";
+import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer, writeNodeToBuffer } from "./cellTreeUtils.js";
 import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";
 
 // implements a cache object for storing mesh data in block format
@@ -50,10 +50,10 @@ export class MeshCache {
         }
     }
 
-    #loadNodeMeshesTreelet(nodesToRequest, meshData, nodeCacheSlotCount) {
+    #loadNodeMeshesTreelet(nodesToRequest, meshData, nodeBufferCount) {
         // process received data and write into cache
         for (let [fullPtr, node] of nodesToRequest) {
-            const nodePtrOffset = nodeCacheSlotCount + node.meshCacheSlot * this.#treeletNodesPerSlot;
+            const nodePtrOffset = nodeBufferCount + node.meshCacheSlot * this.#treeletNodesPerSlot;
 
             const treelet = generateTreelet(
                 meshData[fullPtr], 
@@ -74,26 +74,27 @@ export class MeshCache {
         }
     }
 
-    #linkNodeMeshes(nodesToLink, nodeCache) {
+    #linkNodeMeshes(nodesToLink, dynamicNodeCache, renderNodes) {
         for (let [fullPtr, node] of nodesToLink) {
             // link tree node directly to cells
-            nodeCache.updateBlockAt(node.thisPtr, {
+            dynamicNodeCache.updateBlockAt(node.thisPtr, {
                 "nodes": {cellCount: node.fullCellCount, leftPtr: node.meshCacheSlot}
             });
+            writeNodeToBuffer(renderNodes, fullPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
         }
     }
 
-    #linkNodeMeshesTreelet(nodesToLink, nodeCache) {
+    #linkNodeMeshesTreelet(nodesToLink, dynamicNodeCache, renderNodes) {
         for (let [fullPtr, node] of nodesToLink) {
-            // link tree node to the treelet
-            const nodePtrOffset = nodeCache.slotCount + node.meshCacheSlot * this.#treeletNodesPerSlot;
+            const splitVal = this.#cache.readBuffSlotAt("treeletRootSplit", node.meshCacheSlot)[0];
+            // link tree node to the treelet in dynamic nodes
+            const nodePtrOffset = dynamicNodeCache.slotCount + node.meshCacheSlot * this.#treeletNodesPerSlot;
             const leftPtr = nodePtrOffset + InternalTreeletTopLeftPtr;
             const rightPtr = nodePtrOffset + InternalTreeletTopRightPtr;
 
             // get the treelet root split val from the mesh cache
-            const splitVal = this.#cache.readBuffSlotAt("treeletRootSplit", node.meshCacheSlot)[0];
 
-            nodeCache.updateBlockAt(node.thisPtr, {
+            dynamicNodeCache.updateBlockAt(node.thisPtr, {
                 "nodes": {
                     splitVal,
                     cellCount: 0, 
@@ -101,6 +102,13 @@ export class MeshCache {
                     rightPtr,
                 }
             });
+
+            // link render node to treelet
+            const renderNodePtrOffset = renderNodes.byteLength/NODE_BYTE_LENGTH + node.meshCacheSlot * this.#treeletNodesPerSlot;
+            const renderLeftPtr = renderNodePtrOffset + InternalTreeletTopLeftPtr;
+            const renderRightPtr = renderNodePtrOffset + InternalTreeletTopRightPtr;
+
+            writeNodeToBuffer(renderNodes, fullPtr * NODE_BYTE_LENGTH, splitVal, 0, null, renderLeftPtr, renderRightPtr);
         }
     }
 
@@ -108,13 +116,15 @@ export class MeshCache {
     /**
      * Updates the dynamic mesh cache to contain the mesh corresponding to the true leaf nodes with the highest scores
      * @param {AssociativeCache} nodeCache 
+     * @param {ArrayBuffer} renderNodes 
      * @param {(ptrList : Number[], geometry : Boolean, scalarList : String[])=>Promise<Map<Number,Object>>} getMeshBlocksFunc 
      * @param {ArrayBuffer} fullNodes 
      * @param {Object[]} scores A list of leaf nodes within the dynamic tree
      * @param {String[]} scalarNames 
+     * @param {StopWatch} sw 
      * @returns 
      */
-    async updateLoadedBlocks(nodeCache, getMeshBlocksFunc, fullNodes, scores, scalarNames, sw) {
+    async updateLoadedBlocks(nodeCache, renderNodes, getMeshBlocksFunc, fullNodes, scores, scalarNames, sw) {
         // map of fullptr -> node obj for nodes that will be linked with their mesh
         let nodesToLink = new Map();
         // map of fullPtr -> node obj for nodes that will be requested from server
@@ -160,10 +170,14 @@ export class MeshCache {
             if (undefined === loadResult.evicted) continue;
             // there was a mesh block replaced
             
-            // if a block was evicted and remembered, forget it
+            // if a block was evicted that was to be added this iteration, don't
             nodesToLink.delete(loadResult.evicted);
             nodesToRequest.delete(loadResult.evicted);
 
+            // update render nodes
+            writeNodeToBuffer(renderNodes, NODE_BYTE_LENGTH * loadResult.evicted, null, 0, null, 0, 0);
+
+            // update dynamic nodes if needed
             const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
             if (-1 == evictedTagNodeSlot) continue;
             // it is loaded, make sure that it becomes a pruned leaf with no cells
@@ -182,7 +196,7 @@ export class MeshCache {
             frameTimeStore.add("server", reqSW.stop());
             if (sw) sw.start();
             if (this.#treeletDepth > 0) {
-                this.#loadNodeMeshesTreelet(nodesToRequest, meshData, nodeCache.slotCount);
+                this.#loadNodeMeshesTreelet(nodesToRequest, meshData, renderNodes.byteLength/NODE_BYTE_LENGTH);
             } else {
                 this.#loadNodeMeshes(nodesToRequest, meshData);
             }
@@ -190,9 +204,9 @@ export class MeshCache {
         
         if (nodesToLink.size > 0) {
             if (this.#treeletDepth > 0) {
-                this.#linkNodeMeshesTreelet(nodesToLink, nodeCache);
+                this.#linkNodeMeshesTreelet(nodesToLink, nodeCache, renderNodes);
             } else {
-                this.#linkNodeMeshes(nodesToLink, nodeCache);
+                this.#linkNodeMeshes(nodesToLink, nodeCache, renderNodes);
             }
         }
     }

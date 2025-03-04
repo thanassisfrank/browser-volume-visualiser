@@ -279,6 +279,8 @@ export class DynamicTree {
     meshCache;
     /** @type {ArrayBuffer} */
     fullNodes;
+    /** @type {ArrayBuffer} */
+    renderNodes;
 
     constructor(resolutionMode, treeletDepth) {
         this.resolutionMode = resolutionMode;
@@ -288,7 +290,7 @@ export class DynamicTree {
 
     // create the buffers used for dynamic data resolution
     // fills dynamic nodes from full nodes breadth first
-    createDynamicNodeCache (fullNodes, maxNodes) {
+    #createDynamicNodeCache(fullNodes, maxNodes) {
         this.fullNodes = fullNodes
         // set up the cache object for the dynamic nodes
         this.nodeCache = new AssociativeCache(maxNodes);
@@ -360,10 +362,50 @@ export class DynamicTree {
         return this.nodeCache;
     }
 
+    // create the render nodes buffer by pruning all of the leaf nodes
+    #createRenderNodes(fullNodes) {
+        // copy full nodes
+        this.renderNodes = new ArrayBuffer(fullNodes.byteLength);
+        new Uint8Array(this.renderNodes).set(new Uint8Array(fullNodes));
+
+        // prune children
+        let leavesPruned = 0;
+        const rootNode = readNodeFromBuffer(fullNodes, 0);
+        const nodeQueue = [rootNode];
+        while (nodeQueue.length > 0) {
+            const currNode = nodeQueue.pop();
+            if (currNode.rightPtr === 0) {
+                leavesPruned++;
+                writeNodeToBuffer(
+                    this.renderNodes, 
+                    NODE_BYTE_LENGTH * currNode.thisPtr, 
+                    currNode.splitVal,
+                    0,
+                    currNode.parentPtr,
+                    0,
+                    0
+                );
+            } else {
+                nodeQueue.push(
+                    readNodeFromBuffer(fullNodes, NODE_BYTE_LENGTH * currNode.leftPtr),
+                    readNodeFromBuffer(fullNodes, NODE_BYTE_LENGTH * currNode.rightPtr),
+                )
+            }
+        }
+
+        console.log(`${leavesPruned} leaved pruned out of ${fullNodes.byteLength/NODE_BYTE_LENGTH} nodes`)
+    }
+
+    setFullNodes(fullNodes, dynamicNodeCount) {
+        this.#createDynamicNodeCache(fullNodes, dynamicNodeCount);
+        this.#createRenderNodes(fullNodes);
+    }
+
     // creates or modifies the dynamic corner values buffer 
     // agnostic to samples vs poly
     // extends the cache object used for dynamic nodes
     createMatchedDynamicCornerValues(fullCornerValues, slotNum) {
+        // return;
         if (!fullCornerValues) {
             throw Error("Unable to generate dynamic corner values, full corner values does not exist for slot " + slotNum);
         }
@@ -426,6 +468,7 @@ export class DynamicTree {
                     // update the mesh blocks that are loaded in the cache
                     this.meshCache.updateLoadedBlocks(
                         this.nodeCache, 
+                        this.renderNodes,
                         getMeshBlockFuncExt, 
                         this.fullNodes, 
                         scores, 
@@ -462,17 +505,17 @@ export class DynamicTree {
         }
     }
 
-    // concatenate the dynamic nodes and treelet nodes buffers
+    // concatenate the render nodes and treelet nodes buffers
     getNodeBuffer() {
-        if (!this.usesTreelets) return this.nodeCache.getBuffers()["nodes"];
+        if (!this.usesTreelets) return this.renderNodes;
 
         // both uint8 typed arrays
-        const dynNodes = new Uint8Array(this.nodeCache.getBuffers()["nodes"]);
+        const renderNodes = new Uint8Array(this.renderNodes);
         const treeletNodes = this.meshCache.getBuffers()["treeletNodes"];
 
-        const combinedNodes = new Uint8Array(dynNodes.length + treeletNodes.length);
-        combinedNodes.set(dynNodes, 0);
-        combinedNodes.set(treeletNodes, dynNodes.length);
+        const combinedNodes = new Uint8Array(renderNodes.length + treeletNodes.length);
+        combinedNodes.set(renderNodes, 0);
+        combinedNodes.set(treeletNodes, renderNodes.length);
 
         // return the array buffer
         return combinedNodes.buffer;
