@@ -288,6 +288,8 @@ def main():
     parser.add_argument("--mirror-x", type=float, default=None, help="position of optional x mirror")
     parser.add_argument("--mirror-y", type=float, default=None, help="position of optional y mirror")
     parser.add_argument("--mirror-z", type=float, default=None, help="position of optional z mirror")
+    parser.add_argument("--decimate", type=float, default=0, help="proportion of cells to remove from input mesh")
+
 
     args = vars(parser.parse_args())
 
@@ -305,10 +307,14 @@ def main():
     if mesh is None: 
         print("Could not load mesh, exiting...")
         return
+    
+    if args["decimate"] > 0.1:
+        if args["verbose"]: print("Decimating mesh")
+        mesh.decimate(args["decimate"], args["verbose"])
 
     # if any mirrors are supplied with -m*, calculate their effect
     mirror_arr = [args["mirror_x"], args["mirror_y"], args["mirror_z"]]
-    if mirror_arr is not [None, None, None]:
+    if args["mirror_x"] is not None and args["mirror_y"] is not None and args["mirror_z"] is not None:
         if args["verbose"]: print("Mirroring mesh..")
         mesh.mirror(mirror_arr, args["verbose"])
 

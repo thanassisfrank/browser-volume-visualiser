@@ -90,17 +90,15 @@ def point_in_tet_det(point, cell):
         [1, p[3][0], p[3][1], p[3][2]],      
     ])
 
+    factors = [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol]
+
     if (
-        lambda1 <= EPSILON_CELL_TEST and 
-        lambda2 <= EPSILON_CELL_TEST and 
-        lambda3 <= EPSILON_CELL_TEST and 
-        lambda4 <= EPSILON_CELL_TEST or
-        lambda1 >= -EPSILON_CELL_TEST and
-        lambda2 >= -EPSILON_CELL_TEST and
-        lambda3 >= -EPSILON_CELL_TEST and
-        lambda4 >= -EPSILON_CELL_TEST
+        factors[0] >= -EPSILON_CELL_TEST and
+        factors[1] >= -EPSILON_CELL_TEST and
+        factors[2] >= -EPSILON_CELL_TEST and
+        factors[3] >= -EPSILON_CELL_TEST
     ):
-        return [lambda1/vol, lambda2/vol, lambda3/vol, lambda4/vol]
+        return factors
     else:
         # not in this cell
         return [0, 0, 0, 0]

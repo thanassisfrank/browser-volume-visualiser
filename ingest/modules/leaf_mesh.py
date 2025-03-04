@@ -35,9 +35,7 @@ def get_containing_cell(pos, node, mesh, tree):
 
 
 def sample_vals_with_cell(vals, cell):
-    cell_vals = np.fromiter(map(lambda i : vals[i], cell["points_indices"]), dtype=np.float32)
-
-    return np.dot(cell_vals, cell["factors"])
+    return np.dot(vals[cell["points_indices"]], cell["factors"])
 
 
 def get_leaf_corner_vals(mesh, vals, node, box, tree):
@@ -68,7 +66,7 @@ def get_leaf_corner_vals(mesh, vals, node, box, tree):
         # }
 
         # leaf likely has no cells, default to 0
-        corner_vals[i] = 0;
+        corner_vals[i] = 0
     
     return corner_vals
 

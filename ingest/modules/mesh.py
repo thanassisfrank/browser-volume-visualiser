@@ -49,6 +49,11 @@ class Mesh:
                 "max": np.max(buff)
             } 
 
+
+    # removes frac fraction of cells by half edge collapse
+    def decimate(self, frac, verbose=False):
+        ...
+
     # mirrors this mesh object around the supplied mirror planes
     def mirror(self, mirrors, verbose=False):
         dupe_fact = 2**sum(x != None for x in mirrors)
