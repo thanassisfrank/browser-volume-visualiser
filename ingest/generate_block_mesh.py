@@ -1,10 +1,7 @@
 import argparse
 import numpy as np
-import cProfile
 
 import h5py
-import modules.fun3d_data as f3d
-import modules.ugrid as ugrid
 
 import csv
 
@@ -13,175 +10,8 @@ from modules.utils import *
 from modules.mesh import Mesh
 from modules.tree import Tree
 from modules.leaf_mesh import *
-
-
-
-def load_mesh_from_cgns(path, scalars, verbose = False):
-    if verbose: print("Opening CGNS file...")
-    try:
-        file = h5py.File(path, "r")
-    except OSError:
-        print("Could not open file")
-        return
-
-    if verbose:
-        print("File information:")
-        print("CGNS Version", file["CGNSLibraryVersion"][" data"][0])
-        print(charcodes_to_string(file[" hdf5version"][:]))
-
-    # get the zone group to be used
-    zone_grp = file["Base"]["Zone1"]
-
-    # extract the names of the data arrays
-    value_names = get_zone_value_names(zone_grp)
-    selected_value_names = filter_value_names(value_names, scalars)
-
-    # extract the buffers from the file
-    positions = get_zone_positions(zone_grp)
-    connectivity = get_zone_tet_conn(zone_grp) - 1
-    values = get_zone_values(zone_grp, selected_value_names)
-    
-    # close original file
-    file.close()
-
-    return Mesh(positions, connectivity, values)
-
-
-def load_mesh_from_fun3d(path, scalars, verbose = False):
-    if verbose: print("Opening binary UGRID file...")
-
-    # get mesh
-    mesh_file = ugrid.File(path)
-    positions = mesh_file.get_positions()
-    connectivity = mesh_file.get_tet_con() - 1
-    mesh_file.close()
-
-
-    # get values
-    val_path = path.replace("_mesh.lb4", "_volume_data")
-    val_file = f3d.File(val_path)
-
-    selected_value_names = filter_value_names(val_file.get_variable_names(), scalars)
-    values = {name: val_file.get_value_array(name) for name in selected_value_names}
-
-    return Mesh(positions, connectivity, values)
-
-
-def load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, verbose = False):
-    if verbose: print("Opening RAW file...")
-    file = open(path, "rb")
-    
-    # treat this as a raw 3d volumetric structured data file
-    size = np.array((size_x, size_y, size_z), dtype=np.uint32)
-
-    # read scalar values
-    raw_data = np.frombuffer(file.read(), dtype=np.dtype(d_type_str))
-    values = {
-        "Default": np.astype(raw_data, np.float32)
-    }
-
-    print("%i data values" % len(values["Default"]))
-
-    # create positions array
-    positions = np.empty((size[0] * size[1] * size[2], 3), dtype=np.float32)
-
-    positions.T[0] = np.tile(np.arange(size[0], dtype=np.float32), size[1] * size[2])
-    positions.T[1] = np.tile(np.repeat(np.arange(size[1], dtype=np.float32), size[0]), size[2])
-    positions.T[2] = np.repeat(np.arange(size[2], dtype=np.float32), size[0] * size[1])
-
-    if verbose: print("creating %i tets..." % (6 * (size[0] - 1) * (size[1] - 1) * (size[2] - 1)))
-
-    # rip the intrinsic hexahedra into 6 explicit tetrahedra
-    connectivity = np.empty(4 * 6 * (size[0] - 1) * (size[1] - 1) * (size[2] - 1), dtype=np.uint32)
-    wrapped_con = np.reshape(connectivity, (size[2] - 1, size[1] - 1, size[0] - 1, 6, 4))
-    p_index = lambda x, y, z: x + y * size[0] + z * size[0] * size[1]
-
-    k_range = np.arange(size[2] - 1)
-    j_range = np.arange(size[1] - 1)
-    i_range = np.arange(size[0] - 1)
-    for k in k_range:
-        for j in j_range:
-            for i in i_range:
-                wrapped_con[k][j][i][0][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][0][1] = p_index(i + 1, j,     k) 
-                wrapped_con[k][j][i][0][2] = p_index(i + 1, j + 1, k + 1)
-                wrapped_con[k][j][i][0][3] = p_index(i + 1, j,     k + 1)
-
-                wrapped_con[k][j][i][1][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][1][1] = p_index(i + 1, j,     k + 1) 
-                wrapped_con[k][j][i][1][2] = p_index(i + 1, j + 1, k + 1)
-                wrapped_con[k][j][i][1][3] = p_index(i,     j,     k + 1)
-
-                wrapped_con[k][j][i][2][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][2][1] = p_index(i + 1, j + 1, k + 1)
-                wrapped_con[k][j][i][2][2] = p_index(i,     j + 1, k + 1) 
-                wrapped_con[k][j][i][2][3] = p_index(i,     j,     k + 1)
-
-                wrapped_con[k][j][i][3][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][3][1] = p_index(i + 1, j + 1, k + 1)
-                wrapped_con[k][j][i][3][2] = p_index(i,     j + 1, k) 
-                wrapped_con[k][j][i][3][3] = p_index(i,     j + 1, k + 1)
-
-                wrapped_con[k][j][i][4][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][4][1] = p_index(i + 1, j + 1, k) 
-                wrapped_con[k][j][i][4][2] = p_index(i,     j + 1, k)
-                wrapped_con[k][j][i][4][3] = p_index(i + 1, j + 1, k + 1)
-                
-                wrapped_con[k][j][i][5][0] = p_index(i,     j,     k) 
-                wrapped_con[k][j][i][5][1] = p_index(i + 1, j,     k) 
-                wrapped_con[k][j][i][5][2] = p_index(i + 1, j + 1, k)
-                wrapped_con[k][j][i][5][3] = p_index(i + 1, j + 1, k + 1)
-
-    # print(positions[5000:5200])
-    file.close()
-
-    return Mesh(positions, connectivity, values)
-
-
-def load_mesh_from_file(path, scalars, d_type_str, size_x, size_y, size_z, verbose = False):
-    if path.split(".")[-1].lower() == "cgns":
-        return load_mesh_from_cgns(path, scalars, verbose)
-
-    elif ".lb4" in path:
-        return load_mesh_from_fun3d(path, scalars, verbose)
-    
-    elif ".raw" in path:
-        # cProfile.runcall(load_mesh_from_raw, path, d_type_str, size_x, size_y, size_z, verbose)
-        # cProfile.runctx("load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, verbose)", globals(), locals())
-        return load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, verbose)
-    else:
-        print("Could not open this file type, try a file with .cgns, .lb4 or .raw extension")
-        return
-    
-    
-
-
-def filter_value_names(value_names, choices):
-    chosen = []
-    if "all" in choices:
-        chosen = value_names
-    elif "first" in choices:
-        chosen.append(value_names[0])
-    elif "none" in choices:
-        pass
-    elif "pick" in choices:
-        # interactive pick prompt
-        print("Pick which value arrays to include")
-        print("y - yes, include")
-        print("n - no, don't include")
-        print("e - dont include this and end choice dialog")
-        for name in value_names:
-            choice = input(name + "\t").lower()
-            if  choice == "y":
-                chosen.append(name)
-            elif choice == "e":
-                break
-    else:
-        # pick the names that appear in choices if they exist in value_names
-        # intersection of the two sets
-        chosen = list(set(value_names) & set(choices))
-    
-    return chosen
+from modules.load_mesh import load_mesh_from_file
+ 
 
 
 def add_test_data(mesh):
@@ -302,15 +132,12 @@ def main():
         args["size_x"],
         args["size_y"],
         args["size_z"],
+        args["decimate"],
         args["verbose"]
     )
     if mesh is None: 
         print("Could not load mesh, exiting...")
         return
-    
-    if args["decimate"] > 0.1:
-        if args["verbose"]: print("Decimating mesh")
-        mesh.decimate(args["decimate"], args["verbose"])
 
     # if any mirrors are supplied with -m*, calculate their effect
     mirror_arr = [args["mirror_x"], args["mirror_y"], args["mirror_z"]]
