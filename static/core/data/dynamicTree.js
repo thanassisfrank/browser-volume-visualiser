@@ -11,7 +11,7 @@ import { generateTreelet } from "./treelet.js";
 import { MeshCache } from "./meshCache.js";
 import { boxVolume, copyBox } from "../boxUtils.js";
 import { vec4 } from "../gl-matrix.js";
-import { frameTimeStore, StopWatch } from "../utils.js";
+import { frameInfoStore, StopWatch } from "../utils.js";
 
 
 const NodeStates = {
@@ -477,7 +477,7 @@ export class DynamicTree {
                     )
                     .then(() => {
                         this.meshCacheBusy = false;
-                        frameTimeStore.add("mesh_update", meshUpdateSW.stop());
+                        frameInfoStore.add("mesh_update", meshUpdateSW.stop());
                     });
 
 
@@ -501,7 +501,7 @@ export class DynamicTree {
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
             );  
             
-            frameTimeStore.add("node_update", nodeUpdateSW.stop());
+            frameInfoStore.add("node_update", nodeUpdateSW.stop());
         }
     }
 

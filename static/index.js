@@ -1,6 +1,6 @@
 // index.js
 // the main js file for index.html
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameTimeStore} from "./core/utils.js";
+import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore} from "./core/utils.js";
 
 import { DataFormats } from "./core/data/dataConstants.js";
 import { dataManager } from "./core/data/data.js";
@@ -165,10 +165,8 @@ async function main() {
         // hide the window
         hide(get("add-view-container")); 
 
-        benchmarker = new Benchmarker(frameTimeStore, newView);
+        benchmarker = new Benchmarker(frameInfoStore, newView);
     });
-
-    var cameraFollowPath = false;
 
     const mousePos = {
         x: 0, y: 0
@@ -177,8 +175,6 @@ async function main() {
         mousePos.x = e.clientX; 
         mousePos.y = e.clientY;
     });
-
-
 
     // shortcuts
     const shortcuts = {
@@ -334,7 +330,7 @@ async function main() {
         "f": {
             description: "Export frame times",
             f: function (e) {
-                frameTimeStore.export();
+                frameInfoStore.export();
             }
         },
         "g": {
@@ -463,10 +459,11 @@ async function main() {
 
     var lastFrameStart = performance.now();
     var renderLoop = async (timeGap) => {
+        
         var thisFrameStart = performance.now();
         const dt = thisFrameStart - lastFrameStart;
         lastFrameStart = thisFrameStart;
-
+        
         // update widgets
         frameTimeGraph.update(dt);
         benchmarker?.updateState(thisFrameStart);
@@ -487,7 +484,7 @@ async function main() {
                 renderEngine.renderView(view);
             }
         }
-        
+        frameInfoStore.nextFrame();
         // next frame
         requestAnimationFrame(renderLoop);
     };

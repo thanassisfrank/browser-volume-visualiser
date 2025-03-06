@@ -27,7 +27,7 @@ export class Benchmarker {
 
     start(t, benchmark) {
         this.#startTime = t;
-        this.#frametimeStore.clear();
+        this.#frametimeStore.reset();
         this.#currBenchmark = benchmark;
 
         console.log(`**BENCHMARK START FOR ${this.#currBenchmark.duration}MS**`)

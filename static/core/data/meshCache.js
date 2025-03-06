@@ -1,6 +1,6 @@
 // meshCache.js
 
-import { frameTimeStore, StopWatch } from "../utils.js";
+import { frameInfoStore, StopWatch } from "../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
 import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer, writeNodeToBuffer } from "./cellTreeUtils.js";
 import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";
@@ -193,7 +193,8 @@ export class MeshCache {
             if (sw) sw.stop();
             const reqSW = new StopWatch()
             const meshData = await getMeshBlocksFunc(Array.from(nodesToRequest.keys()), true, scalarNames);
-            frameTimeStore.add("server", reqSW.stop());
+            frameInfoStore.add("new_blocks", nodesToRequest.size);
+            frameInfoStore.add("server", reqSW.stop());
             if (sw) sw.start();
             if (this.#treeletDepth > 0) {
                 this.#loadNodeMeshesTreelet(nodesToRequest, meshData, renderNodes.byteLength/NODE_BYTE_LENGTH);

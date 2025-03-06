@@ -3,7 +3,7 @@
 
 import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
-import { clamp, frameTimeStore } from "../../../utils.js";
+import { clamp, frameInfoStore } from "../../../utils.js";
 import { boxesEqual, copyBox } from "../../../boxUtils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
@@ -1023,6 +1023,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     // this is run for every face of the bounding box
     this.marchUnstructured = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
+        const thisFrameNum = frameInfoStore.getFrameNum();
         var commandEncoder = await webGPU.createCommandEncoder();
 
         // make a copy of the current colour frame buffer
@@ -1127,7 +1128,7 @@ export function WebGPURayMarchingEngine(webGPUBase) {
         const timing = await webGPU.getPassTimingInfo(rayMarchComputePass);
         if (timing?.duration !== undefined) {
             const durMS = timing.duration/10**6;
-            frameTimeStore.add("gpu", durMS);
+            frameInfoStore.addAt(thisFrameNum, "gpu", durMS);
             // console.log(`GPU took ${(durMS).toPrecision(3)}ms`);
         }
     };

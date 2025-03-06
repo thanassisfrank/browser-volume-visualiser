@@ -564,31 +564,52 @@ export function downloadObject(obj, fileName, mimeType) {
     }
 }
 
-class CSVStore {
+// a class to store info generate about each frame
+class FrameInfoStore {
     #samples = {};
-    #indices = {};
+    #frames = []
+    #currFrameNum = 0;
     #maxSamples;
     fileName;
 
     constructor(fileName, max) {
         this.fileName = fileName;
         this.#maxSamples = max;
+        this.#samples["frame_num"] = new Array(this.#maxSamples);
+    }
+
+    #getWriteIndex(num) {
+        return num % this.#maxSamples;
     }
 
     add(name, value) {
-        if (this.#samples[name] === undefined) {
-            this.#samples[name] = new Array(this.#maxSamples)
-            this.#indices[name] = 0;
-        }
-
-        this.#samples[name][this.#indices[name]] = value;
-        this.#indices[name] = (this.#indices[name] + 1) % this.#maxSamples;
+        this.addAt(this.#currFrameNum, name, value)
     }
 
-    clear() {
+    addAt(num, name, value) {
+        if (this.#samples[name] === undefined) {
+            this.#samples[name] = new Array(this.#maxSamples)
+        }
+
+        this.#samples[name][this.#getWriteIndex(num)] = value;
+    }
+
+    nextFrame() {
+        this.#currFrameNum++;
+        for (let name in this.#samples) {
+            this.#samples[name][this.#getWriteIndex()] = undefined;
+        }
+        this.#samples["frame_num"][this.#getWriteIndex(this.#currFrameNum)] = this.#currFrameNum;
+    }
+
+    getFrameNum() {
+        return this.#currFrameNum;
+    }
+
+    reset() {
+        this.#currFrameNum = 0;
         for (let key in this.#samples) {
             this.#samples[key] = new Array(this.#maxSamples);
-            this.#indices[key] = 0;
         }
     }
 
@@ -597,8 +618,8 @@ class CSVStore {
     }
 }
 
-// create singleton instance
-export const frameTimeStore = new CSVStore("frameTimes.csv", 200);
+// create singleton
+export const frameInfoStore = new FrameInfoStore("frameInfo.csv", 400);
 
 export class StopWatch {
     #elapsed;
