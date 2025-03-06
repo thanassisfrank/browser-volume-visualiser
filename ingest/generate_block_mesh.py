@@ -20,12 +20,36 @@ def add_test_data(mesh):
         mesh.create_values_from_raw("test", data, (302, 302, 302))
 
 
-def export_meshes_info(meshes):
-    with open("filled_slots.csv", "w", newline="") as file:
+def export_overview_info(prefix, orig_verts, orig_cells, target_leaf_cells, meshes):
+    total_verts = sum((len(mesh.positions) for mesh in meshes))
+    total_cells = sum((mesh.get_cell_count() for mesh in meshes))
+
+    with open(prefix + "overview.csv", "w", newline="") as file:
+        writer = csv.writer(file, dialect="excel")
+        writer.writerow([
+            "Total Verts", 
+            "Total Cells",
+            "Original Verts",
+            "Original Cells",
+            "Total Leaves",
+            "Target Leaf Cells"
+        ])
+        writer.writerow([
+            total_verts,
+            total_cells,
+            orig_verts,
+            orig_cells,
+            len(meshes),
+            target_leaf_cells 
+        ])
+
+
+def export_meshes_info(prefix, meshes):
+    with open(prefix + "filled_slots.csv", "w", newline="") as file:
         writer = csv.writer(file, dialect="excel")
         writer.writerow(["Full Vertices", "Full Cells"])
         for mesh in meshes:
-            writer.writerow([len(mesh.positions), len(mesh.connectivity)//4])
+            writer.writerow([len(mesh.positions), mesh.get_cell_count()])
 
 
 # write the node and corner value information
@@ -110,6 +134,8 @@ def main():
     parser.add_argument("-c", "--max-cells", type=int, default=1024, help="max cells in the leaf nodes")
     parser.add_argument("-o", "--output", default="out", help="output file prefix")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose output")
+    parser.add_argument("-e", "--export", action="store_true", help="export tree and mesh data as csv")
+    parser.add_argument("-n", "--no-files", action="store_true", help="don't generate output files")
     parser.add_argument("--transfer", action="store_true", help="creates additional scalar array with test-data transferred onto the mesh")
     parser.add_argument("--data-type", default="f32", help="specify data type of raw data")
     parser.add_argument("--size-x", type=int, help="specify x size of raw data")
@@ -157,6 +183,9 @@ def main():
     mesh.calculate_limits()
     if args["verbose"]: print(mesh)
 
+    original_verts = len(mesh.positions)
+    original_cells = mesh.get_cell_count()
+
     # generate the tree
     # dis.dis(split_cells)
     # cProfile.runctx("Tree.generate_node_median(mesh, 12, args['max_cells'])", globals(), locals())
@@ -178,16 +207,21 @@ def main():
     if args["verbose"]: print("Splitting mesh...")
     leaf_meshes = split_mesh_at_leaves(mesh, tree)
     max_verts = max(map(lambda m : len(m.positions), leaf_meshes))
-    # export_meshes_info(leaf_meshes)
 
+    # export the tree info as csv files
+    if args["export"]:
+        if args["verbose"]: print("Exporting info...")
+        export_meshes_info(args["output"], leaf_meshes)
+        export_overview_info(args["output"], original_verts, original_cells, args["max_cells"], leaf_meshes)
 
-    # create partial cgns file for client to load
-    if args["verbose"]: print("Creating partial out file...")
-    save_partial_data(args["output"], tree, max_verts, corner_values, mesh.limits)
+    if not args["no_files"]:
+        # create partial cgns file for client to load
+        if args["verbose"]: print("Creating partial out file...")
+        save_partial_data(args["output"], tree, max_verts, corner_values, mesh.limits)
 
-    # create mesh cgns file for server to serve blocks from
-    if args["verbose"]: print("Creating full mesh out file...")
-    save_block_mesh_data(args["output"], leaf_meshes, tree, max_verts)
+        # create mesh cgns file for server to serve blocks from
+        if args["verbose"]: print("Creating full mesh out file...")
+        save_block_mesh_data(args["output"], leaf_meshes, tree, max_verts)
 
 
 
