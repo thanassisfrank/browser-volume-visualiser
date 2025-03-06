@@ -22,6 +22,11 @@ export var viewManager = {
     maxViews: 30,
     // an object to hold all views that have been created
     views: {},
+
+    getFirst: function() {
+        return Object.values(this.views)[0];
+    },
+
     moreViewsAllowed: function() {
         return Object.keys(this.views).length < this.maxViews;
     },
@@ -481,13 +486,7 @@ function View(id, camera, data, renderMode) {
         return changed;
     };
 
-    this.update = async function (dt, renderEngine, cameraFollowPath) {
-        if (cameraFollowPath) {
-            if (this.camera.th < 720) {
-                const degPerSec = 90;
-                this.camera.addToTh(dt*degPerSec/1000);
-            }
-        }
+    this.update = async function (dt, renderEngine) {
         
         this.axesWidget?.update(this.camera.viewMat);
         

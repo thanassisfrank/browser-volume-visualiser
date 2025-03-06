@@ -12,6 +12,7 @@ import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
 import { VecMath } from "./core/VecMath.js"
+import { Benchmarker, TEST_BENCHMARK } from "./benchmark.js";
 
 
 const setUpRayMarchOptions = (rayMarcher) => {
@@ -65,6 +66,8 @@ async function main() {
     var canvas = get("c");
     
     var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
+
+    let benchmarker;
 
     var renderEnginePromise = createRenderEngine(canvas)
         .then((renderEngine) => renderEngine.setup())
@@ -161,6 +164,8 @@ async function main() {
 
         // hide the window
         hide(get("add-view-container")); 
+
+        benchmarker = new Benchmarker(frameTimeStore, newView);
     });
 
     var cameraFollowPath = false;
@@ -172,6 +177,8 @@ async function main() {
         mousePos.x = e.clientX; 
         mousePos.y = e.clientY;
     });
+
+
 
     // shortcuts
     const shortcuts = {
@@ -351,9 +358,9 @@ async function main() {
             }
         },
         "m": {
-            description: "Toggle camera auto-move",
+            description: "Start benchmark",
             f: function (e) {
-                cameraFollowPath = !cameraFollowPath;
+                benchmarker?.start(performance.now(), TEST_BENCHMARK);
             }
         },
         "o": {
@@ -462,9 +469,11 @@ async function main() {
 
         // update widgets
         frameTimeGraph.update(dt);
-        // frameTimeStore.add("total", dt)
+        benchmarker?.updateState(thisFrameStart);
         // update the scene
-        viewManager.update(dt, renderEngine, cameraFollowPath);
+        viewManager.update(dt, renderEngine);
+
+        // benchmarker update scene
 
         
         // render the scenes
