@@ -8,6 +8,7 @@ static/data/*_blocks.raw
 static/data/*_limits.raw
 static/data/big*
 static/data/retro*
+static/data/out*
 old/
 .vscode
 build/
@@ -16,4 +17,4 @@ __pycache__
 ingest/*.cgns
 ingest/cpp_hdf5
 ingest/retro
-ingest/test.raw
+ingest/*.raw
