@@ -1,5 +1,7 @@
 import numpy as np
 import random
+import time
+import cProfile
 
 import h5py
 import modules.fun3d_data as f3d
@@ -12,33 +14,35 @@ from modules.leaf_mesh import *
 
 
 # generates a mapping to be used when building a mesh from structured data
-def create_decimation_vert_map(size_x, size_y, size_z, dec_frac, verbose = False):
+def create_decimation_vert_map(size, dec_frac, verbose = False):
+    nudges = [
+        np.array([1, 0, 0], dtype=np.float32),
+        np.array([0, 1, 0], dtype=np.float32),
+        np.array([0, 0, 1], dtype=np.float32),
+        np.array([-1, 0, 0], dtype=np.float32),
+        np.array([0, -1, 0], dtype=np.float32),
+        np.array([0, 0, -1], dtype=np.float32),
+    ]
+
     def nudge_vert(pos):
         direction = random.randint(0, 5)
-        return [
-            [pos[0] + 1, pos[1],     pos[2]    ],
-            [pos[0],     pos[1] + 1, pos[2]    ],
-            [pos[0],     pos[1],     pos[2] + 1],
-            [pos[0] - 1, pos[1],     pos[2]    ],
-            [pos[0],     pos[1] - 1, pos[2]    ],
-            [pos[0],     pos[1],     pos[2] - 1],
-        ][direction]
+        return pos + nudges[direction]
 
-    remove_target = round(size_x*size_y*size_z*dec_frac)
+    remove_target = round(size[0]*size[1]*size[2]*dec_frac)
     if verbose: print("Creating map to remove %i verts..." % remove_target)
 
     vert_map = {}
 
-    p_index = lambda pos: pos[0] + pos[1] * size_x + pos[2] * size_x * size_y
+    p_index = lambda pos: pos[0] + pos[1] * size[0] + pos[2] * size[0] * size[1]
+
+    l_bound = np.ones(3, dtype=np.uint32)
+    h_bound = size - 1
 
     tries = 0
     while len(vert_map) < remove_target and tries < 10 * remove_target:
         tries += 1
-        src_pos = [
-            random.randint(1, size_x - 2),
-            random.randint(1, size_y - 2),
-            random.randint(1, size_z - 2),
-        ]
+        src_pos = np.random.randint(l_bound, h_bound)
+
         src_index = p_index(src_pos)
 
         # check if this has already been mapped
@@ -58,14 +62,17 @@ def create_decimation_vert_map(size_x, size_y, size_z, dec_frac, verbose = False
     return vert_map
 
 
-def create_raw_tet_con_dec(size_x, size_y, size_z, dec_frac, verbose = False):
+def create_raw_tet_con_dec(size, dec_frac, verbose = False):
     # rip the intrinsic hexahedra into 6 explicit tetrahedra
-    connectivity = np.empty(4 * 6 * (size_x - 1) * (size_y - 1) * (size_z - 1), dtype=np.uint32)
+    connectivity = np.empty(4 * 6 * (size[0] - 1) * (size[1] - 1) * (size[2] - 1), dtype=np.uint32)
     wrapped_con = np.reshape(connectivity, (-1, 4))
-    p_index = lambda x, y, z: x + y * size_x + z * size_x * size_y
+    p_index = lambda x, y, z: x + y * size[0] + z * size[0] * size[1]
 
-    vert_map = create_decimation_vert_map(size_x, size_y, size_z, dec_frac, verbose)
+    start = time.time()
+    vert_map = create_decimation_vert_map(size, dec_frac, verbose)
+    print("vert map took %fs" % (time.time() - start))
 
+    start = time.time()
     
     cell_ptr = 0
     def add_cell(cell):
@@ -89,70 +96,75 @@ def create_raw_tet_con_dec(size_x, size_y, size_z, dec_frac, verbose = False):
         if cell[2] == cell[3]: return True
 
         return False
-    
-    k_range = np.arange(size_z - 1)
-    j_range = np.arange(size_y - 1)
-    i_range = np.arange(size_x - 1)
-    for k in k_range:
-        for j in j_range:
-            for i in i_range:
-                cell1 = [
-                    translate_ind(p_index(i + 1, j,     k    )),
-                    translate_ind(p_index(i,     j,     k    )),
-                    translate_ind(p_index(i + 1, j,     k + 1)),
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                ]
 
+    def calc_cell(p1, p2, p3, p4):
+        return [
+            translate_ind(p1),
+            translate_ind(p2),
+            translate_ind(p3),
+            translate_ind(p4)
+        ]
+
+    
+    x_range = np.arange(size[0] - 1)
+    y_range = np.arange(size[1] - 1)
+    z_range = np.arange(size[2] - 1)
+
+    edges = [
+        np.array([0, 0, 0], dtype=np.uint32), # 0
+        np.array([1, 0, 0], dtype=np.uint32), # 1
+        np.array([0, 1, 0], dtype=np.uint32), # 2
+        np.array([1, 1, 0], dtype=np.uint32), # 3
+        np.array([0, 0, 1], dtype=np.uint32), # 4
+        np.array([1, 0, 1], dtype=np.uint32), # 5
+        np.array([0, 1, 1], dtype=np.uint32), # 6
+        np.array([1, 1, 1], dtype=np.uint32), # 7
+    ]
+
+    ind_offsets = np.array([
+        0,
+        1,
+        0 + size[0],
+        1 + size[0],
+        0 + 0       + size[0] * size[1],
+        1 + 0       + size[0] * size[1],
+        0 + size[0] + size[0] * size[1],
+        1 + size[0] + size[0] * size[1],
+    ], dtype=np.uint32)
+
+    for z in z_range:
+        for y in y_range:
+            for x in x_range:
+                # points = np.add([x, y, z], edges)
+                p_indices = np.add(p_index(x, y, z), ind_offsets)
+
+                cell1 = calc_cell(p_indices[1], p_indices[0], p_indices[5], p_indices[7])
                 if not is_degen(cell1): add_cell(cell1)
 
-                cell2 = [
-                    translate_ind(p_index(i,     j,     k    )), 
-                    translate_ind(p_index(i + 1, j,     k + 1)), 
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                    translate_ind(p_index(i,     j,     k + 1)),
-                ]
+                cell2 = calc_cell(p_indices[0], p_indices[5], p_indices[7], p_indices[4])
                 if not is_degen(cell2): add_cell(cell2)
 
-                cell3 = [
-                    translate_ind(p_index(i,     j,     k    )),
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                    translate_ind(p_index(i,     j + 1, k + 1)),
-                    translate_ind(p_index(i,     j,     k + 1)),
-                ]
+                cell3 = calc_cell(p_indices[0], p_indices[7], p_indices[6], p_indices[4])
                 if not is_degen(cell3): add_cell(cell3)
 
-                cell4 = [
-                    translate_ind(p_index(i,     j,     k    )),
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                    translate_ind(p_index(i,     j + 1, k    )),
-                    translate_ind(p_index(i,     j + 1, k + 1)),
-                ]
+                cell4 = calc_cell(p_indices[0], p_indices[3], p_indices[2], p_indices[6])
                 if not is_degen(cell4): add_cell(cell4)
 
-                cell5 = [
-                    translate_ind(p_index(i,     j,     k    )),
-                    translate_ind(p_index(i + 1, j + 1, k    )),
-                    translate_ind(p_index(i,     j + 1, k    )),
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                ]
+                cell5 = calc_cell(p_indices[0], p_indices[3], p_indices[2], p_indices[7])
                 if not is_degen(cell5): add_cell(cell5)
 
-                cell6 = [
-                    translate_ind(p_index(i,     j,     k    )),
-                    translate_ind(p_index(i + 1, j,     k    )),
-                    translate_ind(p_index(i + 1, j + 1, k    )),
-                    translate_ind(p_index(i + 1, j + 1, k + 1)),
-                ]
+                cell6 = calc_cell(p_indices[0], p_indices[1], p_indices[3], p_indices[7])
                 if not is_degen(cell6): add_cell(cell6)
 
 
-    removed_prop = 1 - cell_ptr/(6 * (size_x - 1) * (size_y - 1) * (size_z - 1))
+    removed_prop = 1 - cell_ptr/(6 * (size[0] - 1) * (size[1] - 1) * (size[2] - 1))
     if verbose: print("%.2f%% of cells removed" % (removed_prop * 100))
 
+    print("make cells took %fs" % (time.time() - start))
     return connectivity[: cell_ptr * 4]
 
 
-def create_raw_tet_con(size_x, size_y, size_z, verbose = False):
+def create_raw_tet_con(size, verbose = False):
     # rip the intrinsic hexahedra into 6 explicit tetrahedra
     connectivity = np.empty(4 * 6 * (size_x - 1) * (size_y - 1) * (size_z - 1), dtype=np.uint32)
     wrapped_con = np.reshape(connectivity, (-1, 4))
@@ -293,9 +305,11 @@ def load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, dec_frac, verbo
 
     if verbose: print("Creating tets...")
     if dec_frac > 0:
-        connectivity = create_raw_tet_con_dec(size_x, size_y, size_z, dec_frac, verbose)
+        connectivity = create_raw_tet_con_dec(size, dec_frac, verbose)
+        # connectivity = None
+        # cProfile.runctx("connectivity = create_raw_tet_con_dec(size, dec_frac, verbose)", globals(), locals())
     else:
-        connectivity = create_raw_tet_con(size_x, size_y, size_z, verbose)
+        connectivity = create_raw_tet_con(size, verbose)
 
     # trim the empty cell slots away
     return Mesh(positions, connectivity, values)

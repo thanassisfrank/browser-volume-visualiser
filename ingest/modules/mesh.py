@@ -24,8 +24,8 @@ class Mesh:
             f" {len(self.positions)} points\n",
             f" {self.get_cell_count()} cells\n",
             f" {len(self.values.keys())} val arrays\n",
-            f" box min: {self.box["min"]}\n"
-            f" box max: {self.box["max"]}\n"
+            f" box min: {self.box['min']}\n"
+            f" box max: {self.box['max']}\n"
         ])
 
         return s
