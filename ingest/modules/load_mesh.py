@@ -280,7 +280,7 @@ def load_mesh_from_fun3d(path, scalars, verbose = False):
     return Mesh(positions, connectivity, values)
 
 
-def load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, dec_frac, verbose = False):
+def load_mesh_from_raw(path, scalars, d_type_str, size_x, size_y, size_z, dec_frac, verbose = False):
     
     if verbose: print("Opening RAW file...")
     file = open(path, "rb")
@@ -289,10 +289,12 @@ def load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, dec_frac, verbo
     size = np.array((size_x, size_y, size_z), dtype=np.uint32)
 
     # read scalar values
-    raw_data = np.frombuffer(file.read(), dtype=np.dtype(d_type_str))
-    values = {
-        "Default": np.astype(raw_data, np.float32)
-    }
+    values = {}
+    if "Default" in filter_value_names(["Default"], scalars):
+        raw_data = np.frombuffer(file.read(), dtype=np.dtype(d_type_str))
+        values = {
+            "Default": np.astype(raw_data, np.float32)
+        }
 
     file.close()
 
@@ -350,7 +352,7 @@ def load_mesh_from_file(path, scalars, d_type_str, size_x, size_y, size_z, decim
     elif ".lb4" in path:
         return load_mesh_from_fun3d(path, scalars, verbose)
     elif ".raw" in path:
-        return load_mesh_from_raw(path, d_type_str, size_x, size_y, size_z, decimate, verbose)
+        return load_mesh_from_raw(path, scalars, d_type_str, size_x, size_y, size_z, decimate, verbose)
     else:
         print("Could not open this file type, try a file with .cgns, .lb4 or .raw extension")
         return

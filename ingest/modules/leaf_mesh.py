@@ -1,29 +1,32 @@
 # leaf_mesh.py
+import cProfile
 from modules.utils import *
 from modules.mesh import Mesh
 # from modules.tree import Tree
 
 
 def get_containing_cell(pos, node, mesh, tree):
-    m_con = mesh.connectivity
+    m_con = np.reshape(mesh.connectivity, (-1, 4))
     m_pos = mesh.positions
     cell = {
-        "points" : [None, None, None, None],
+        "points" : np.empty((4, 3), dtype=np.float32),
         "points_indices": np.empty(4, dtype=np.uint32),
-        "factors": [0, 0, 0, 0]
+        "factors": None
     }
 
     cells = tree.cell_buffer[node["left_ptr"] : node["left_ptr"] + node["cell_count"]]
     for cell_id in cells:
         # read all the point positions
-        for j in range(4):
-            # get the coords of the point as an array 3
-            this_point_index = m_con[cell_id * 4 + j]
-            cell["points_indices"][j] = this_point_index
-            cell["points"][j] = m_pos[this_point_index]
+        cell["points_indices"] = m_con[cell_id]
+        cell["points"] = np.copy(m_pos[m_con[cell_id]])
+        # for j in range(4):
+        #     # get the coords of the point as an array 3
+        #     this_point_index = m_con[cell_id * 4 + j]
+        #     cell["points_indices"][j] = this_point_index
+        #     cell["points"][j] = m_pos[this_point_index]
         
         
-        if not point_in_tet_bounds(pos, cell): continue
+        if not point_in_tet_bounds(pos, cell["points"]): continue
 
         cell["factors"] = point_in_tet_det(pos, cell)
         if not any(cell["factors"]) : continue
@@ -108,6 +111,8 @@ def generate_corner_values_buffer(mesh, vals, tree):
 
         if item["node"]["right_ptr"] == 0:
             # get the corner values for this box and write to buffer
+            # cProfile.runctx("get_leaf_corner_vals(mesh, vals, item['node'], item['box'], tree)", globals(), locals())
+            # input()
             corner_vals[item["index"]] = get_leaf_corner_vals(
                 mesh, 
                 vals, 
@@ -166,6 +171,7 @@ def generate_corner_values_buffer(mesh, vals, tree):
 
 # externally called to generate all needed from the values that are in the mesh
 def generate_corner_values(mesh, tree):
+    # cProfile.runctx("generate_corner_values_buffer(mesh, mesh.values['Default'], tree)", globals(), locals())
     return {
         name: generate_corner_values_buffer(mesh, mesh.values[name], tree)
         for name in mesh.values

@@ -24,28 +24,20 @@ def copy_box(box):
 EPSILON_CELL_TEST = 0.005
 
 
-def point_in_box(p, box):
-    if p[0] < box["min"][0] or p[1] < box["min"][1] or p[2] < box["min"][2]:
-        return False
-    if p[0] > box["max"][0] or p[1] > box["max"][1] or p[2] > box["max"][2]:
-        return False
+
+def point_in_tet_bounds(p, cell_p):
+    # cpt = cell_p.T
+    cell_min = np.minimum(np.minimum(cell_p[0], cell_p[1]), np.minimum(cell_p[2], cell_p[3]))
+    cell_max = np.maximum(np.maximum(cell_p[0], cell_p[1]), np.maximum(cell_p[2], cell_p[3]))
+
+
+    if p[0] < cell_min[0] or p[1] < cell_min[1] or p[2] < cell_min[2]: return False
+    if p[0] > cell_max[0] or p[1] > cell_max[1] or p[2] > cell_max[2]: return False
+
+    # if p[0] < min(cpt[0]) or p[1] < min(cpt[1]) or p[2] < min(cpt[2]): return False
+    # if p[0] > max(cpt[0]) or p[1] > max(cpt[1]) or p[2] > max(cpt[2]): return False
+
     return True
-
-
-def point_in_tet_bounds(point, cell):
-    cell_p = cell["points"]
-    bound = {
-        "min": np.minimum(
-            np.minimum(cell_p[0], cell_p[1]),
-            np.minimum(cell_p[2], cell_p[3])
-        ),
-        "max": np.maximum(
-            np.maximum(cell_p[0], cell_p[1]),
-            np.maximum(cell_p[2], cell_p[3])
-        ),
-    }
-
-    return point_in_box(point, bound)
 
 
 def point_in_tet_det(point, cell):
