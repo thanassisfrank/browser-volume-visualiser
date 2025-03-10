@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import time
 
 import h5py
 
@@ -190,8 +191,10 @@ def main():
     # dis.dis(split_cells)
     # cProfile.runctx("Tree.generate_node_median(mesh, 12, args['max_cells'])", globals(), locals())
     if args["verbose"]: print("Generating tree...")
+    start = time.time()
     tree = Tree.generate_node_median(mesh, args["depth"], args["max_cells"], args["verbose"])
     # tree = Tree.generate_node_median(mesh, 3, args["max_cells"])
+    print("tree took %f" % (time.time() - start))
 
     if args["verbose"]: print("Serialising tree...")
     node_buffer, cells_buffer = tree.convert_to_buffers()
@@ -201,7 +204,9 @@ def main():
     if args["verbose"]: print("Generating corner values...")
     # cProfile.runctx("corner_values = generate_corner_values(mesh, tree)", globals(), locals())
     # return
+    start = time.time()
     corner_values = generate_corner_values(mesh, tree)
+    print("corn vals took %f" % (time.time() - start))
 
     # split the mesh into blocks using the tree
     if args["verbose"]: print("Splitting mesh...")

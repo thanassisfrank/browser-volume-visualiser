@@ -18,3 +18,7 @@ ingest/*.cgns
 ingest/cpp_hdf5
 ingest/retro
 ingest/*.raw
+ingest/celltools/dist
+ingest/celltools/test
+ingest/celltools/Makefile
+ingest/celltools/src/celltools.egg*

@@ -1,9 +1,10 @@
 # tree.py
 import numpy as np
 from modules.utils import *
+import celltools
 
 
-def split_cells(node, pos_part, mesh_con):
+def split_cells(node, dim, mesh_pos, wrapped_con):
     # split the cells into left and right
     left_cells = []
     right_cells = []
@@ -19,22 +20,10 @@ def split_cells(node, pos_part, mesh_con):
     for cell_id in cells:
         # see if cell is <= pivot, > pivot or both
         # only tets for now
-        points_offset = cell_id * 4
 
-        if pos_part[mesh_con[points_offset + 0]] > s_val:
-            r_app(cell_id)
-
-            if (pos_part[mesh_con[points_offset + 1]] <= s_val or 
-                pos_part[mesh_con[points_offset + 2]] <= s_val or 
-                pos_part[mesh_con[points_offset + 3]] <= s_val):
-                l_app(cell_id)
-        else:
-            l_app(cell_id)
-
-            if (pos_part[mesh_con[points_offset + 1]] > s_val or 
-                pos_part[mesh_con[points_offset + 2]] > s_val or 
-                pos_part[mesh_con[points_offset + 3]] > s_val):
-                r_app(cell_id)
+        result = celltools.cell_plane_check4(dim, s_val, cell_id, mesh_pos, wrapped_con)
+        if result & 1 != 0: l_app(cell_id)
+        if result & 2 != 0: r_app(cell_id)
     
     return (left_cells, right_cells)
 
@@ -151,6 +140,7 @@ class Tree:
 
         mesh_pos = mesh.positions
         mesh_con = mesh.connectivity
+        wrapped_con = np.reshape(mesh_con, (-1, 4))
 
         if (verbose): print("Starting tree build, target cells: %i" % max_cells)
         cells_est = []
@@ -192,7 +182,7 @@ class Tree:
 
 
             # split the cells into left and right
-            left_cells, right_cells = split_cells(parent_node, mesh_pos[:, curr_dim], mesh_con)
+            left_cells, right_cells = split_cells(parent_node, curr_dim, mesh_pos, wrapped_con)
 
             # print(len(left_cells), len(right_cells))
             # print(parent_node["split_val"], curr_dim, curr_depth)

@@ -2,6 +2,7 @@
 import cProfile
 from modules.utils import *
 from modules.mesh import Mesh
+import celltools
 # from modules.tree import Tree
 
 
@@ -26,7 +27,8 @@ def get_containing_cell(pos, node, mesh, tree):
         #     cell["points"][j] = m_pos[this_point_index]
         
         
-        if not point_in_tet_bounds(pos, cell["points"]): continue
+        # if not point_in_tet_bounds(pos, cell["points"]): continue
+        if not celltools.point_in_cell_bounds4(pos, cell["points"]): continue
 
         cell["factors"] = point_in_tet_det(pos, cell)
         if not any(cell["factors"]) : continue
@@ -45,14 +47,14 @@ def get_leaf_corner_vals(mesh, vals, node, box, tree):
     corner_vals = np.empty(8, dtype=np.float32)
 
     points = [
-         box["min"],
-        [box["max"][0], box["min"][1], box["min"][2]],
-        [box["min"][0], box["max"][1], box["min"][2]],
-        [box["max"][0], box["max"][1], box["min"][2]],
-        [box["min"][0], box["min"][1], box["max"][2]],
-        [box["max"][0], box["min"][1], box["max"][2]],
-        [box["min"][0], box["max"][1], box["max"][2]],
-         box["max"],
+        np.array(box["min"], np.float32),
+        np.array([box["max"][0], box["min"][1], box["min"][2]], dtype=np.float32),
+        np.array([box["min"][0], box["max"][1], box["min"][2]], dtype=np.float32),
+        np.array([box["max"][0], box["max"][1], box["min"][2]], dtype=np.float32),
+        np.array([box["min"][0], box["min"][1], box["max"][2]], dtype=np.float32),
+        np.array([box["max"][0], box["min"][1], box["max"][2]], dtype=np.float32),
+        np.array([box["min"][0], box["max"][1], box["max"][2]], dtype=np.float32),
+        np.array(box["max"], np.float32),
     ]
     for i, point in enumerate(points):
         cell = get_containing_cell(point, node, mesh, tree)
