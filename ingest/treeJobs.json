@@ -2,11 +2,12 @@
     {
         "file": "./datasets/silicium_98x34x34_uint8.raw",
         "out": "silicium",
-        "cells": [512],
+        "cells": [256],
         "size": [98, 34, 34],
         "type": "u1",
         "decimate": 0.1,
         "verbose": true,
-        "scalars": ["first"]
+        "scalars": ["first"],
+        "noFiles": true
     }
 ]

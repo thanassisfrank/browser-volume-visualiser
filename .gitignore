@@ -17,6 +17,7 @@ __pycache__
 ingest/*.cgns
 ingest/cpp_hdf5
 ingest/retro
+ingest/datasets
 ingest/*.raw
 ingest/celltools/dist
 ingest/celltools/test

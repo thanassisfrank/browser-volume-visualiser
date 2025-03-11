@@ -4,9 +4,9 @@ import argparse
 import json
 
 
-def run_job(job, force=False, verbose=False):
+def run_job(job, prog, force=False, verbose=False):
 
-    job_cmd_parts = ["python3", "./generate_block_mesh.py", job["file"], "-e"] 
+    job_cmd_parts = [prog, "./generate_block_mesh.py", job["file"], "-e"] 
 
     if job.get("decimate"): 
         job_cmd_parts.extend(["--decimate", str(job["decimate"])])
@@ -58,6 +58,14 @@ def main():
 
     args = vars(parser.parse_args())
 
+    try:
+        subprocess.run("python3 --version")
+        prog = "python3"
+    except:
+        subprocess.run("python --version")
+        prog = "python"
+
+
     # create the jobs
     if args["json"] is not None:
         # get jobs from json
@@ -73,7 +81,7 @@ def main():
 
     for i, job in enumerate(jobs):
         print("running job %i/%i" % (i + 1, len(jobs)))
-        run_job(job, args["f"], args["v"])
+        run_job(job, prog, args["f"], args["v"])
 
 
 if __name__ == "__main__":
