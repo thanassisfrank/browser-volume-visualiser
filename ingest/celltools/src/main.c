@@ -22,32 +22,44 @@ static PyObject* helloWorld(PyObject *self, PyObject *args)
     return PyUnicode_FromString("Hello world!");
 }
 
+static inline float getCellVal(int pIndex, int dim, int cellID, PyArrayObject* con, PyArrayObject* pos)
+{
+    uint32_t fullPointIndex = *((uint32_t*)PyArray_GETPTR2(con, cellID, pIndex));
+    return *((float*)PyArray_GETPTR2(pos, fullPointIndex, dim));
+}
+
 // args:
 // 1) point : (3) shape array
-// 2) cell verts : (4, 3) shape array
+// 2) cell id
+// 3) positions : (n, 3)
+// 4) connectivity : (n, 4)
 static PyObject* pointInCellBounds4(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     // TODO: check nargs is correct
 
     PyArrayObject* pointArr = PyArray_GETCONTIGUOUS(args[0]);
-    PyArrayObject* cellArr = PyArray_GETCONTIGUOUS(args[1]);
+    int cellID = PyLong_AsInt(args[1]);
+    PyArrayObject* pos = (PyArrayObject*)args[2];
+    PyArrayObject* con = (PyArrayObject*)args[3];
 
     float minCell[] = {
-        *((float*)PyArray_GETPTR2(cellArr, 0, 0)),
-        *((float*)PyArray_GETPTR2(cellArr, 0, 1)),
-        *((float*)PyArray_GETPTR2(cellArr, 0, 2)),
+        getCellVal(0, 0, cellID, con, pos),
+        getCellVal(0, 1, cellID, con, pos),
+        getCellVal(0, 2, cellID, con, pos),
     };
 
     float maxCell[] = {
-        *((float*)PyArray_GETPTR2(cellArr, 0, 0)),
-        *((float*)PyArray_GETPTR2(cellArr, 0, 1)),
-        *((float*)PyArray_GETPTR2(cellArr, 0, 2)),
+        getCellVal(0, 0, cellID, con, pos),
+        getCellVal(0, 1, cellID, con, pos),
+        getCellVal(0, 2, cellID, con, pos),
     };
 
     float val;
     for (int i = 1; i < 4; i++) {
         for (int j = 0; j < 3; j++) {
-            val = *((float*)PyArray_GETPTR2(cellArr, i, j));
+            // val = *((float*)PyArray_GETPTR2(cellArr, i, j));
+            val = getCellVal(i, j, cellID, con, pos);
+
             minCell[j] = MIN(minCell[j], val);
             maxCell[j] = MAX(maxCell[j], val);
         }
@@ -65,13 +77,6 @@ static PyObject* pointInCellBounds4(PyObject *self, PyObject *const *args, Py_ss
     return Py_True;
 }
 
-
-static inline float getVal(int i, int dim, int cellID, PyArrayObject* con, PyArrayObject* pos)
-{
-    uint32_t pIndex = *((uint32_t*)PyArray_GETPTR2(con, cellID, i));
-    return *((float*)PyArray_GETPTR2(pos, pIndex, dim));
-}
-
 static PyObject* cellPlaneCheck4(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     // TODO: check nargs is correct
@@ -85,14 +90,22 @@ static PyObject* cellPlaneCheck4(PyObject *self, PyObject *const *args, Py_ssize
 
     long check = 0;
 
-    if (getVal(0, dim, cellID, con, pos) > plane) {
+    if (getCellVal(0, dim, cellID, con, pos) > plane) {
         check |= CELL_RIGHT;
-        if (getVal(1, dim, cellID, con, pos) <= plane || getVal(2, dim, cellID, con, pos) <= plane || getVal(3, dim, cellID, con, pos) <= plane) {
+        if (
+            getCellVal(1, dim, cellID, con, pos) <= plane || 
+            getCellVal(2, dim, cellID, con, pos) <= plane || 
+            getCellVal(3, dim, cellID, con, pos) <= plane
+        ) {
                 check |= CELL_LEFT;
             }
     } else {
         check |= CELL_LEFT;
-        if (getVal(1, dim, cellID, con, pos) > plane || getVal(2, dim, cellID, con, pos) > plane || getVal(3, dim, cellID, con, pos) > plane) {
+        if (
+            getCellVal(1, dim, cellID, con, pos) > plane || 
+            getCellVal(2, dim, cellID, con, pos) > plane || 
+            getCellVal(3, dim, cellID, con, pos) > plane
+        ) {
                 check |= CELL_RIGHT;
             }
     }
