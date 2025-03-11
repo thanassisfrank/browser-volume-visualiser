@@ -13,10 +13,6 @@ def split_cells(node, dim, mesh_pos, wrapped_con):
     s_val = np.float32(node["split_val"])
     cells = node["cells"]
 
-    # points_offset = 0
-    # left_side = False
-    # right_side = False
-
     for cell_id in cells:
         # see if cell is <= pivot, > pivot or both
         # only tets for now

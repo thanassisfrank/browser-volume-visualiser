@@ -3,7 +3,6 @@ import cProfile
 from modules.utils import *
 from modules.mesh import Mesh
 import celltools
-# from modules.tree import Tree
 
 
 def get_containing_cell(pos, node, mesh, tree):
@@ -162,7 +161,6 @@ def generate_corner_values_buffer(mesh, vals, tree):
 
 # externally called to generate all needed from the values that are in the mesh
 def generate_corner_values(mesh, tree):
-    # cProfile.runctx("generate_corner_values_buffer(mesh, next(iter(mesh.values.values())), tree)", globals(), locals())
     return {
         name: generate_corner_values_buffer(mesh, mesh.values[name], tree)
         for name in mesh.values
