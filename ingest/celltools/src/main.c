@@ -22,7 +22,7 @@ static PyObject* helloWorld(PyObject *self, PyObject *args)
     return PyUnicode_FromString("Hello world!");
 }
 
-static inline float getCellVal(int pIndex, int dim, int cellID, PyArrayObject* con, PyArrayObject* pos)
+static inline float getCellVal(int pIndex, long dim, long cellID, PyArrayObject* con, PyArrayObject* pos)
 {
     uint32_t fullPointIndex = *((uint32_t*)PyArray_GETPTR2(con, cellID, pIndex));
     return *((float*)PyArray_GETPTR2(pos, fullPointIndex, dim));
@@ -38,7 +38,7 @@ static PyObject* pointInCellBounds4(PyObject *self, PyObject *const *args, Py_ss
     // TODO: check nargs is correct
 
     PyArrayObject* pointArr = PyArray_GETCONTIGUOUS(args[0]);
-    int cellID = PyLong_AsInt(args[1]);
+    long cellID = PyLong_AsLong(args[1]);
     PyArrayObject* pos = (PyArrayObject*)args[2];
     PyArrayObject* con = (PyArrayObject*)args[3];
 
@@ -71,19 +71,19 @@ static PyObject* pointInCellBounds4(PyObject *self, PyObject *const *args, Py_ss
         *((float*)PyArray_GETPTR1(pointArr, 2)),
     };
     
-    if (point[0] < minCell[0] || point[1] < minCell[1] || point[2] < minCell[2]) return Py_False;
-    if (point[0] > maxCell[0] || point[1] > maxCell[1] || point[2] > maxCell[2]) return Py_False;
+    if (point[0] < minCell[0] || point[1] < minCell[1] || point[2] < minCell[2]) Py_RETURN_FALSE;
+    if (point[0] > maxCell[0] || point[1] > maxCell[1] || point[2] > maxCell[2]) Py_RETURN_FALSE;
 
-    return Py_True;
+    Py_RETURN_TRUE;
 }
 
 static PyObject* cellPlaneCheck4(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     // TODO: check nargs is correct
 
-    int dim = PyLong_AsInt(args[0]);
+    long dim = PyLong_AsLong(args[0]);
     float plane = PyFloat_AsDouble(args[1]);
-    int cellID = PyLong_AsInt(args[2]);
+    long cellID = PyLong_AsLong(args[2]);
     PyArrayObject* pos = (PyArrayObject*)args[3];
     PyArrayObject* con = (PyArrayObject*)args[4];
 
