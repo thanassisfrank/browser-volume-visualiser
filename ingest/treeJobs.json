@@ -1,13 +1,30 @@
 [
     {
-        "file": "./datasets/silicium_98x34x34_uint8.raw",
-        "out": "silicium",
-        "cells": [256],
-        "size": [98, 34, 34],
+        "file": "./datasets/yf17_hdf5.cgns",
+        "out": "yf17",
+        "cells": [8192, 4096, 2048, 1024],
+        "scalars": ["none"],
+        "noFiles": true
+    },
+    {
+        "file": "./datasets/engine_256x256x128_uint8.raw",
+        "out": "engine",
+        "cells": [8192, 4096, 2048, 1024, 512, 256],
+        "size": [256, 256, 128],
         "type": "u1",
         "decimate": 0.1,
+        "scalars": ["none"],
+        "noFiles": true
+    },
+    {
+        "file": "./datasets/tacc_turbulence_256x256x256_float32.raw",
+        "out": "turb",
+        "cells": [8192, 4096, 2048, 1024, 512, 256],
+        "size": [256, 256, 256],
+        "type": "f4",
+        "decimate": 0.1,
         "verbose": true,
-        "scalars": ["first"],
+        "scalars": ["none"],
         "noFiles": true
     }
 ]

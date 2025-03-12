@@ -2,7 +2,10 @@ import subprocess
 import os
 import argparse
 import json
+import time
 
+def print_t_end(msg, start_t):
+    print(msg % (time.time() - start_t))
 
 def run_job(job, prog, force=False, verbose=False):
 
@@ -25,6 +28,7 @@ def run_job(job, prog, force=False, verbose=False):
         
     
     for i, cells in enumerate(job["cells"]):
+        start_task = time.time()
         out_dir = job["out"] + "_" + str(cells)
         print("running task %i/%i" % (i + 1, len(job["cells"])))
         try:
@@ -47,6 +51,10 @@ def run_job(job, prog, force=False, verbose=False):
 
         subprocess.run(cmd, shell=True)
 
+        if verbose: print_t_end("Task done, took %fs", start_task)
+    
+    if verbose: print_t_end("Job done, took %fs", start_job)
+
 
 def main():
     parser = argparse.ArgumentParser(prog="generate_block_mesh")
@@ -66,6 +74,7 @@ def main():
         prog = "python"
 
 
+    start_tot = time.time()
     # create the jobs
     if args["json"] is not None:
         # get jobs from json
@@ -82,6 +91,8 @@ def main():
     for i, job in enumerate(jobs):
         print("running job %i/%i" % (i + 1, len(jobs)))
         run_job(job, prog, args["f"], args["v"])
+    
+    if args["v"]: print_t_end("All jobs done, took %fs", start_tot)
 
 
 if __name__ == "__main__":
