@@ -1,6 +1,14 @@
 [
     {
-        "dataID": "yf17_partial",
+        "dataID": "yf17_1024",
+        "dynamicNodeCount": 2000,
+        "dynamicMeshBlockCount": 100,
+        "treeletDepth": 4,
+        "isoSrc": "Pressure",
+        "isoVal": 101353.3
+    },
+    {
+        "dataID": "yf17_1024",
         "dynamicNodeCount": 1000,
         "dynamicMeshBlockCount": 100,
         "treeletDepth": 4,
@@ -8,16 +16,16 @@
         "isoVal": 101353.3
     },
     {
-        "dataID": "yf17_partial",
-        "dynamicNodeCount": 1000,
+        "dataID": "yf17_1024",
+        "dynamicNodeCount": 500,
         "dynamicMeshBlockCount": 100,
         "treeletDepth": 4,
         "isoSrc": "Pressure",
         "isoVal": 101353.3
     },
     {
-        "dataID": "yf17_partial",
-        "dynamicNodeCount": 1000,
+        "dataID": "yf17_1024",
+        "dynamicNodeCount": 200,
         "dynamicMeshBlockCount": 100,
         "treeletDepth": 4,
         "isoSrc": "Pressure",

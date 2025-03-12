@@ -99,7 +99,7 @@ export class JobRunner {
     #advancing = false;
     #started = false;
 
-    constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=4000) {
+    constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=3000) {
         this.#jobs = jobs;
         this.#createViewFn = createViewFn;
         this.#deleteViewFn = deleteViewFn;
@@ -123,8 +123,9 @@ export class JobRunner {
     async #advanceJob(t) {
         if (this.#currView !== undefined) {
             // advancing from another job, end old one
-            this.#deleteViewFn(this.#currView)
+            this.#deleteViewFn(this.#currView);
             this.#currView = undefined;
+            await pause(this.#pauseMS);
         }
         
         // get next job
@@ -135,8 +136,9 @@ export class JobRunner {
         }
 
         console.log(`starting job ${this.#currJobIndex}`);
-
+        
         const job = this.#jobs[this.#currJobIndex];
+        console.log(job);
 
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
@@ -150,7 +152,9 @@ export class JobRunner {
 
         // create view
         this.#currView = await this.#createViewFn(viewOpts);
-        console.log(this.#currView)
+        console.log(this.#currView);
+
+        await pause(this.#pauseMS);
         
         // set the iso data array
         await this.#currView.updateIsoSurfaceSrc({
