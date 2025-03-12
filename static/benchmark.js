@@ -1,5 +1,5 @@
 // benchmark.js
-import { frameInfoStore } from "./core/utils.js";
+import { frameInfoStore, pause } from "./core/utils.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
 export const TEST_BENCHMARK = {
@@ -94,13 +94,18 @@ export class JobRunner {
     #deleteViewFn;
 
     #renderEngine;
+    #pauseMS;
 
-    constructor(jobs, createViewFn, deleteViewFn, renderEngine) {
+    #advancing = false;
+    #started = false;
+
+    constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=4000) {
         this.#jobs = jobs;
         this.#createViewFn = createViewFn;
         this.#deleteViewFn = deleteViewFn;
 
         this.#renderEngine = renderEngine;
+        this.#pauseMS = pauseMS;
     }
 
     // begins execution of jobs from beginning
@@ -112,8 +117,7 @@ export class JobRunner {
         // set render engine parameters
         this.#renderEngine.rayMarcher.setStepSize(2);
 
-        // advance to first job
-        this.#advanceJob(t);
+        this.#started = true;
     }
 
     async #advanceJob(t) {
@@ -130,32 +134,56 @@ export class JobRunner {
             return true;
         }
 
+        console.log(`starting job ${this.#currJobIndex}`);
+
         const job = this.#jobs[this.#currJobIndex];
 
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
-        const jobName = `${viewOpts.dataID}_${viewOpts.dataOpts.dynamicNodeCount}_${viewOpts.dataOpts.dynamicMeshBlockCount}`;
+        const jobNameParts = [];
+        jobNameParts.push(viewOpts.dataID);
+        jobNameParts.push(viewOpts.dataOpts.dynamicNodeCount);
+        jobNameParts.push(viewOpts.dataOpts.dynamicMeshBlockCount);
+        jobNameParts.push(viewOpts.dataOpts.treeletDepth);
+
+        const jobName = jobNameParts.join("_");
+
         // create view
         this.#currView = await this.#createViewFn(viewOpts);
         console.log(this.#currView)
-
-        // set the iso data array
         
+        // set the iso data array
+        await this.#currView.updateIsoSurfaceSrc({
+            name: job.isoSrc ?? "Default",
+            type: "array",
+            arrayType: "data"
+        });
         // set the iso-value
-
+        this.#currView.updateThreshold(job.isoVal ?? 0);
+        
         // run benchmark
         this.#currBenchmarker = new Benchmarker(frameInfoStore, this.#currView, jobName);
-        this.#currBenchmarker.start(t, TEST_BENCHMARK);
+
+        // pause to allow system to settle
+        await pause(this.#pauseMS);
+        this.#currBenchmarker.start(performance.now(), TEST_BENCHMARK);
     }
 
     async update(t) {
-        if (this.#currBenchmarker === undefined) return;
-        // there is a benchmarker, continue
-        const benchFinished = this.#currBenchmarker.updateState(t);
-        if (!benchFinished) return;
-
+        if (!this.#started) return;
+        if (this.#currBenchmarker) {
+            // there is a job running, update it
+            const benchFinished = this.#currBenchmarker.updateState(t);
+            if (!benchFinished) return;
+        }
+        
         // current benchmark job finished, advance to next
-        const finishedJobs = await this.#advanceJob(t);
+        let finishedJobs = false;
+        if (!this.#advancing) {
+            this.#advancing = true;
+            finishedJobs = await this.#advanceJob(t);
+            this.#advancing = false;
+        }
 
         if (!finishedJobs) return;
         
@@ -164,6 +192,7 @@ export class JobRunner {
 
     #end(t) {
         this.#currBenchmarker = undefined;
+        this.#started = false;
         console.log("***ALL JOBS DONE***");
         console.log(`Jobs took ${t - this.#startTime}`)
     }

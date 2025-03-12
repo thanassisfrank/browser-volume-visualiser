@@ -3,6 +3,24 @@
         "dataID": "yf17_partial",
         "dynamicNodeCount": 1000,
         "dynamicMeshBlockCount": 100,
-        "treeletDepth": 4
+        "treeletDepth": 4,
+        "isoSrc": "Pressure",
+        "isoVal": 101353.3
+    },
+    {
+        "dataID": "yf17_partial",
+        "dynamicNodeCount": 1000,
+        "dynamicMeshBlockCount": 100,
+        "treeletDepth": 4,
+        "isoSrc": "Pressure",
+        "isoVal": 101353.3
+    },
+    {
+        "dataID": "yf17_partial",
+        "dynamicNodeCount": 1000,
+        "dynamicMeshBlockCount": 100,
+        "treeletDepth": 4,
+        "isoSrc": "Pressure",
+        "isoVal": 101353.3
     }
 ]
