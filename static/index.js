@@ -12,7 +12,7 @@ import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
 import { VecMath } from "./core/VecMath.js"
-import { Benchmarker, TEST_BENCHMARK, runJobs } from "./benchmark.js";
+import { JobRunner } from "./benchmark.js";
 
 
 const setUpRayMarchOptions = (rayMarcher) => {
@@ -68,7 +68,6 @@ const populateCornerValOptions = () => {
 //         leafCells             : int,
 //         downSample            : int,
 //         forceUnstruct         : bool,
-//         resolutionMode        : int,
 //         dynamicNodes          : bool,
 //         dynamicMesh           : bool,
 //         dynamicNodeCount      : int,
@@ -94,7 +93,6 @@ const viewOptsFromInputElems = (dataSelect, opts) => {
             leafCells: parseInt(opts.leafCells?.value),
             downSample: parseInt(opts?.downsample?.value ?? 1),
             forceUnstruct: opts.createUnstructured?.checked,
-            resolutionMode: opts.resolutionMode?.value,
             dynamicNodes: opts.dynamicNodes?.checked,
             dynamicMesh: opts.dynamicMesh?.checked,
             dynamicNodeCount: parseInt(opts.dynamicNodeCount?.value),
@@ -178,7 +176,6 @@ async function main() {
         return;
     }
     
-    var camera = new Camera(canvas.width/canvas.height);
     // set the max views
     viewManager.maxViews = 1;
     
@@ -193,14 +190,14 @@ async function main() {
         if (opts.renderOpts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
         
         return await viewManager.createView({
-            camera: camera,
+            camera: new Camera(canvas.width/canvas.height),
             data: newData,
             renderMode: renderMode
         }, renderEngine);
     }
 
-    async function deleteView() {
-
+    async function deleteView(view) {
+        viewManager.deleteView(view, renderEngine);
     }
 
     
@@ -211,6 +208,11 @@ async function main() {
         createView(viewOpts);
         hide(get("add-view-container")); 
     });
+
+
+
+    // create job runner object
+    const jobRunner = new JobRunner(jobs, createView, deleteView, renderEngine);
 
     const mousePos = {
         x: 0, y: 0
@@ -391,6 +393,12 @@ async function main() {
                 }
             }
         },
+        "j": {
+            description: "Run client jobs",
+            f: function (e) {
+                jobRunner.start(performance.now())
+            }
+        },
         "l": {
             description: "Print last frametime sample",
             f: function (e) {
@@ -488,7 +496,7 @@ async function main() {
     var resize = () => {
         var canvasDims = setupCanvasDims(canvas);
         // change camera aspect ratio
-        camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
+        viewManager.getFirst()?.camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
         renderEngine.resizeRenderingContext();
     }
     resize();
@@ -502,6 +510,8 @@ async function main() {
         const dt = thisFrameStart - lastFrameStart;
         lastFrameStart = thisFrameStart;
         
+        jobRunner.update(thisFrameStart);
+
         // update widgets
         frameTimeGraph.update(dt);
         

@@ -1,0 +1,8 @@
+[
+    {
+        "dataID": "yf17_partial",
+        "dynamicNodeCount": 1000,
+        "dynamicMeshBlockCount": 100,
+        "treeletDepth": 4
+    }
+]

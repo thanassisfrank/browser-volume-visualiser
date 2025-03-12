@@ -40,7 +40,6 @@ export var viewManager = {
         // check if the data and camera objects are supplied
         var camera = config.camera;
         var data = config.data;
-        dataManager.addUser(data); 
         
         console.log(data);
 
@@ -564,7 +563,6 @@ function View(id, camera, data, renderMode) {
         for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
             renderEngine.cleanupSceneObj(sceneObj);
         }
-        // delete data
-        dataManager.removeUser(this.data);
+        // data object does not need to be cleaned up
     };
 }

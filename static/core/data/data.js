@@ -18,9 +18,6 @@ export {dataManager};
 
 // object in charge of creating, transforming and deleting data objects
 const dataManager = {
-    datas: {},
-    // directory of data objects corresponding to each dataset
-    directory: {},
     // keep the config set too
     configSet: {},
 
@@ -28,19 +25,11 @@ const dataManager = {
         this.configSet = configSet;
         for (let id in configSet) {
             this.configSet[id].id = id;
-            this.directory[id] = null;
         }
     },
 
     getDataObj: async function(configId, opts) {
-        // returns already created data object if it exists
-        if (this.directory[configId]) {
-            return this.directory[configId];
-        }
-        // else, creates a new one
-        var newDataObj = await this.createData(this.configSet[configId], opts);
-        this.directory[configId] = newDataObj;
-        return newDataObj; 
+        return await this.createData(this.configSet[configId], opts);
     },
 
     getDataSource: async function(config, opts) {
@@ -96,8 +85,6 @@ const dataManager = {
     },
 
     createData: async function(config, opts) {
-        const id = newId(this.datas);
-
         const dataSource = await this.getDataSource(config, opts);
 
         let dynamicTree;
@@ -110,7 +97,7 @@ const dataManager = {
             dynamicTree = new DynamicTree(resolutionMode, opts.treeletDepth);
         }
 
-        const newData = new Data(id, dataSource, dynamicTree);
+        const newData = new Data(0, dataSource, dynamicTree);
         newData.opts = opts;
         console.log(config);
         console.log(opts);
@@ -141,7 +128,6 @@ const dataManager = {
             }
         }
 
-        this.datas[id] = newData;
         return newData;
     },
 
@@ -179,29 +165,6 @@ const dataManager = {
         dataObj.data.dynamicPositions = buffers.positions;
         dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
         dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
-    },
-    
-    addUser: function(data) {
-        this.datas[data.id].users++;
-        return  this.datas[data.id].users;
-    },
-
-    removeUser: function(data) {
-        this.datas[data.id].users--;
-        if (this.datas[data.id].users == 0) {
-            // no users, cleanup the object
-            this.deleteData(data)
-        }
-    },
-
-    deleteData: function(data) {
-        // cleanup the data used by the march module
-        for (let id in this.directory) {
-            if (this.directory[id] == data) {
-                this.directory[id] = null;
-            }
-        }
-        delete this.datas[data.id];
     }
 }
 

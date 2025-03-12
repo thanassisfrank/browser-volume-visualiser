@@ -613,8 +613,10 @@ class FrameInfoStore {
         }
     }
 
-    export() {
-        downloadObject(objToCSVStr(this.#samples), this.fileName, "text/csv");
+    export(prefix="") {
+        let exportName = this.fileName;
+        if (prefix.length > 0) exportName = prefix + "_" + exportName;
+        downloadObject(objToCSVStr(this.#samples), prefix+this.fileName, "text/csv");
     }
 }
 

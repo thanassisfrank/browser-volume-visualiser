@@ -90,7 +90,14 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         }
         var buffers = renderable.renderData.buffers;
         for (let bufferName in buffers) {
-            webGPU.deleteBuffer(buffers[bufferName]);
+            const entry = buffers[bufferName];
+            if (Array.isArray(entry)) {
+                for (let buff of entry) {
+                    webGPU.deleteBuffer(buff);
+                }
+            } else {
+                webGPU.deleteBuffer(entry);
+            }
         }
     }
 
