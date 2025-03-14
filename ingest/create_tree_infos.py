@@ -8,7 +8,7 @@ def print_t_end(msg, start_t):
     print(msg % (time.time() - start_t))
 
 def run_job(job, prog, force=False, verbose=False):
-
+    start_job = time.time()
     job_cmd_parts = [prog, "./generate_block_mesh.py", job["file"], "-e"] 
 
     if job.get("decimate"): 
