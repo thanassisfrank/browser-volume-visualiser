@@ -12,7 +12,7 @@ import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
 import { VecMath } from "./core/VecMath.js"
-import { Benchmarker, TEST_BENCHMARK } from "./benchmark.js";
+import { JobRunner } from "./benchmark.js";
 
 
 const setUpRayMarchOptions = (rayMarcher) => {
@@ -61,6 +61,57 @@ const populateCornerValOptions = () => {
     }
 };
 
+
+// viewOpts : {
+//     dataID   : string,
+//     dataOpts : {
+//         leafCells             : int,
+//         downSample            : int,
+//         forceUnstruct         : bool,
+//         dynamicNodes          : bool,
+//         dynamicMesh           : bool,
+//         dynamicNodeCount      : int,
+//         dynamicMeshBlockCount : int,
+//         maxTreeDepth          : int,
+//         kdTreeType            : string,
+//         cornerValType         : int,
+//         treeletDepth          : int
+//     },
+//     renderOpts : {
+//         DATA_POINTS        : bool,
+//         DATA_RAY_VOLUME    : bool, 
+//         DATA_WIREFRAME     : bool, 
+//         BOUNDING_WIREFRAME : bool, 
+//         GEOMETRY           : bool, 
+//     },
+// }
+
+const viewOptsFromInputElems = (dataSelect, opts) => {
+    return {
+        dataID: dataSelect.options[dataSelect.selectedIndex].value,
+        dataOpts: {
+            leafCells: parseInt(opts.leafCells?.value),
+            downSample: parseInt(opts?.downsample?.value ?? 1),
+            forceUnstruct: opts.createUnstructured?.checked,
+            dynamicNodes: opts.dynamicNodes?.checked,
+            dynamicMesh: opts.dynamicMesh?.checked,
+            dynamicNodeCount: parseInt(opts.dynamicNodeCount?.value),
+            dynamicMeshBlockCount: parseInt(opts.dynamicMeshBlockCount?.value),
+            maxTreeDepth: parseInt(opts.maxDepth.value),
+            kdTreeType: opts.kdTreeType.value,
+            cornerValType: parseInt(opts.cornerValType.value),
+            treeletDepth: parseInt(opts.treeletDepth?.value)
+        },
+        renderOpts: {
+            DATA_POINTS: opts.DATA_POINTS.checked,
+            DATA_RAY_VOLUME: opts.DATA_RAY_VOLUME.checked,
+            DATA_WIREFRAME: opts.DATA_WIREFRAME.checked,
+            BOUNDING_WIREFRAME: opts.BOUNDING_WIREFRAME.checked,
+            GEOMETRY: opts.GEOMETRY.checked
+        }
+    };
+}
+
 // define the main function
 async function main() {
     var canvas = get("c");
@@ -81,7 +132,7 @@ async function main() {
         });
 
     
-    var serverDatasetsPromise = fetch("/data/datasets.json")
+    var serverDatasetsPromise = fetch("./data/datasets.json")
         .then((res) => res.json())
         .then((serverDatasets) => {
             return {
@@ -115,58 +166,53 @@ async function main() {
             return null;
         });
     
-    var [renderEngine, allDatasets] = await Promise.all([renderEnginePromise, serverDatasetsPromise]);
+    const jobsFilePromise = fetch("./clientJobs.json")
+        .then((res) => res.json());
+    
+    const [renderEngine, allDatasets, jobs] = await Promise.all([renderEnginePromise, serverDatasetsPromise, jobsFilePromise]);
+
     if (!renderEngine || !allDatasets) {
         console.error("Could not initialise program");
         return;
     }
     
-    var camera = new Camera(canvas.width/canvas.height);
     // set the max views
     viewManager.maxViews = 1;
-
-    get("create-view-btn").addEventListener("click", async (e) => {
-        var d = get("data-select");
-        var opts = getInputClassAsObj("dataset-opt");
-
-        console.log(opts.resolutionMode?.value);
-
-        var newData = await dataManager.getDataObj(
-            d.options[d.selectedIndex].value,
-            {
-                leafCells: parseInt(opts.leafCells?.value),
-                downSample: parseInt(opts?.downsample?.value ?? 1),
-                forceUnstruct: opts.createUnstructured?.checked,
-                resolutionMode: opts.resolutionMode?.value,
-                dynamicNodes: opts.dynamicNodes?.checked,
-                dynamicMesh: opts.dynamicMesh?.checked,
-                dynamicNodeCount: parseInt(opts.dynamicNodeCount?.value),
-                dynamicMeshBlockCount: parseInt(opts.dynamicMeshBlockCount?.value),
-                maxTreeDepth: parseInt(opts.maxDepth.value),
-                kdTreeType: opts.kdTreeType.value,
-                cornerValType: parseInt(opts.cornerValType.value),
-                treeletDepth: parseInt(opts.treeletDepth?.value)
-            }
-        );
+    
+    async function createView(opts) {
+        var newData = await dataManager.getDataObj(opts.dataID, opts.dataOpts);
 
         var renderMode = SceneObjectRenderModes.NONE;
-        if (opts.DATA_POINTS.checked) renderMode |= SceneObjectRenderModes.DATA_POINTS;
-        if (opts.DATA_RAY_VOLUME.checked) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-        if (opts.DATA_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
-        if (opts.BOUNDING_WIREFRAME.checked) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
-        if (opts.GEOMETRY.checked) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
+        if (opts.renderOpts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
+        if (opts.renderOpts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+        if (opts.renderOpts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
+        if (opts.renderOpts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+        if (opts.renderOpts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
         
-        var newView = await viewManager.createView({
-            camera: camera,
+        return await viewManager.createView({
+            camera: new Camera(canvas.width/canvas.height),
             data: newData,
             renderMode: renderMode
         }, renderEngine);
+    }
 
-        // hide the window
+    async function deleteView(view) {
+        viewManager.deleteView(view, renderEngine);
+    }
+
+    
+    get("create-view-btn").addEventListener("click", async (e) => {
+        const d = get("data-select");
+        const optsRaw = getInputClassAsObj("dataset-opt");
+        const viewOpts = viewOptsFromInputElems(d, optsRaw);
+        createView(viewOpts);
         hide(get("add-view-container")); 
-
-        benchmarker = new Benchmarker(frameInfoStore, newView);
     });
+
+
+
+    // create job runner object
+    const jobRunner = new JobRunner(jobs, createView, deleteView, renderEngine);
 
     const mousePos = {
         x: 0, y: 0
@@ -347,16 +393,16 @@ async function main() {
                 }
             }
         },
+        "j": {
+            description: "Run client jobs",
+            f: function (e) {
+                jobRunner.start(performance.now())
+            }
+        },
         "l": {
             description: "Print last frametime sample",
             f: function (e) {
                 console.log(frameTimeGraph.lastSamples[0]);
-            }
-        },
-        "m": {
-            description: "Start benchmark",
-            f: function (e) {
-                benchmarker?.start(performance.now(), TEST_BENCHMARK);
             }
         },
         "o": {
@@ -450,7 +496,7 @@ async function main() {
     var resize = () => {
         var canvasDims = setupCanvasDims(canvas);
         // change camera aspect ratio
-        camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
+        viewManager.getFirst()?.camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
         renderEngine.resizeRenderingContext();
     }
     resize();
@@ -464,14 +510,13 @@ async function main() {
         const dt = thisFrameStart - lastFrameStart;
         lastFrameStart = thisFrameStart;
         
+        jobRunner.update(thisFrameStart);
+
         // update widgets
         frameTimeGraph.update(dt);
-        benchmarker?.updateState(thisFrameStart);
+        
         // update the scene
         viewManager.update(dt, renderEngine);
-
-        // benchmarker update scene
-
         
         // render the scenes
         // includes doing marching cubes/ray marching if required by object

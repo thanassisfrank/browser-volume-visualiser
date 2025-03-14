@@ -613,8 +613,10 @@ class FrameInfoStore {
         }
     }
 
-    export() {
-        downloadObject(objToCSVStr(this.#samples), this.fileName, "text/csv");
+    export(prefix="") {
+        let exportName = this.fileName;
+        if (prefix.length > 0) exportName = prefix + "_" + exportName;
+        downloadObject(objToCSVStr(this.#samples), exportName, "text/csv");
     }
 }
 
@@ -703,4 +705,10 @@ export class FetchSocket {
             this.#send(msg, resolve, reject);
         });
     }
+}
+
+export function pause(ms) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {resolve()}, ms);
+    });
 }
