@@ -110,26 +110,15 @@ def create_raw_tet_con_dec(size, dec_frac, verbose = False):
     y_range = np.arange(size[1] - 1)
     z_range = np.arange(size[2] - 1)
 
-    edges = [
-        np.array([0, 0, 0], dtype=np.uint32), # 0
-        np.array([1, 0, 0], dtype=np.uint32), # 1
-        np.array([0, 1, 0], dtype=np.uint32), # 2
-        np.array([1, 1, 0], dtype=np.uint32), # 3
-        np.array([0, 0, 1], dtype=np.uint32), # 4
-        np.array([1, 0, 1], dtype=np.uint32), # 5
-        np.array([0, 1, 1], dtype=np.uint32), # 6
-        np.array([1, 1, 1], dtype=np.uint32), # 7
-    ]
-
     ind_offsets = np.array([
-        0,
-        1,
-        0 + size[0],
-        1 + size[0],
-        0 + 0       + size[0] * size[1],
-        1 + 0       + size[0] * size[1],
-        0 + size[0] + size[0] * size[1],
-        1 + size[0] + size[0] * size[1],
+        0, # 0
+        1, # 1
+        0 + size[0], # 2
+        1 + size[0], # 3
+        0 + 0       + size[0] * size[1], # 4
+        1 + 0       + size[0] * size[1], # 5
+        0 + size[0] + size[0] * size[1], # 6
+        1 + size[0] + size[0] * size[1], # 7
     ], dtype=np.uint32)
 
     for z in z_range:
@@ -147,7 +136,7 @@ def create_raw_tet_con_dec(size, dec_frac, verbose = False):
                 cell3 = calc_cell(p_indices[0], p_indices[7], p_indices[6], p_indices[4])
                 if not is_degen(cell3): add_cell(cell3)
 
-                cell4 = calc_cell(p_indices[0], p_indices[3], p_indices[2], p_indices[6])
+                cell4 = calc_cell(p_indices[0], p_indices[7], p_indices[2], p_indices[6])
                 if not is_degen(cell4): add_cell(cell4)
 
                 cell5 = calc_cell(p_indices[0], p_indices[3], p_indices[2], p_indices[7])
