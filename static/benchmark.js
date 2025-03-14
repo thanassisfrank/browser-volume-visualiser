@@ -1,8 +1,11 @@
 // benchmark.js
 import { frameInfoStore, pause } from "./core/utils.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
+import { VecMath } from "./core/VecMath.js";
 
-export const TEST_BENCHMARK = {
+const BENCHMARKS = {};
+
+BENCHMARKS["test"] = {
     duration: 8000,
     setState: (t, view) => {
         const cameraPos = [
@@ -12,7 +15,28 @@ export const TEST_BENCHMARK = {
         ];
         view.camera.setEyePos(cameraPos);
     }
-}
+};
+
+BENCHMARKS["points"] = {
+    duration: 10000,
+    setState: (t, view) => {
+        const mid = view.data.getMidPoint();
+        const maxLen = view.data.getMaxLength();
+        let relEye;
+        if (t < 2000) {
+            relEye = VecMath.fromSphericalVals({r: maxLen, el: Math.PI*0.1, az: Math.PI*1.7});
+        } else if (t < 4000) {
+            relEye = VecMath.fromSphericalVals({r: maxLen*0.5, el: Math.PI*0.2, az: Math.PI*0.3});
+        } else if (t < 6000) {
+            relEye = VecMath.fromSphericalVals({r: maxLen*1.2, el: Math.PI*-0.3, az: Math.PI*1.3});
+        } else {
+            relEye = VecMath.fromSphericalVals({r: maxLen*0.3, el: Math.PI*-0.4, az: Math.PI*1.5});
+        }
+        const cameraPos = VecMath.vecAdd(mid, relEye)
+        view.camera.setEyePos(cameraPos);
+    }
+};
+
 
 // Class that handles automatic benchmarking of the program
 // When started, takes control of the view, setting its state
@@ -120,33 +144,16 @@ export class JobRunner {
         this.#started = true;
     }
 
-    async #advanceJob(t) {
-        if (this.#currView !== undefined) {
-            // advancing from another job, end old one
-            this.#deleteViewFn(this.#currView);
-            this.#currView = undefined;
-            await pause(this.#pauseMS);
-        }
-        
-        // get next job
-        this.#currJobIndex++;
-        if (this.#currJobIndex >= this.#jobs.length) {
-            // finished all jobs
-            return true;
-        }
-
-        console.log(`starting job ${this.#currJobIndex}`);
-        
-        const job = this.#jobs[this.#currJobIndex];
-        console.log(job);
-
+    async #startJob(job) {
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
+        const benchmarkID = job.benchmark ?? "test";
         const jobNameParts = [];
         jobNameParts.push(viewOpts.dataID);
         jobNameParts.push(viewOpts.dataOpts.dynamicNodeCount);
         jobNameParts.push(viewOpts.dataOpts.dynamicMeshBlockCount);
         jobNameParts.push(viewOpts.dataOpts.treeletDepth);
+        jobNameParts.push(benchmarkID);
 
         const jobName = jobNameParts.join("_");
 
@@ -170,7 +177,27 @@ export class JobRunner {
 
         // pause to allow system to settle
         await pause(this.#pauseMS);
-        this.#currBenchmarker.start(performance.now(), TEST_BENCHMARK);
+        this.#currBenchmarker.start(performance.now(), BENCHMARKS[benchmarkID]);
+    }
+
+    async #advanceJob() {
+        if (this.#currView !== undefined) {
+            // advancing from another job, end old one
+            this.#deleteViewFn(this.#currView);
+            this.#currView = undefined;
+            await pause(this.#pauseMS);
+        }
+        
+        // get next job
+        this.#currJobIndex++;
+        if (this.#currJobIndex >= this.#jobs.length) {
+            // finished all jobs
+            return true;
+        }
+
+        console.log(`starting job ${this.#currJobIndex}`);
+        
+        await this.#startJob(this.#jobs[this.#currJobIndex])
     }
 
     async update(t) {

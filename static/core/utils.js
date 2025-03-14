@@ -616,7 +616,7 @@ class FrameInfoStore {
     export(prefix="") {
         let exportName = this.fileName;
         if (prefix.length > 0) exportName = prefix + "_" + exportName;
-        downloadObject(objToCSVStr(this.#samples), prefix+this.fileName, "text/csv");
+        downloadObject(objToCSVStr(this.#samples), exportName, "text/csv");
     }
 }
 
