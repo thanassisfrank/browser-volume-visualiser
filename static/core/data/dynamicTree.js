@@ -48,7 +48,7 @@ const calcBoxScore = (box, focusCoords, camToFocDist) => {
     return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
 };
 
-const calcBoxScoreFrustrum = (box, camPos, camMat, camToFocDist) => {
+const calcBoxScoreFrustrum = (box, camInfo) => {
     // check if box is inside the view frustrum
     const mid = [
         (box.min[0] + box.max[0]) * 0.5,
@@ -56,7 +56,7 @@ const calcBoxScoreFrustrum = (box, camPos, camMat, camToFocDist) => {
         (box.min[2] + box.max[2]) * 0.5
     ];
     const clipPos = vec4.create();
-    vec4.transformMat4(clipPos, [mid[0], mid[1], mid[2], 1], camMat);
+    vec4.transformMat4(clipPos, [mid[0], mid[1], mid[2], 1], camInfo.mat);
     const ndc = [
         clipPos[0]/clipPos[3],
         clipPos[1]/clipPos[3],
@@ -66,8 +66,8 @@ const calcBoxScoreFrustrum = (box, camPos, camMat, camToFocDist) => {
         // outside frustrum
         return 0;
     }
-    const distToCam =  VecMath.magnitude(VecMath.vecMinus(camPos, mid));
-    if (distToCam > 2*camToFocDist) {
+    const distToCam =  VecMath.magnitude(VecMath.vecMinus(camInfo.pos, mid));
+    if (distToCam > 2*camInfo.distToFoc) {
         // too far away
         return 0;
     }
@@ -77,198 +77,6 @@ const calcBoxScoreFrustrum = (box, camPos, camMat, camToFocDist) => {
     // since ^2 is monotonic on [0, inf), this is skipped since only relative score is important
     return lMax/distToCam;
 }
-
-
-// calculate the scores for the current leaf nodes, true leaf or pruned
-// returns a list of leaf node objects containing their score
-// assumes camera coords is in the dataset coordinate space
-function getNodeScores (nodeCache, fullNodes, extentBox, scoreFn) {
-    var dynamicNodes = nodeCache.getBuffers()["nodes"];
-    var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
-
-    var scores = [];
-
-    var rootNode = readNodeFromBuffer(dynamicNodes, 0);
-    rootNode.depth = 0;
-    rootNode.box = copyBox(extentBox);
-    // rootNode.box = {
-    //     min: [...extentBox.min],
-    //     max: [...extentBox.max],
-    // };
-
-    // the next nodes to process
-    var nodes = [rootNode];
-
-    var processed = 0;
-    while (nodes.length > 0 && processed < nodeCount * 3) {
-        processed++;
-        const currNode = nodes.pop();
-        const currBox = currNode.box;
-
-        if (isDynamicLeaf(currNode, nodeCount)) {
-            // this is a leaf node, get its score
-            currNode.score = scoreFn(currBox);
-            currNode.state = nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
-            scores.push(currNode);
-            // if (currNode.thisPtr == 511) console.log(structuredClone(currNode));
-        } else {
-            // get the ptr to the children in the full buffer
-            const currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
-            // add its children to the next nodes
-            const rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
-            const leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
-            const bothLeaves = isDynamicLeaf(leftNode, nodeCount) && isDynamicLeaf(rightNode, nodeCount);
-
-            rightNode.thisFullPtr = currFullNode.rightPtr;
-            rightNode.bothSiblingsLeaves = bothLeaves;
-            rightNode.depth = currNode.depth + 1;
-
-            const rightBox = {
-                min: [currBox.min[0], currBox.min[1], currBox.min[2]],
-                max: [currBox.max[0], currBox.max[1], currBox.max[2]],
-            };
-            rightBox.min[currNode.depth % 3] = currNode.splitVal;
-            rightNode.box = rightBox;
-
-            nodes.push(rightNode);
-
-
-            leftNode.thisFullPtr = currFullNode.leftPtr;
-            leftNode.bothSiblingsLeaves = bothLeaves;
-            leftNode.depth = currNode.depth + 1;
-            
-            const leftBox = {
-                min: [currBox.min[0], currBox.min[1], currBox.min[2]],
-                max: [currBox.max[0], currBox.max[1], currBox.max[2]],
-            };
-            leftBox.max[currNode.depth % 3] = currNode.splitVal;
-            leftNode.box = leftBox;
-
-            nodes.push(leftNode);
-
-            if (boxVolume(leftBox) < 0 || boxVolume(rightBox) < 0) {
-                // debugger;
-            }
-        }
-    }
-
-    // return the unsorted scores 
-    return scores;
-};
-
-// takes the full scores list and returns a list of nodes to split and a list to merge
-// these will have length equal to count
-// the split list contains pruned leaves that should be split
-// the merge list contains leaves that should be merged with their siblings
-const createMergeSplitLists = (fullNodes, scores, maxCount) => {
-    // proportion of the scores to search for nodes to split and merge
-    // combats flickering 
-    const searchProp = 1;
-    var mergeList = [];
-    var splitList = [];
-
-    // dual thresholding for hysteresis
-    const splitThreshold = Number.NEGATIVE_INFINITY;
-    const mergeThreshold = Number.POSITIVE_INFINITY;
-
-    let currNode, currFullNode;
-
-    let lowestSplitIndex = scores.length - 1;
-    // create the split list first
-    for (let i = scores.length - 1; i >= Math.max(0, scores.length * (1 - searchProp)); i--) {
-        if (splitList.length >= maxCount) break;
-        currNode = scores[i];
-        if (currNode.score < splitThreshold) break;
-        currFullNode = readNodeFromBuffer(fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
-        // can't be split if its a true leaf
-        if (currFullNode.rightPtr == 0) continue;
-        // can't be split if previously merged
-        if (NodeStates.MERGED == currNode.state) continue;
-
-        // passed all checks
-        splitList.push(currNode);
-        lowestSplitIndex = i;
-    }
-
-    // create merge list
-    // only go up to the lowest split index to prevent nodes included in both
-    let highestMergeIndex = 0;
-    for (let i = 0; i < Math.min(lowestSplitIndex, scores.length * searchProp); i++) {
-        // check if we have enough
-        if (mergeList.length >= maxCount) break;
-        currNode = scores[i];
-        if (currNode.score > mergeThreshold) break;
-        // can't be merged if sibling not a leaf
-        if (!currNode.bothSiblingsLeaves) continue;
-        // check if sibling is in split list
-        // check if the same parent appears there
-        if (splitList.some(x => x.parentPtr == currNode.parentPtr)) continue;
-        // check if sibling is already in merge list
-        if (mergeList.some(x => x.parentPtr == currNode.parentPtr)) continue;
-        // can't be merged if previously split
-        if (NodeStates.SPLIT == currNode.state) continue;
-
-        // passed all checks
-        mergeList.push(currNode);
-        highestMergeIndex = i;
-    }
-
-    return {
-        merge: mergeList,
-        split: splitList
-    };
-};
-
-
-const updateDynamicNodeCache = (nodeCache, getCornerValsFunc, fullNodes, activeValueNames, mergeSplit, noCells) => {
-    // find the amount of changes we can now make
-    const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
-
-
-    // merge the leaves with the highest scores with their siblings (delete 2 per change)
-    var freePtrs = [];
-    for (let i = 0; i < changeCount; i++) {
-        var parentNode = nodeCache.readBuffSlotAt("nodes", mergeSplit.merge[i].parentPtr);
-        freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
-        // convert the parentNode to a pruned leaf
-        nodeCache.updateBlockAt(mergeSplit.merge[i].parentPtr, {
-            "nodes": {leftPtr: 0, rightPtr: 0},
-            "state": [NodeStates.MERGED]
-        });
-    }
-
-    // split the leaves with the lowest scores (write 2 per change)
-    for (let i = 0; i < freePtrs.length/2; i++) {
-        var thisNode = mergeSplit.split[i];
-        var thisNodeFull = readNodeFromBuffer(fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
-        // update node to branch
-        nodeCache.updateBlockAt(thisNode.thisPtr, {
-            "nodes": {splitVal: thisNodeFull.splitVal, cellCount: 0, leftPtr: freePtrs[2*i], rightPtr: freePtrs[2*i + 1]}
-        });
-
-        const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
-        for (let j = 0; j < 2; j++) {
-            const childNode = readNodeFromBuffer(fullNodes, childPtrs[j] * NODE_BYTE_LENGTH);
-            // write in as a pruned leaf
-            const newData = {
-                "nodes": {
-                    splitVal: childNode.splitVal, 
-                    cellCount: noCells ? 0 : childNode.cellCount, 
-                    parentPtr: thisNode.thisPtr, 
-                    leftPtr: noCells ? 0 : childNode.leftPtr, 
-                    rightPtr: 0
-                },
-                "state": NodeStates.SPLIT
-            };
-            
-            for (let valueName of activeValueNames) {
-                newData["corners" + valueName] = getCornerValsFunc(childNode.thisPtr, valueName);
-            }
-
-            nodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
-        }
-    }
-};
 
 
 
@@ -282,10 +90,13 @@ export class DynamicTree {
     /** @type {ArrayBuffer} */
     renderNodes;
 
-    constructor(resolutionMode, treeletDepth) {
+    #extentBox;
+
+    constructor(resolutionMode, treeletDepth, extentBox) {
         this.resolutionMode = resolutionMode;
         this.treeletDepth = treeletDepth;
         this.usesTreelets = treeletDepth > 0;
+        this.#extentBox = extentBox;
     }
 
     // create the buffers used for dynamic data resolution
@@ -436,26 +247,206 @@ export class DynamicTree {
         return this.meshCache.updateValuesBuff(getMeshBlockFuncExt, scalarName);
     }
 
+    // update functions ================================================================
+    // calculate the scores for the current leaf nodes, true leaf or pruned
+    // returns a list of leaf node objects containing their score
+    // assumes camera coords is in the dataset coordinate space
+    #getNodeScores(scoreFn) {
+        var dynamicNodes = this.nodeCache.getBuffers()["nodes"];
+        var nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
+
+        var scores = [];
+
+        var rootNode = readNodeFromBuffer(dynamicNodes, 0);
+        rootNode.depth = 0;
+        rootNode.box = copyBox(this.#extentBox);
+
+        // the next nodes to process
+        var nodes = [rootNode];
+
+        var processed = 0;
+        while (nodes.length > 0 && processed < nodeCount * 3) {
+            processed++;
+            const currNode = nodes.pop();
+            const currBox = currNode.box;
+
+            if (isDynamicLeaf(currNode, nodeCount)) {
+                // this is a leaf node, get its score
+                currNode.score = scoreFn(currBox);
+                currNode.state = this.nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
+                scores.push(currNode);
+            } else {
+                // get the ptr to the children in the full buffer
+                const currFullNode = readNodeFromBuffer(this.fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
+                // add its children to the next nodes
+                const rightNode = readNodeFromBuffer(dynamicNodes, currNode.rightPtr * NODE_BYTE_LENGTH);
+                const leftNode = readNodeFromBuffer(dynamicNodes, currNode.leftPtr * NODE_BYTE_LENGTH);
+                const bothLeaves = isDynamicLeaf(leftNode, nodeCount) && isDynamicLeaf(rightNode, nodeCount);
+
+                rightNode.thisFullPtr = currFullNode.rightPtr;
+                rightNode.bothSiblingsLeaves = bothLeaves;
+                rightNode.depth = currNode.depth + 1;
+
+                const rightBox = {
+                    min: [currBox.min[0], currBox.min[1], currBox.min[2]],
+                    max: [currBox.max[0], currBox.max[1], currBox.max[2]],
+                };
+                rightBox.min[currNode.depth % 3] = currNode.splitVal;
+                rightNode.box = rightBox;
+
+                nodes.push(rightNode);
+
+
+                leftNode.thisFullPtr = currFullNode.leftPtr;
+                leftNode.bothSiblingsLeaves = bothLeaves;
+                leftNode.depth = currNode.depth + 1;
+                
+                const leftBox = {
+                    min: [currBox.min[0], currBox.min[1], currBox.min[2]],
+                    max: [currBox.max[0], currBox.max[1], currBox.max[2]],
+                };
+                leftBox.max[currNode.depth % 3] = currNode.splitVal;
+                leftNode.box = leftBox;
+
+                nodes.push(leftNode);
+            }
+        }
+
+        // return the unsorted scores 
+        return scores;
+    };
+
+    // takes the full scores list and returns a list of nodes to split and a list to merge
+    // these will have length equal to count
+    // the split list contains pruned leaves that should be split
+    // the merge list contains leaves that should be merged with their siblings
+    #createMergeSplitLists = (scores, maxCount) => {
+        // proportion of the scores to search for nodes to split and merge
+        // combats flickering 
+        const searchProp = 1;
+        var mergeList = [];
+        var splitList = [];
+
+        // dual thresholding for hysteresis
+        const splitThreshold = Number.NEGATIVE_INFINITY;
+        const mergeThreshold = Number.POSITIVE_INFINITY;
+
+        let currNode, currFullNode;
+
+        let lowestSplitIndex = scores.length - 1;
+        // create the split list first
+        for (let i = scores.length - 1; i >= Math.max(0, scores.length * (1 - searchProp)); i--) {
+            if (splitList.length >= maxCount) break;
+            currNode = scores[i];
+            if (currNode.score < splitThreshold) break;
+            currFullNode = readNodeFromBuffer(this.fullNodes, (currNode.thisFullPtr ?? 0) * NODE_BYTE_LENGTH);
+            // can't be split if its a true leaf
+            if (currFullNode.rightPtr == 0) continue;
+            // can't be split if previously merged
+            if (NodeStates.MERGED == currNode.state) continue;
+
+            // passed all checks
+            splitList.push(currNode);
+            lowestSplitIndex = i;
+        }
+
+        // create merge list
+        // only go up to the lowest split index to prevent nodes included in both
+        let highestMergeIndex = 0;
+        for (let i = 0; i < Math.min(lowestSplitIndex, scores.length * searchProp); i++) {
+            // check if we have enough
+            if (mergeList.length >= maxCount) break;
+            currNode = scores[i];
+            if (currNode.score > mergeThreshold) break;
+            // can't be merged if sibling not a leaf
+            if (!currNode.bothSiblingsLeaves) continue;
+            // check if sibling is in split list
+            // check if the same parent appears there
+            if (splitList.some(x => x.parentPtr == currNode.parentPtr)) continue;
+            // check if sibling is already in merge list
+            if (mergeList.some(x => x.parentPtr == currNode.parentPtr)) continue;
+            // can't be merged if previously split
+            if (NodeStates.SPLIT == currNode.state) continue;
+
+            // passed all checks
+            mergeList.push(currNode);
+            highestMergeIndex = i;
+        }
+
+        return {
+            merge: mergeList,
+            split: splitList
+        };
+    };
+    
+    #updateDynamicNodeCache (getCornerValsFuncExt, activeValueNames, mergeSplit, noCells) {
+        // find the amount of changes we can now make
+        const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
+    
+    
+        // merge the leaves with the highest scores with their siblings (delete 2 per change)
+        var freePtrs = [];
+        for (let i = 0; i < changeCount; i++) {
+            var parentNode = this.nodeCache.readBuffSlotAt("nodes", mergeSplit.merge[i].parentPtr);
+            freePtrs.push(parentNode.leftPtr, parentNode.rightPtr);
+            // convert the parentNode to a pruned leaf
+            this.nodeCache.updateBlockAt(mergeSplit.merge[i].parentPtr, {
+                "nodes": {leftPtr: 0, rightPtr: 0},
+                "state": [NodeStates.MERGED]
+            });
+        }
+    
+        // split the leaves with the lowest scores (write 2 per change)
+        for (let i = 0; i < freePtrs.length/2; i++) {
+            var thisNode = mergeSplit.split[i];
+            var thisNodeFull = readNodeFromBuffer(this.fullNodes, thisNode.thisFullPtr * NODE_BYTE_LENGTH);
+            // update node to branch
+            this.nodeCache.updateBlockAt(thisNode.thisPtr, {
+                "nodes": {splitVal: thisNodeFull.splitVal, cellCount: 0, leftPtr: freePtrs[2*i], rightPtr: freePtrs[2*i + 1]}
+            });
+    
+            const childPtrs = [thisNodeFull.leftPtr, thisNodeFull.rightPtr];
+            for (let j = 0; j < 2; j++) {
+                const childNode = readNodeFromBuffer(this.fullNodes, childPtrs[j] * NODE_BYTE_LENGTH);
+                // write in as a pruned leaf
+                const newData = {
+                    "nodes": {
+                        splitVal: childNode.splitVal, 
+                        cellCount: noCells ? 0 : childNode.cellCount, 
+                        parentPtr: thisNode.thisPtr, 
+                        leftPtr: noCells ? 0 : childNode.leftPtr, 
+                        rightPtr: 0
+                    },
+                    "state": NodeStates.SPLIT
+                };
+                
+                for (let valueName of activeValueNames) {
+                    newData["corners" + valueName] = readCornerVals(getCornerValsFuncExt(valueName), childNode.thisPtr)
+                }
+    
+                this.nodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
+            }
+        }
+    };
+
 
     // updates the dynamic dataset based on camera location
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    update(cameraChanged, focusCoords, camCoords, extentBox, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames, camMat) {
+    update(camInfo, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
         const nodeUpdateSW = new StopWatch();
-        if (cameraChanged) {
+        if (camInfo.changed) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
         }
     
         if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
-            const camToFocDist = VecMath.magnitude(VecMath.vecMinus(focusCoords, camCoords));
-
             function scoreFn (box) {
-                return calcBoxScoreFrustrum(box, camCoords, camMat, camToFocDist);
+                return calcBoxScoreFrustrum(box, camInfo);
             }
             // get a list of all nodes in the dynamic node tree with their scores
-            const scores = getNodeScores(this.nodeCache, this.fullNodes, extentBox, scoreFn);
+            const scores = this.#getNodeScores(scoreFn);
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 if (!this.meshCacheBusy) {
@@ -486,16 +477,11 @@ export class DynamicTree {
             }
     
             scores.sort((a, b) => a.score - b.score);
-            const mergeSplitLists = createMergeSplitLists(this.fullNodes, scores, 20);
+            const mergeSplitLists = this.#createMergeSplitLists(scores, 20);
             
-            const getCornerValsFunc = (index, valueName) => {
-                return readCornerVals(getCornerValsFuncExt(valueName), index)
-            };
             // update the dynamic buffer contents
-            updateDynamicNodeCache(
-                this.nodeCache,
-                getCornerValsFunc,
-                this.fullNodes, 
+            this.#updateDynamicNodeCache(
+                getCornerValsFuncExt,
                 activeValueNames,
                 mergeSplitLists,
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT

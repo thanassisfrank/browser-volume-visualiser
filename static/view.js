@@ -515,16 +515,20 @@ function View(id, camera, data, renderMode) {
         }
 
         // tracks if the camera or adjusted focus point moved to restart the tree modifications
-        let cameraChanged = cam.didThisMove("dynamic nodes") || focusMoveDist > 1;
+        const cameraChanged = cam.didThisMove("dynamic nodes") || focusMoveDist > 1;
+        const camCoords = this.sceneGraph.activeCamera.getEyePos();
 
         // need to find the camera position in world space
         if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
             this.data.updateDynamicTree(
-                cameraChanged,
-                focusPoint,  
-                this.sceneGraph.activeCamera.getEyePos(),
-                activeValueSlots,
-                this.sceneGraph.activeCamera.cameraMat
+                {
+                    changed: cameraChanged,
+                    pos: camCoords,
+                    focusPos: focusPoint,
+                    distToFoc: VecMath.magnitude(VecMath.vecMinus(focusPoint, camCoords)),
+                    mat: this.sceneGraph.activeCamera.cameraMat
+                },
+                activeValueSlots
             );
         }
 

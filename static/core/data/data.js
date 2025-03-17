@@ -94,7 +94,7 @@ const dataManager = {
         if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
         if (resolutionMode != ResolutionModes.FULL) {
-            dynamicTree = new DynamicTree(resolutionMode, opts.treeletDepth);
+            dynamicTree = new DynamicTree(resolutionMode, opts.treeletDepth, dataSource.extentBox);
         }
 
         const newData = new Data(0, dataSource, dynamicTree);
@@ -134,8 +134,6 @@ const dataManager = {
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
     createDynamicTree: function(dataObj, dynamicNodeCount) {
-        console.log(dataObj.dataSource.tree);
-        console.log(dataObj.data);
         if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
         if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
@@ -342,7 +340,7 @@ class Data extends SceneObject {
         }
     }
 
-    updateDynamicTree(cameraChanged, focusCoords, camCoords, activeValueSlots, camMat) {
+    updateDynamicTree(camInfo, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
@@ -350,14 +348,10 @@ class Data extends SceneObject {
         }
         // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
         this.dynamicTree.update(
-            cameraChanged, 
-            focusCoords, 
-            camCoords, 
-            this.extentBox, 
+            camInfo,
             getCornerVals,
             this.getNodeBlockRequestFunc().bind(this), 
-            activeValueSlots.map(i => this.data.values[i].name),
-            camMat
+            activeValueSlots.map(i => this.data.values[i].name)
         );
     }
 
