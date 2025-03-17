@@ -155,63 +155,43 @@ def create_raw_tet_con_dec(size, dec_frac, verbose = False):
 
 def create_raw_tet_con(size, verbose = False):
     # rip the intrinsic hexahedra into 6 explicit tetrahedra
-    connectivity = np.empty(4 * 6 * (size_x - 1) * (size_y - 1) * (size_z - 1), dtype=np.uint32)
+    connectivity = np.empty(4 * 6 * (size[0] - 1) * (size[1] - 1) * (size[2] - 1), dtype=np.uint32)
     wrapped_con = np.reshape(connectivity, (-1, 4))
-    p_index = lambda x, y, z: x + y * size_x + z * size_x * size_y
+    p_index = lambda x, y, z: x + y * size[0] + z * size[0] * size[1]
 
-    cell_ptr = 0
+    cell_ptr = 0    
     def add_cell(cell):
         nonlocal cell_ptr
         wrapped_con[cell_ptr] = cell
         cell_ptr += 1
 
-    k_range = np.arange(size_x - 1)
-    j_range = np.arange(size_y - 1)
-    i_range = np.arange(size_z - 1)
-    for k in k_range:
-        for j in j_range:
-            for i in i_range:
-                add_cell([
-                    p_index(i + 1, j,     k    ),
-                    p_index(i,     j,     k    ),
-                    p_index(i + 1, j,     k + 1),
-                    p_index(i + 1, j + 1, k + 1),
-                ])
+    x_range = np.arange(size[0] - 1)
+    y_range = np.arange(size[1] - 1)
+    z_range = np.arange(size[2] - 1)
 
-                add_cell([
-                    p_index(i,     j,     k    ), 
-                    p_index(i + 1, j,     k + 1), 
-                    p_index(i + 1, j + 1, k + 1),
-                    p_index(i,     j,     k + 1),
-                ])
+    ind_offsets = np.array([
+        0, # 0
+        1, # 1
+        0 + size[0], # 2
+        1 + size[0], # 3
+        0 + 0       + size[0] * size[1], # 4
+        1 + 0       + size[0] * size[1], # 5
+        0 + size[0] + size[0] * size[1], # 6
+        1 + size[0] + size[0] * size[1], # 7
+    ], dtype=np.uint32)
 
-                add_cell([
-                    p_index(i,     j,     k    ),
-                    p_index(i + 1, j + 1, k + 1),
-                    p_index(i,     j + 1, k + 1),
-                    p_index(i,     j,     k + 1),
-                ])
+    for z in z_range:
+        for y in y_range:
+            for x in x_range:
+                # points = np.add([x, y, z], edges)
+                p_indices = np.add(p_index(x, y, z), ind_offsets)
 
-                add_cell([
-                    p_index(i,     j,     k    ),
-                    p_index(i + 1, j + 1, k + 1),
-                    p_index(i,     j + 1, k    ),
-                    p_index(i,     j + 1, k + 1),
-                ])
-
-                add_cell([
-                    p_index(i,     j,     k    ),
-                    p_index(i + 1, j + 1, k    ),
-                    p_index(i,     j + 1, k    ),
-                    p_index(i + 1, j + 1, k + 1),
-                ])
-
-                add_cell([
-                    p_index(i,     j,     k    ),
-                    p_index(i + 1, j,     k    ),
-                    p_index(i + 1, j + 1, k    ),
-                    p_index(i + 1, j + 1, k + 1),
-                ])
+                add_cell([p_indices[1], p_indices[0], p_indices[5], p_indices[7]])
+                add_cell([p_indices[0], p_indices[5], p_indices[7], p_indices[4]])
+                add_cell([p_indices[0], p_indices[7], p_indices[6], p_indices[4]])
+                add_cell([p_indices[0], p_indices[7], p_indices[2], p_indices[6]])
+                add_cell([p_indices[0], p_indices[3], p_indices[2], p_indices[7]])
+                add_cell([p_indices[0], p_indices[1], p_indices[3], p_indices[7]])
     
     return connectivity
 
