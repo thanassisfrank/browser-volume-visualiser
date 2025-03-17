@@ -12,7 +12,6 @@ def get_containing_cell(pos, node, mesh, tree):
 
     cells = tree.cell_buffer[node["left_ptr"] : node["left_ptr"] + node["cell_count"]]
     for cell_id in cells:        
-        # if not point_in_tet_bounds(pos, cell["points"]): continue
         if not celltools.point_in_cell_bounds4(pos, cell_id, m_pos, m_con): continue
 
         cell["points_indices"] = m_con[cell_id]
@@ -157,7 +156,7 @@ def generate_corner_values_buffer(mesh, vals, tree):
                 item["node"]["right_ptr"]
             )
 
-    return corner_vals;
+    return corner_vals
 
 # externally called to generate all needed from the values that are in the mesh
 def generate_corner_values(mesh, tree):
@@ -167,7 +166,106 @@ def generate_corner_values(mesh, tree):
     }
 
 
-    
+
+
+# node value ranges =============================================================
+def get_leaf_node_range(mesh, vals, node, tree):
+    range_vals = np.empty(2, dtype=np.float32)
+    m_con = np.reshape(mesh.connectivity, (-1, 4))
+
+    cells = tree.cell_buffer[node["left_ptr"] : node["left_ptr"] + node["cell_count"]]
+    # initialise range
+    first_val = vals[m_con[cells[0]][0]]
+    range_vals[0] = first_val
+    range_vals[1] = first_val
+
+    for cell_id in cells:        
+        indices = m_con[cell_id]
+        cell_vals = vals[indices]
+        for val in cell_vals:
+            if range_vals[0] > val: range_vals[0] = val
+            if range_vals[1] < val: range_vals[1] = val
+
+    return range_vals
+
+
+def merge_node_range_vals(range_vals, left_ptr, right_ptr):
+    left_range = range_vals[left_ptr]
+    right_range = range_vals[right_ptr]
+
+    return np.array([
+        min(left_range[0], right_range[0]),
+        max(left_range[1], right_range[1]),
+    ], dtype=np.float32)
+
+
+def generate_node_val_range_buffer(mesh, vals, tree):
+    node_buffer = tree.node_buffer
+    node_range_vals = np.empty((tree.node_count, 2), dtype=np.float32)
+
+    # the next nodes to process
+    queue = [ 
+        {
+            "node": node_buffer[0],
+            "index": 0,
+            "depth": 0,
+            "merge": False
+        }
+    ]
+    processed = 0
+    while len(queue) > 0:
+        processed += 1
+        item = queue.pop()
+
+        if item["node"]["right_ptr"] == 0:
+            # get the range for this leaf
+            node_range_vals[item["index"]] = get_leaf_node_range(mesh, vals, item["node"], tree)
+            
+        elif not item["merge"]:
+            # going down
+            # push itself to handle going back up the tree
+            queue.append({
+                "node": item["node"],
+                "index": item["index"],
+                "depth": item["depth"],
+                "merge": True
+            })
+
+            # add its children to the next nodes
+            left_node  = node_buffer[item["node"]["left_ptr"]]
+            queue.append({
+                "node": left_node,
+                "index": item["node"]["left_ptr"],
+                "depth": item["depth"] + 1,
+                "merge": False
+            })
+
+            right_node = node_buffer[item["node"]["right_ptr"]]
+            queue.append({
+                "node": right_node,
+                "index": item["node"]["right_ptr"],
+                "depth": item["depth"] + 1,
+                "merge": False
+            })
+
+        else:
+            # going back up
+            # calculate the node corners from its children
+            split_dim = item["depth"] % 3
+
+            node_range_vals[item["index"]] = merge_node_range_vals(
+                node_range_vals, 
+                item["node"]["left_ptr"],
+                item["node"]["right_ptr"]
+            )
+
+    return node_range_vals
+
+def generate_node_val_ranges(mesh, tree):
+    return {
+        name: generate_node_val_range_buffer(mesh, mesh.values[name], tree)
+        for name in mesh.values
+    }
     
 
 # splits the given mesh into the blocks for each leaf node
