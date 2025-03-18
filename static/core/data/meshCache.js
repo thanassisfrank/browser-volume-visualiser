@@ -74,17 +74,21 @@ export class MeshCache {
         }
     }
 
-    #linkNodeMeshes(nodesToLink, dynamicNodeCache, renderNodes) {
+    #linkNodeMeshes(nodesToLink, dynamicNodeCache, writeNodes, useFullPtr) {
         for (let [fullPtr, node] of nodesToLink) {
             // link tree node directly to cells
             dynamicNodeCache.updateBlockAt(node.thisPtr, {
                 "nodes": {cellCount: node.fullCellCount, leftPtr: node.meshCacheSlot}
             });
-            writeNodeToBuffer(renderNodes, fullPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
+            if (useFullPtr) {
+                writeNodeToBuffer(writeNodes, fullPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
+            } else {
+                writeNodeToBuffer(writeNodes, node.thisPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
+            }
         }
     }
 
-    #linkNodeMeshesTreelet(nodesToLink, dynamicNodeCache, renderNodes) {
+    #linkNodeMeshesTreelet(nodesToLink, dynamicNodeCache, writeNodes, useFullPtr) {
         for (let [fullPtr, node] of nodesToLink) {
             const splitVal = this.#cache.readBuffSlotAt("treeletRootSplit", node.meshCacheSlot)[0];
             // link tree node to the treelet in dynamic nodes
@@ -104,11 +108,14 @@ export class MeshCache {
             });
 
             // link render node to treelet
-            const renderNodePtrOffset = renderNodes.byteLength/NODE_BYTE_LENGTH + node.meshCacheSlot * this.#treeletNodesPerSlot;
+            const renderNodePtrOffset = writeNodes.byteLength/NODE_BYTE_LENGTH + node.meshCacheSlot * this.#treeletNodesPerSlot;
             const renderLeftPtr = renderNodePtrOffset + InternalTreeletTopLeftPtr;
             const renderRightPtr = renderNodePtrOffset + InternalTreeletTopRightPtr;
-
-            writeNodeToBuffer(renderNodes, fullPtr * NODE_BYTE_LENGTH, splitVal, 0, null, renderLeftPtr, renderRightPtr);
+            if (useFullPtr) {
+                writeNodeToBuffer(writeNodes, fullPtr * NODE_BYTE_LENGTH, splitVal, 0, null, renderLeftPtr, renderRightPtr);
+            } else {
+                writeNodeToBuffer(writeNodes, node.thisPtr * NODE_BYTE_LENGTH, splitVal, 0, null, renderLeftPtr, renderRightPtr);
+            }
         }
     }
 
@@ -129,6 +136,16 @@ export class MeshCache {
         let nodesToLink = new Map();
         // map of fullPtr -> node obj for nodes that will be requested from server
         let nodesToRequest = new Map();
+
+        // the number of nodes in the tree that is being modified,
+        // this is either the node buffer in nodeCache or a separate full node buffer supplied in renderNodes
+        let writeNodesCount;
+        if (renderNodes) {
+            writeNodesCount = renderNodes.byteLength/NODE_BYTE_LENGTH;
+        } else {
+            writeNodesCount = nodeCache.slotCount;
+        }
+        const writeNodes = renderNodes ?? nodeCache.getBuffers()["nodes"];
 
         // collect a list of all blocks that need to be requested
         for (let node of scores) {
@@ -174,11 +191,13 @@ export class MeshCache {
             nodesToLink.delete(loadResult.evicted);
             nodesToRequest.delete(loadResult.evicted);
 
-            // update render nodes
-            writeNodeToBuffer(renderNodes, NODE_BYTE_LENGTH * loadResult.evicted, null, 0, null, 0, 0);
-
+            
             // update dynamic nodes if needed
             const evictedTagNodeSlot = nodeCache.getTagSlotNum(loadResult.evicted);
+            if (renderNodes !== undefined) {
+                // update render nodes is needed
+                writeNodeToBuffer(renderNodes, NODE_BYTE_LENGTH * loadResult.evicted, null, 0, null, 0, 0);
+            }
             if (-1 == evictedTagNodeSlot) continue;
             // it is loaded, make sure that it becomes a pruned leaf with no cells
             // have to make sure the ptrs are set to indicate a leaf node too
@@ -197,7 +216,7 @@ export class MeshCache {
             frameInfoStore.add("server", reqSW.stop());
             if (sw) sw.start();
             if (this.#treeletDepth > 0) {
-                this.#loadNodeMeshesTreelet(nodesToRequest, meshData, renderNodes.byteLength/NODE_BYTE_LENGTH);
+                this.#loadNodeMeshesTreelet(nodesToRequest, meshData, writeNodesCount);
             } else {
                 this.#loadNodeMeshes(nodesToRequest, meshData);
             }
@@ -205,9 +224,9 @@ export class MeshCache {
         
         if (nodesToLink.size > 0) {
             if (this.#treeletDepth > 0) {
-                this.#linkNodeMeshesTreelet(nodesToLink, nodeCache, renderNodes);
+                this.#linkNodeMeshesTreelet(nodesToLink, nodeCache, writeNodes, renderNodes != undefined);
             } else {
-                this.#linkNodeMeshes(nodesToLink, nodeCache, renderNodes);
+                this.#linkNodeMeshes(nodesToLink, nodeCache, writeNodes, renderNodes != undefined);
             }
         }
     }

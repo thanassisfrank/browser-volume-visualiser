@@ -111,6 +111,7 @@ const dataManager = {
                     dataSource.leafCount, 
                     opts.dynamicMeshBlockCount,
                 );
+                this.createDynamicTree(newData, opts.dynamicNodeCount);
                 newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
@@ -119,14 +120,7 @@ const dataManager = {
         }
 
         // create dynamic tree (nodes)
-        if (opts.dynamicNodes) {
-            try {
-                this.createDynamicTree(newData, opts.dynamicNodeCount);
-                newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-            } catch (e) {
-                console.error("Could not create dataset with dynamic node set:", e)
-            }
-        }
+        if (opts.dynamicNodes) newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
 
         return newData;
     },
@@ -296,10 +290,7 @@ class Data extends SceneObject {
     }
 
     getTreeCells() {
-        if (
-            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT && 
-            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
-        ) {
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             // dynamic mesh with treelets and dynamic nodes
             return this.dynamicTree.getTreeCells();
         }
@@ -340,18 +331,19 @@ class Data extends SceneObject {
         }
     }
 
-    updateDynamicTree(camInfo, activeValueSlots) {
+    updateDynamicTree(camInfo, isoInfo, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
-            return this.getFullCornerValues(this.valueDirectory[valueName]);
+            return this.data.values[this.valueDirectory[valueName]].cornerValues;
         }
         // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
         this.dynamicTree.update(
             camInfo,
+            isoInfo,
             getCornerVals,
             this.getNodeBlockRequestFunc().bind(this), 
-            activeValueSlots.map(i => this.data.values[i].name)
+            activeValueSlots.map(i => this.data.values[i].name),
         );
     }
 
@@ -541,11 +533,12 @@ class Data extends SceneObject {
 
     // fetching the corner values buffers
     getCornerValues(slotNum) {
-        // if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
+        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
         return this.getFullCornerValues(slotNum);
     };
 
     getFullCornerValues(slotNum) {
+
         return this.data.values?.[slotNum]?.cornerValues;
     };
 

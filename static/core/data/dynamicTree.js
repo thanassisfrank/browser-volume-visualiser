@@ -12,6 +12,7 @@ import { MeshCache } from "./meshCache.js";
 import { boxVolume, copyBox } from "../boxUtils.js";
 import { vec4 } from "../gl-matrix.js";
 import { frameInfoStore, StopWatch } from "../utils.js";
+import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 
 
 const NodeStates = {
@@ -27,6 +28,20 @@ const isDynamicLeaf = (node, nodeCount) => {
     if (node.rightPtr >= nodeCount) return true;
 
     return false;
+}
+
+// range -> [min, max]
+// limits -> [min, max]
+const getBoxIsoScore = (range, limits, isoVal) => {
+    if (range[0] <= isoVal) {
+        if (range[1] >= isoVal) {
+            return 1;
+        } else {
+            return (range[1] - limits[0])/(isoVal - limits[0]);
+        }
+    } else {
+        return (limits[1] - range[0])/(limits[1] - isoVal);
+    }
 }
 
 
@@ -48,7 +63,7 @@ const calcBoxScore = (box, focusCoords, camToFocDist) => {
     return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
 };
 
-const calcBoxScoreFrustrum = (box, camInfo) => {
+const calcBoxScoreFrustrum = (box, camInfo, isoScore=1) => {
     // check if box is inside the view frustrum
     const mid = [
         (box.min[0] + box.max[0]) * 0.5,
@@ -75,7 +90,7 @@ const calcBoxScoreFrustrum = (box, camInfo) => {
     const lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
     // a more accurate estimate of the pixel area would be (lMax/dist)^2
     // since ^2 is monotonic on [0, inf), this is skipped since only relative score is important
-    return lMax/distToCam;
+    return lMax/distToCam * isoScore;
 }
 
 
@@ -174,10 +189,10 @@ export class DynamicTree {
     }
 
     // create the render nodes buffer by pruning all of the leaf nodes
-    #createRenderNodes(fullNodes) {
+    #createFullRenderNodes(fullNodes) {
         // copy full nodes
-        this.renderNodes = new ArrayBuffer(fullNodes.byteLength);
-        new Uint8Array(this.renderNodes).set(new Uint8Array(fullNodes));
+        const renderNodes = new ArrayBuffer(fullNodes.byteLength);
+        new Uint8Array(renderNodes).set(new Uint8Array(fullNodes));
 
         // prune children
         let leavesPruned = 0;
@@ -188,7 +203,7 @@ export class DynamicTree {
             if (currNode.rightPtr === 0) {
                 leavesPruned++;
                 writeNodeToBuffer(
-                    this.renderNodes, 
+                    renderNodes, 
                     NODE_BYTE_LENGTH * currNode.thisPtr, 
                     currNode.splitVal,
                     0,
@@ -204,12 +219,15 @@ export class DynamicTree {
             }
         }
 
-        console.log(`${leavesPruned} leaved pruned out of ${fullNodes.byteLength/NODE_BYTE_LENGTH} nodes`)
+        return renderNodes;
     }
 
     setFullNodes(fullNodes, dynamicNodeCount) {
         this.#createDynamicNodeCache(fullNodes, dynamicNodeCount);
-        this.#createRenderNodes(fullNodes);
+        if (!(this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT)) {
+            // full size render nodes
+            this.renderNodes = this.#createFullRenderNodes(fullNodes);
+        }
     }
 
     // creates or modifies the dynamic corner values buffer 
@@ -320,7 +338,7 @@ export class DynamicTree {
     // these will have length equal to count
     // the split list contains pruned leaves that should be split
     // the merge list contains leaves that should be merged with their siblings
-    #createMergeSplitLists = (scores, maxCount) => {
+    #createMergeSplitLists(scores, maxCount) {
         // proportion of the scores to search for nodes to split and merge
         // combats flickering 
         const searchProp = 1;
@@ -379,7 +397,7 @@ export class DynamicTree {
         };
     };
     
-    #updateDynamicNodeCache (getCornerValsFuncExt, activeValueNames, mergeSplit, noCells) {
+    #updateDynamicNodeCache(getCornerValsFuncExt, activeValueNames, mergeSplit, noCells) {
         // find the amount of changes we can now make
         const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
     
@@ -429,24 +447,67 @@ export class DynamicTree {
         }
     };
 
+    #getScoreFunc(camInfo, isoInfo, getValFunc) {
+        let scoreFunc;
+        // deal with x, y, z isovalue
+        if (DataSrcTypes.AXIS == isoInfo.source.type) {
+            switch (isoInfo.source.name) {
+                case "x":
+                    scoreFunc =  function (box, nodeFullPtr) {
+                        const isoScore = getBoxIsoScore([box.min[0], box.max[0]], isoInfo.source.limits, isoInfo.val);
+                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                    }
+                    break;
+                case "y":
+                    scoreFunc =  function (box, nodeFullPtr) {
+                        const isoScore = getBoxIsoScore([box.min[1], box.max[1]], isoInfo.source.limits, isoInfo.val);
+                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                    }
+                    break;
+                case "z":
+                default:
+                    scoreFunc =  function (box, nodeFullPtr) {
+                        const isoScore = getBoxIsoScore([box.min[2], box.max[2]], isoInfo.source.limits, isoInfo.val);
+                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                    }
+                    break;
+
+            }
+        } else {
+            // data
+            scoreFunc =  function (box, nodeFullPtr) {
+                return calcBoxScoreFrustrum(box, camInfo, 1);
+            }
+        }
+
+        // // deal with data-based isovalue
+        // return function (box, nodeFullPtr) {
+        //     const isoRange = getBoxIsoRange(box, nodeFullPtr, isoSurfaceSrc, ranges);
+        //     const isoScore = getBoxIsoScore(isoRange, isoInfo.source.limits, isoInfo.val);
+        //     return calcBoxScoreFrustrum(box, camInfo, isoScore);
+        // }
+
+        return scoreFunc.bind(this);
+    }
+
 
     // updates the dynamic dataset based on camera location
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    update(camInfo, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
+    update(camInfo, isoInfo, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
         const nodeUpdateSW = new StopWatch();
         if (camInfo.changed) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
         }
     
-        if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
-            function scoreFn (box) {
-                return calcBoxScoreFrustrum(box, camInfo);
-            }
+        if (
+            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT || 
+            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+        ) {
             // get a list of all nodes in the dynamic node tree with their scores
-            const scores = this.#getNodeScores(scoreFn);
+            const scores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo));
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 if (!this.meshCacheBusy) {
@@ -493,10 +554,11 @@ export class DynamicTree {
 
     // concatenate the render nodes and treelet nodes buffers
     getNodeBuffer() {
-        if (!this.usesTreelets) return this.renderNodes;
+        const renderNodesArrayBuffer = this.renderNodes ?? this.nodeCache.getBuffers()["nodes"];
+        if (!this.usesTreelets) return renderNodesArrayBuffer;
 
         // both uint8 typed arrays
-        const renderNodes = new Uint8Array(this.renderNodes);
+        const renderNodes = new Uint8Array(renderNodesArrayBuffer);
         const treeletNodes = this.meshCache.getBuffers()["treeletNodes"];
 
         const combinedNodes = new Uint8Array(renderNodes.length + treeletNodes.length);

@@ -414,8 +414,8 @@ function View(id, camera, data, renderMode) {
     // called when
     this.updateIsoSurfaceSrc = async function(desc) {
         console.log("iso " + desc.type + " " + desc.name);
-        var limits = [0, 0];
-        var slotNum = null;
+        let limits = [0, 0];
+        let slotNum = undefined;
         switch (desc.type) {
             case DataSrcTypes.AXIS:
                 if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
@@ -440,14 +440,14 @@ function View(id, camera, data, renderMode) {
         this.updateSlider(limits);
         if (desc.name == "Pressure") this.updateThreshold(101353.322975);
         // change the source
-        this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits: limits, slotNum: slotNum};
+        this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits, slotNum};
     };
     
     this.updateSurfaceColSrc = async function(desc) {
         console.log("col " + desc.type + " " + desc.name);
         // load the data array
-        var limits = [0, 0];
-        var slotNum = null;
+        let limits = [0, 0];
+        let slotNum = undefined;
         switch (desc.type) {
             case DataSrcTypes.AXIS:
                 if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
@@ -461,7 +461,7 @@ function View(id, camera, data, renderMode) {
                 limits = this.data.getLimits(slotNum);
         }
         // change the source
-        this.surfaceColSrc = {type: desc.type, name: desc.name, limits: limits, slotNum: slotNum};
+        this.surfaceColSrc = {type: desc.type, name: desc.name, limits, slotNum};
     };
 
     this.updateDataSrc = async function(use, desc) {
@@ -486,12 +486,7 @@ function View(id, camera, data, renderMode) {
     };
 
     this.update = async function (dt, renderEngine) {
-        
         this.axesWidget?.update(this.camera.viewMat);
-        
-        this.data.threshold = this.threshold;
-        this.data.isoSurfaceSrc = this.isoSurfaceSrc;
-        this.data.surfaceColSrc = this.surfaceColSrc;
 
         var activeValueSlots = [];
         if (this.isoSurfaceSrc.slotNum != null) activeValueSlots.push(this.isoSurfaceSrc.slotNum);
@@ -528,7 +523,11 @@ function View(id, camera, data, renderMode) {
                     distToFoc: VecMath.magnitude(VecMath.vecMinus(focusPoint, camCoords)),
                     mat: this.sceneGraph.activeCamera.cameraMat
                 },
-                activeValueSlots
+                {
+                    source: this.isoSurfaceSrc,
+                    value: this.threshold
+                },
+                activeValueSlots,
             );
         }
 

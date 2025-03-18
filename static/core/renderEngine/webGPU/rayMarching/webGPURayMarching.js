@@ -784,7 +784,10 @@ export function WebGPURayMarchingEngine(webGPUBase) {
                 }
             }
 
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
+            if (
+                dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT || 
+                dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+            ) {
                 // update the nodes buffer
                 webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.getNodeBuffer())]);
             }

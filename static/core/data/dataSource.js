@@ -294,7 +294,9 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     maxCellCount;
     maxVertCount;
 
-    cornerFlowSolution;
+    #cornerFlowSolution;
+    #flowSolutionLimits;
+    #flowSolutionRanges;
 
     // all cells are tetrahedra
     vertsPerCell = 4;
@@ -370,9 +372,11 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         }
 
         // get the corner value flow solutions
-        this.cornerFlowSolution = CGNSZoneNode.get("FlowSolution");
+        this.#cornerFlowSolution = CGNSZoneNode.get("FlowSolution");
         // ...and limits
-        this.flowSolutionLimits = CGNSZoneNode.get("FlowSolutionLimits");
+        this.#flowSolutionLimits = CGNSZoneNode.get("FlowSolutionLimits");
+        // ...and ranges
+        this.#flowSolutionRanges = CGNSZoneNode.get("FlowSolutionRanges");
 
 
         // extract leaf mesh max vert and cell info
@@ -457,7 +461,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     }
 
     getAvailableDataArrays() {
-        var dataNodes = cgns.getChildrenWithLabel(this.cornerFlowSolution, "DataArray_t");
+        var dataNodes = cgns.getChildrenWithLabel(this.#cornerFlowSolution, "DataArray_t");
 
         return dataNodes.map(node => {
             return {name: node.attrs.name.value, arrayType: DataArrayTypes.DATA};
@@ -466,14 +470,16 @@ export class PartialCGNSDataSource extends EmptyDataSource {
 
     // returns only the corner value buffer for this data array name
     async getDataArray(desc) {
-        const data = this.cornerFlowSolution.get(desc.name + "/ data")?.value;
+        const data = this.#cornerFlowSolution.get(desc.name + "/ data")?.value;
         if (!data) return;
-        const limits = this.flowSolutionLimits.get(desc.name + "/ data")?.value;
+        const limits = this.#flowSolutionLimits?.get(desc.name + "/ data")?.value;
+        const ranges = this.#flowSolutionRanges?.get(desc.name + "/ data")?.value;
 
         return {
             name: desc.name,
             cornerValues: data,
             limits,
+            ranges,
         };
     }
 }
