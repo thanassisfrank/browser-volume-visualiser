@@ -44,34 +44,9 @@ const getBoxIsoScore = (range, limits, isoVal) => {
     }
 }
 
-
-
-// calculates a score for the box
-// high score -> too big -> split
-// low score -> too small -> merge
-// box size/distance from focus point
-// modified by distance of camera -> focus point
-// > closer -> 
-const calcBoxScore = (box, focusCoords, camToFocDist) => {
-    // get max axis=aligned dimension of box
-    var lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
-    var mid = VecMath.scalMult(0.5, VecMath.vecAdd(box.min, box.max));
-    // distance of box from camera
-    // distance of box from focus
-    var distToFoc = VecMath.magnitude(VecMath.vecMinus(focusCoords, mid));
-    // target length approach
-    return lMax - Math.max(0, (Math.abs(distToFoc)-10)/camToFocDist*10 + 5);
-};
-
-const calcBoxScoreFrustrum = (box, camInfo, isoScore=1) => {
-    // check if box is inside the view frustrum
-    const mid = [
-        (box.min[0] + box.max[0]) * 0.5,
-        (box.min[1] + box.max[1]) * 0.5,
-        (box.min[2] + box.max[2]) * 0.5
-    ];
+const pointInsideFrustrum = (p, mat) => {
     const clipPos = vec4.create();
-    vec4.transformMat4(clipPos, [mid[0], mid[1], mid[2], 1], camInfo.mat);
+    vec4.transformMat4(clipPos, [p[0], p[1], p[2], 1], mat);
     const ndc = [
         clipPos[0]/clipPos[3],
         clipPos[1]/clipPos[3],
@@ -81,16 +56,30 @@ const calcBoxScoreFrustrum = (box, camInfo, isoScore=1) => {
         // outside frustrum
         return 0;
     }
+
+    return 1;
+}
+
+
+
+// calculates a score for the box
+// high score -> too big -> split
+// low score -> too small -> merge
+const calcBoxScore = (box, camInfo) => {
+    // check if box is inside the view frustrum
+    const mid = [
+        (box.min[0] + box.max[0]) * 0.5,
+        (box.min[1] + box.max[1]) * 0.5,
+        (box.min[2] + box.max[2]) * 0.5
+    ];
+
+    if (pointInsideFrustrum(mid, camInfo.mat) == 0) return 0;
+
     const distToCam =  VecMath.magnitude(VecMath.vecMinus(camInfo.pos, mid));
-    if (distToCam > 2*camInfo.distToFoc) {
-        // too far away
-        return 0;
-    }
-    // calculate box effective pixel area
+    // if (distToCam > 2*camInfo.distToFoc) return 0;
+    // estimate box effective pixel area
     const lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
-    // a more accurate estimate of the pixel area would be (lMax/dist)^2
-    // since ^2 is monotonic on [0, inf), this is skipped since only relative score is important
-    return lMax/distToCam * isoScore;
+    return (lMax/distToCam)**2;
 }
 
 
@@ -457,20 +446,20 @@ export class DynamicTree {
                     scoreFunc =  function (box, nodeFullPtr) {
                         // debugger;
                         const isoScore = getBoxIsoScore([box.min[0], box.max[0]], isoInfo.source.limits, isoInfo.value);
-                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                        return calcBoxScore(box, camInfo) * isoScore;
                     }
                     break;
                 case "y":
                     scoreFunc =  function (box, nodeFullPtr) {
                         const isoScore = getBoxIsoScore([box.min[1], box.max[1]], isoInfo.source.limits, isoInfo.value);
-                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                        return calcBoxScore(box, camInfo) * isoScore;
                     }
                     break;
                 case "z":
                 default:
                     scoreFunc =  function (box, nodeFullPtr) {
                         const isoScore = getBoxIsoScore([box.min[2], box.max[2]], isoInfo.source.limits, isoInfo.value);
-                        return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                        return calcBoxScore(box, camInfo) * isoScore;
                     }
                     break;
 
@@ -483,11 +472,11 @@ export class DynamicTree {
                     const isoRange = nodeRangeBuff.slice(2 * nodeFullPtr, 2 * (nodeFullPtr + 1));
                     const isoScore = getBoxIsoScore(isoRange, isoInfo.source.limits, isoInfo.value);
                     // debugger;
-                    return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                    return calcBoxScore(box, camInfo) * isoScore;
                 }
             } else {
                 scoreFunc =  function (box, nodeFullPtr) {
-                    return calcBoxScoreFrustrum(box, camInfo, 1);
+                    return calcBoxScore(box, camInfo);
                 }
             }
         }
