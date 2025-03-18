@@ -323,7 +323,7 @@ function View(id, camera, data, renderMode) {
     this.data = data;
 
     this.threshold = undefined;
-    this.thresholdChanged = true;
+    this.thresholdTrackers = {};
     this.marchedThreshold = undefined;
 
     // an estimate of where the viewer is actually focusing on
@@ -387,7 +387,9 @@ function View(id, camera, data, renderMode) {
     this.updateThreshold = async function(val) {
         this.elems.slider.value = val;
         this.threshold = val;
-        this.thresholdChanged = true;
+        for (let id in this.thresholdTrackers) {
+            this.thresholdTrackers[id] = true;
+        }
         if (this.elems.threshVal) this.elems.threshVal.innerText = val.toPrecision(3);
     };
 
@@ -479,9 +481,9 @@ function View(id, camera, data, renderMode) {
         this.enabledGeometry[name] = enable;
     };
 
-    this.didThresholdChange = function() {
-        var changed = this.thresholdChanged;
-        this.thresholdChanged = false;
+    this.didThresholdChange = function(id="default") {
+        const changed = this.thresholdTrackers[id] ?? true;
+        this.thresholdTrackers[id] = false;
         return changed;
     };
 
@@ -524,6 +526,7 @@ function View(id, camera, data, renderMode) {
                     mat: this.sceneGraph.activeCamera.cameraMat
                 },
                 {
+                    changed: this.didThresholdChange("dynamic nodes"),
                     source: this.isoSurfaceSrc,
                     value: this.threshold
                 },

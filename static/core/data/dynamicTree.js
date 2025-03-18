@@ -290,7 +290,7 @@ export class DynamicTree {
 
             if (isDynamicLeaf(currNode, nodeCount)) {
                 // this is a leaf node, get its score
-                currNode.score = scoreFn(currBox);
+                currNode.score = scoreFn(currBox, currNode.thisFullPtr);
                 currNode.state = this.nodeCache.readBuffSlotAt("state", currNode.thisPtr)[0];
                 scores.push(currNode);
             } else {
@@ -449,25 +449,27 @@ export class DynamicTree {
 
     #getScoreFunc(camInfo, isoInfo, getValFunc) {
         let scoreFunc;
+        let nodeRangeBuff;
         // deal with x, y, z isovalue
         if (DataSrcTypes.AXIS == isoInfo.source.type) {
             switch (isoInfo.source.name) {
                 case "x":
                     scoreFunc =  function (box, nodeFullPtr) {
-                        const isoScore = getBoxIsoScore([box.min[0], box.max[0]], isoInfo.source.limits, isoInfo.val);
+                        // debugger;
+                        const isoScore = getBoxIsoScore([box.min[0], box.max[0]], isoInfo.source.limits, isoInfo.value);
                         return calcBoxScoreFrustrum(box, camInfo, isoScore);
                     }
                     break;
                 case "y":
                     scoreFunc =  function (box, nodeFullPtr) {
-                        const isoScore = getBoxIsoScore([box.min[1], box.max[1]], isoInfo.source.limits, isoInfo.val);
+                        const isoScore = getBoxIsoScore([box.min[1], box.max[1]], isoInfo.source.limits, isoInfo.value);
                         return calcBoxScoreFrustrum(box, camInfo, isoScore);
                     }
                     break;
                 case "z":
                 default:
                     scoreFunc =  function (box, nodeFullPtr) {
-                        const isoScore = getBoxIsoScore([box.min[2], box.max[2]], isoInfo.source.limits, isoInfo.val);
+                        const isoScore = getBoxIsoScore([box.min[2], box.max[2]], isoInfo.source.limits, isoInfo.value);
                         return calcBoxScoreFrustrum(box, camInfo, isoScore);
                     }
                     break;
@@ -475,8 +477,18 @@ export class DynamicTree {
             }
         } else {
             // data
-            scoreFunc =  function (box, nodeFullPtr) {
-                return calcBoxScoreFrustrum(box, camInfo, 1);
+            nodeRangeBuff = getValFunc(isoInfo.source.name);
+            if (nodeRangeBuff) {
+                scoreFunc =  function (box, nodeFullPtr) {
+                    const isoRange = nodeRangeBuff.slice(2 * nodeFullPtr, 2 * (nodeFullPtr + 1));
+                    const isoScore = getBoxIsoScore(isoRange, isoInfo.source.limits, isoInfo.value);
+                    // debugger;
+                    return calcBoxScoreFrustrum(box, camInfo, isoScore);
+                }
+            } else {
+                scoreFunc =  function (box, nodeFullPtr) {
+                    return calcBoxScoreFrustrum(box, camInfo, 1);
+                }
             }
         }
 
@@ -495,9 +507,9 @@ export class DynamicTree {
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    update(camInfo, isoInfo, getCornerValsFuncExt, getMeshBlockFuncExt, activeValueNames) {
+    update(camInfo, isoInfo, getCornerValsFuncExt, getRangesFuncExt, getMeshBlockFuncExt, activeValueNames) {
         const nodeUpdateSW = new StopWatch();
-        if (camInfo.changed) {
+        if (camInfo.changed || isoInfo.changed) {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
         }
@@ -507,7 +519,7 @@ export class DynamicTree {
             this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
         ) {
             // get a list of all nodes in the dynamic node tree with their scores
-            const scores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo));
+            const scores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo, getRangesFuncExt));
     
             if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
                 if (!this.meshCacheBusy) {

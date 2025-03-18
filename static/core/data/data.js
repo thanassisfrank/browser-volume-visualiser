@@ -335,13 +335,19 @@ class Data extends SceneObject {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
-            return this.data.values[this.valueDirectory[valueName]].cornerValues;
+            return this.data.values?.[this.valueDirectory?.[valueName]]?.cornerValues;
+        }
+        // getCornerValsFuncExt -> dataObj.getFullCornerValues
+        const getRangeVals = (valueName) => {
+            // perform mapping from value name => slot num
+            return this.data.values?.[this.valueDirectory?.[valueName]]?.ranges;
         }
         // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
         this.dynamicTree.update(
             camInfo,
             isoInfo,
             getCornerVals,
+            getRangeVals,
             this.getNodeBlockRequestFunc().bind(this), 
             activeValueSlots.map(i => this.data.values[i].name),
         );
