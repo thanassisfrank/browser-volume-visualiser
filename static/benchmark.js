@@ -147,12 +147,12 @@ export class JobRunner {
     async #startJob(job) {
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
-        const benchmarkID = job.benchmark ?? "test";
+        const benchmarkID = job.test ?? "points";
         const jobNameParts = [];
-        jobNameParts.push(viewOpts.dataID);
-        jobNameParts.push(viewOpts.dataOpts.dynamicNodeCount);
-        jobNameParts.push(viewOpts.dataOpts.dynamicMeshBlockCount);
-        jobNameParts.push(viewOpts.dataOpts.treeletDepth);
+        jobNameParts.push(viewOpts.data);
+        jobNameParts.push(viewOpts.dataOpts.nodes);
+        jobNameParts.push(viewOpts.dataOpts.meshes ?? 100);
+        jobNameParts.push(viewOpts.dataOpts.treelet);
         jobNameParts.push(benchmarkID);
 
         const jobName = jobNameParts.join("_");
