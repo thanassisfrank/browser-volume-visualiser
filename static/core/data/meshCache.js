@@ -257,7 +257,7 @@ export class MeshCache {
 
         // make sure that the corner buffer is synchronised to the currently loaded nodes
         this.#cache.syncBuffer(
-            buffName, (fullPtr) => meshData[fullPtr][scalarName]
+            buffName, (fullPtr) => meshData[fullPtr]?.[scalarName]
         );
         
         return this.#cache.getBuffers()[buffName];
