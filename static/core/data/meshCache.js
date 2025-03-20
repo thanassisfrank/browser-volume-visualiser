@@ -81,9 +81,9 @@ export class MeshCache {
                 "nodes": {cellCount: node.fullCellCount, leftPtr: node.meshCacheSlot}
             });
             if (useFullPtr) {
-                writeNodeToBuffer(writeNodes, fullPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
+                writeNodeToBuffer(writeNodes, fullPtr * NODE_BYTE_LENGTH, null, node.fullCellCount, null, node.meshCacheSlot, null);
             } else {
-                writeNodeToBuffer(writeNodes, node.thisPtr, null, node.fullCellCount, null, node.meshCacheSlot, null);
+                writeNodeToBuffer(writeNodes, node.thisPtr * NODE_BYTE_LENGTH, null, node.fullCellCount, null, node.meshCacheSlot, null);
             }
         }
     }
