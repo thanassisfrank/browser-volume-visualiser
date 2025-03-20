@@ -32,8 +32,11 @@ BENCHMARKS["points"] = {
         } else {
             relEye = VecMath.fromSphericalVals({r: maxLen*0.3, el: Math.PI*-0.4, az: Math.PI*1.5});
         }
-        const cameraPos = VecMath.vecAdd(mid, relEye)
-        view.camera.setEyePos(cameraPos);
+        const cameraPos = VecMath.vecAdd(mid, relEye);
+        const currPos = view.camera.getEyePos();
+        if (VecMath.magnitude(VecMath.vecMinus(currPos, cameraPos)) > 0.1) {
+            view.camera.setEyePos(cameraPos);
+        }
     }
 };
 
@@ -88,14 +91,14 @@ export class Benchmarker {
 // the defaults assume that the dataset is a partial cgns
 function viewOptsFromJob(job) {
     return {
-        dataID: job.dataID,
+        dataID: job.data,
         dataOpts: {
-            dynamicNodes: job.dynamicNodes ?? true,
+            dynamicNodes: job.dynamicNodes ?? false,
             dynamicMesh: job.dynamicMesh ?? true,
-            dynamicNodeCount: job.dynamicNodeCount ?? 500,
-            dynamicMeshBlockCount: job.dynamicMeshBlockCount ?? 100,
+            dynamicNodeCount: job.nodes ?? 1000,
+            dynamicMeshBlockCount: job.meshes ?? 100,
             cornerValType: job.cornerValType ?? CornerValTypes.SAMPLE,
-            treeletDepth: job.treeletDepth ?? 4,
+            treeletDepth: job.treelet ?? 4,
         },
         renderOpts: {
             DATA_RAY_VOLUME: true,
@@ -145,14 +148,15 @@ export class JobRunner {
     }
 
     async #startJob(job) {
+        console.log(job);
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
         const benchmarkID = job.test ?? "points";
         const jobNameParts = [];
-        jobNameParts.push(viewOpts.data);
-        jobNameParts.push(viewOpts.dataOpts.nodes);
-        jobNameParts.push(viewOpts.dataOpts.meshes ?? 100);
-        jobNameParts.push(viewOpts.dataOpts.treelet);
+        jobNameParts.push(viewOpts.dataID);
+        jobNameParts.push(viewOpts.dataOpts.dynamicNodeCount);
+        jobNameParts.push(viewOpts.dataOpts.dynamicMeshBlockCount);
+        jobNameParts.push(viewOpts.dataOpts.treeletDepth);
         jobNameParts.push(benchmarkID);
 
         const jobName = jobNameParts.join("_");
@@ -189,15 +193,20 @@ export class JobRunner {
         }
         
         // get next job
-        this.#currJobIndex++;
-        if (this.#currJobIndex >= this.#jobs.length) {
-            // finished all jobs
-            return true;
-        }
+        let newJob;
+        do {
+            this.#currJobIndex++;
+            if (this.#currJobIndex >= this.#jobs.length) {
+                // finished all jobs
+                return true;
+            }
+            newJob = this.#jobs[this.#currJobIndex]
+        } while (newJob.ignore)
+            
 
         console.log(`starting job ${this.#currJobIndex}`);
         
-        await this.#startJob(this.#jobs[this.#currJobIndex])
+        await this.#startJob(newJob)
     }
 
     async update(t) {
