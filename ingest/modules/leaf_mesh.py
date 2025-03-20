@@ -173,6 +173,9 @@ def get_leaf_node_range(mesh, vals, node, tree):
     range_vals = np.empty(2, dtype=np.float32)
     m_con = np.reshape(mesh.connectivity, (-1, 4))
 
+    # if no cells, return range = [0, 0]
+    if node["cell_count"] == 0: return np.zeros(2, dtype=np.float32)
+
     cells = tree.cell_buffer[node["left_ptr"] : node["left_ptr"] + node["cell_count"]]
     # initialise range
     first_val = vals[m_con[cells[0]][0]]
