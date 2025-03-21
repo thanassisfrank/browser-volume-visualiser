@@ -1,20 +1,35 @@
 [
-    {"id": "a", "data":   "yf17_64", "nodes": 500, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "b", "data":  "yf17_128", "nodes": 500, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "c", "data":  "yf17_256", "nodes": 500, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "d", "data":  "yf17_512", "nodes": 500, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "e", "data": "yf17_1024", "nodes":  50, "treelet": 4, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "f", "data": "yf17_1024", "nodes": 100, "treelet": 4, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "g", "data": "yf17_1024", "nodes": 150, "treelet": 4, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "h", "data": "yf17_1024", "nodes": 200, "treelet": 4, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "i", "data": "yf17_1024", "nodes": 500, "treelet": 4, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "j", "data": "yf17_1024", "nodes": 500, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "k", "data": "yf17_1024", "nodes": 500, "treelet": 1, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "l", "data": "yf17_1024", "nodes": 500, "treelet": 2, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "m", "data": "yf17_1024", "nodes": 500, "treelet": 3, "isoSrc": "Pressure", "isoVal": 101353.3},
-    {"id": "n", "data": "turb_1024", "nodes":  50, "treelet": 4, "isoSrc": "Default", "isoVal": 10},
-    {"id": "o", "data": "turb_1024", "nodes": 100, "treelet": 4, "isoSrc": "Default", "isoVal": 10},
-    {"id": "p", "data": "turb_1024", "nodes": 150, "treelet": 4, "isoSrc": "Default", "isoVal": 10},
-    {"id": "q", "data": "turb_1024", "nodes": 200, "treelet": 4, "isoSrc": "Default", "isoVal": 10},
-    {"id": "q", "data": "turb_1024", "nodes": 500, "treelet": 4, "isoSrc": "Default", "isoVal": 10}
+    {
+        "data": "yf17_1024", 
+        "nodes": [100, 500, 1000, 2000, 3000], 
+        "meshes": [100, 200, 300, 400, 500, 1000], 
+        "treelet": 4, 
+        "isoSrc": "Pressure", 
+        "isoVal": 101353.3
+    },
+    {
+        "ignore": true,
+        "data": "turb_1024", 
+        "nodes": [500, 1000, 2000, 4000], 
+        "meshes": [100, 300, 500, 700], 
+        "treelet": 4, 
+        "isoSrc": "Default", 
+        "isoVal": 3
+    },
+    
+    {"ignore":true, "data":  "yf17_128", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore":true, "data":  "yf17_256", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore":true, "data":  "yf17_512", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore":true, "data": "yf17_1024", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore":true, "data": "yf17_2048", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore":true, "data": "yf17_4096", "nodes": 1000, "treelet": 0, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore": true, "data": "yf17_1024", "nodes": 1000, "treelet": 3, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore": true, "data": "yf17_1024", "nodes": 1000, "treelet": 2, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore": true, "data": "yf17_1024", "nodes": 1000, "treelet": 1, "isoSrc": "Pressure", "isoVal": 101353.3},
+    {"ignore": true, "data": "turb_1024", "nodes":  100, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3},
+    {"ignore": true, "data": "turb_1024", "nodes":  200, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3},
+    {"ignore": true, "data": "turb_1024", "nodes":  500, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3},
+    {"ignore": true, "data": "turb_1024", "nodes": 1000, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3},
+    {"ignore": true, "data": "turb_1024", "nodes": 2000, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3},
+    {"ignore": true, "data": "turb_1024", "nodes": 4000, "meshes": 300, "treelet": 4, "isoSrc": "Default", "isoVal": 3}
 ]

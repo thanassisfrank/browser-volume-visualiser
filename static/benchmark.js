@@ -109,8 +109,11 @@ function viewOptsFromJob(job) {
 
 
 export class JobRunner {
-    #jobs = []
-    #currJobIndex = -1;
+    #rawJobs = []
+
+    // the queue of the generated jobs
+    #jobQueue = [];
+    #currJobIndex;
 
     #startTime = 0;
 
@@ -127,19 +130,51 @@ export class JobRunner {
     #started = false;
 
     constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=3000) {
-        this.#jobs = jobs;
+        this.#rawJobs = jobs;
         this.#createViewFn = createViewFn;
         this.#deleteViewFn = deleteViewFn;
 
         this.#renderEngine = renderEngine;
         this.#pauseMS = pauseMS;
+
+        // expand all of the jobs into individual tasks
+        this.#jobQueue = this.#expandJobs(jobs);
+        console.log(this.#jobQueue);
+    }
+
+    #expandJobs(jobs) {
+        let queue = [];
+        for (let job of jobs) {
+            if (job.ignore) continue;
+            let thisTasks = [];
+            thisTasks.push({});
+            // find which entries have arrays specified
+            for (let [key, val] of Object.entries(job)) {
+                if (Array.isArray(val)) {
+                    // multiply tasks to create one for each option
+                    const multTasks = thisTasks.flatMap(origTask => {
+                        // have to fill this with some value to be able to use map
+                        const newEmptyArr =  Array(val.length).fill(null);
+                        const newArr = newEmptyArr.map(() => structuredClone(origTask));
+                        newArr.forEach((cloned, index) => cloned[key] = val[index]);
+                        return newArr;
+                    })
+                    thisTasks = multTasks;
+                } else {
+                    // add as a property of each task
+                    thisTasks.forEach(task => task[key] = val)
+                }
+            }
+            queue.push(...thisTasks);
+        }
+        return queue;
     }
 
     // begins execution of jobs from beginning
     start(t) {
         console.log("***JOBS STARTED***")
-        this.#currJobIndex = -1;
         this.#startTime = t;
+        this.#currJobIndex = -1;
 
         // set render engine parameters
         this.#renderEngine.rayMarcher.setStepSize(2);
@@ -193,15 +228,12 @@ export class JobRunner {
         }
         
         // get next job
-        let newJob;
-        do {
-            this.#currJobIndex++;
-            if (this.#currJobIndex >= this.#jobs.length) {
-                // finished all jobs
-                return true;
-            }
-            newJob = this.#jobs[this.#currJobIndex]
-        } while (newJob.ignore)
+        this.#currJobIndex++;
+        const newJob = this.#jobQueue[this.#currJobIndex]
+        if (this.#currJobIndex >= this.#jobQueue.length) {
+            // finished all jobs
+            return true;
+        }
             
 
         console.log(`starting job ${this.#currJobIndex}`);
@@ -233,7 +265,7 @@ export class JobRunner {
     #end(t) {
         this.#currBenchmarker = undefined;
         this.#started = false;
-        console.log("***ALL JOBS DONE***");
+        console.log("***ALL TASKS DONE***");
         console.log(`Jobs took ${t - this.#startTime}`)
     }
 }
