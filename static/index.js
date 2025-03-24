@@ -114,13 +114,13 @@ const viewOptsFromInputElems = (dataSelect, opts) => {
 
 // define the main function
 async function main() {
-    var canvas = get("c");
+    const canvas = get("c");
     
-    var frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
+    const frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
 
     let benchmarker;
 
-    var renderEnginePromise = createRenderEngine(canvas)
+    const renderEnginePromise = createRenderEngine(canvas)
         .then((renderEngine) => renderEngine.setup())
         .then((renderEngine) => {
             setUpRayMarchOptions(renderEngine.rayMarcher);
@@ -132,7 +132,7 @@ async function main() {
         });
 
     
-    var serverDatasetsPromise = fetch("./data/datasets.json")
+    const serverDatasetsPromise = fetch("./data/datasets.json")
         .then((res) => res.json())
         .then((serverDatasets) => {
             return {

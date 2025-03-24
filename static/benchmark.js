@@ -1,5 +1,5 @@
 // benchmark.js
-import { frameInfoStore, pause } from "./core/utils.js";
+import { downloadCanvas, frameInfoStore, pause } from "./core/utils.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 import { VecMath } from "./core/VecMath.js";
 
@@ -18,7 +18,11 @@ BENCHMARKS["test"] = {
 };
 
 BENCHMARKS["points"] = {
-    duration: 10000,
+    duration: 10000, // benchmark suration in ms
+    screenshots: [ // timestamps to take screenshots in ms since start
+        1000,
+        4500
+    ],
     setState: (t, view) => {
         const mid = view.data.getMidPoint();
         const maxLen = view.data.getMaxLength();
@@ -46,13 +50,16 @@ BENCHMARKS["points"] = {
 export class Benchmarker {
     #frametimeStore;
     #view;
+    #canvas;
     #startTime;
     #currBenchmark;
+    #screenShotQueue;
     #running;
     #name = "";
-    constructor(frametimeStore, view, name="") {
+    constructor(frametimeStore, view, canvas, name="") {
         this.#frametimeStore = frametimeStore;
         this.#view = view;
+        this.#canvas = canvas;
         this.#name = name;
     }
 
@@ -60,7 +67,7 @@ export class Benchmarker {
         this.#startTime = t;
         this.#frametimeStore.reset();
         this.#currBenchmark = benchmark;
-
+        this.#screenShotQueue = benchmark.screenshots.slice().sort((a, b) => a - b)
         console.log(`**BENCHMARK START FOR ${this.#currBenchmark.duration}MS**`)
 
         this.#running = true;
@@ -75,9 +82,17 @@ export class Benchmarker {
         const benchTime = t - this.#startTime;
         if (benchTime > this.#currBenchmark.duration) {
             this.end();
-        } else {
-            this.#currBenchmark.setState(benchTime, this.#view)
+            return;
         }
+
+        if (this.#screenShotQueue.length > 0 && benchTime > this.#screenShotQueue[0]) {
+            // take a screenshot
+            downloadCanvas(this.#canvas, `${this.#name}_t${this.#screenShotQueue[0]}.png`, "image/png")
+            this.#screenShotQueue.shift();
+        }
+
+        // set view state according to benchmark
+        this.#currBenchmark.setState(benchTime, this.#view)
     }
 
     end() {
@@ -109,8 +124,6 @@ function viewOptsFromJob(job) {
 
 
 export class JobRunner {
-    #rawJobs = []
-
     // the queue of the generated jobs
     #jobQueue = [];
     #currJobIndex;
@@ -124,13 +137,13 @@ export class JobRunner {
     #deleteViewFn;
 
     #renderEngine;
+
     #pauseMS;
 
     #advancing = false;
     #started = false;
 
     constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=3000) {
-        this.#rawJobs = jobs;
         this.#createViewFn = createViewFn;
         this.#deleteViewFn = deleteViewFn;
 
@@ -183,7 +196,6 @@ export class JobRunner {
     }
 
     async #startJob(job) {
-        console.log(job);
         const viewOpts = viewOptsFromJob(job);
         // create a name for the output file
         const benchmarkID = job.test ?? "points";
@@ -198,7 +210,6 @@ export class JobRunner {
 
         // create view
         this.#currView = await this.#createViewFn(viewOpts);
-        console.log(this.#currView);
 
         await pause(this.#pauseMS);
         
@@ -212,7 +223,12 @@ export class JobRunner {
         this.#currView.updateThreshold(job.isoVal ?? 0);
         
         // run benchmark
-        this.#currBenchmarker = new Benchmarker(frameInfoStore, this.#currView, jobName);
+        this.#currBenchmarker = new Benchmarker(
+            frameInfoStore, 
+            this.#currView, 
+            this.#renderEngine.canvas, 
+            jobName
+        );
 
         // pause to allow system to settle
         await pause(this.#pauseMS);
