@@ -9,6 +9,7 @@ static/data/*_limits.raw
 static/data/big*
 static/data/retro*
 static/data/out*
+static/data/local/
 old/
 .vscode
 build/

@@ -643,6 +643,11 @@ fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
     return result.depth;
 }
 
+fn getNodeIndexAtPoint(p : vec3<f32>) -> u32 {
+    var result : KDTreeResult = getContainingLeafNode(p);
+    return result.box.val;
+}
+
 fn getNodeCellCountAtPoint(p : vec3<f32>) -> u32 {
     var result : KDTreeResult = getContainingLeafNode(p);
     return result.node.cellCount;
@@ -795,11 +800,9 @@ fn main(
         return;
     }
     if (passFlags.showNodeLoc) {
-        // random from node location in buffer
-        var dataPos : vec3<f32> = toDataSpace(ray.tip);
-        var result : KDTreeResult = getContainingLeafNode(dataPos);
+        var index : u32 = getNodeIndexAtPoint(toDataSpace(ray.tip));
         // semi-random col from node location
-        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(result.box.val)), 1));
+        setPixel(id.xy, vec4<f32>(u32ToCol(randomU32(index)), 1));
         return;
     }
     if (passFlags.showNodeDepth) {
