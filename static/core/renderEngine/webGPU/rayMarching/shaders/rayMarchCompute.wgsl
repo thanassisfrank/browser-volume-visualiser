@@ -517,25 +517,25 @@ fn sampleNodeVirtual(p : vec3<f32>, leafBox : AABB, dataSrc : u32, leafDepth : u
         vec3<f32>(p.x,                 p.y                , leafBox.min.z - eps),
     );
 
-    let checkDims = array<array<u32, 2>, 6>(
-        array<u32, 2>(1, 2),
-        array<u32, 2>(1, 2),
-        array<u32, 2>(0, 2),
-        array<u32, 2>(0, 2),
-        array<u32, 2>(0, 1),
-        array<u32, 2>(0, 1),
-    );
+    // let checkDims = array<array<u32, 2>, 6>(
+    //     array<u32, 2>(1, 2),
+    //     array<u32, 2>(1, 2),
+    //     array<u32, 2>(0, 2),
+    //     array<u32, 2>(0, 2),
+    //     array<u32, 2>(0, 1),
+    //     array<u32, 2>(0, 1),
+    // );
 
     // compute the mean value (MV) Berycentric weights 
     // since the octohedron is orthodiagonal, this reduces to
     // the inverse of the distance to each vertex
     let weights = array<f32, 6>(
-        1/max(leafBox.max.x - p.x, 0.01),
-        1/max(p.x - leafBox.min.x, 0.01),
-        1/max(leafBox.max.y - p.y, 0.01),
-        1/max(p.y - leafBox.min.y, 0.01),
-        1/max(leafBox.max.z - p.z, 0.01),
-        1/max(p.z - leafBox.min.z, 0.01),
+        max(0, 1/max(leafBox.max.x - p.x, 0.01)),
+        max(0, 1/max(p.x - leafBox.min.x, 0.01)),
+        max(0, 1/max(leafBox.max.y - p.y, 0.01)),
+        max(0, 1/max(p.y - leafBox.min.y, 0.01)),
+        max(0, 1/max(leafBox.max.z - p.z, 0.01)),
+        max(0, 1/max(p.z - leafBox.min.z, 0.01)),
     );
 
     // sum the weights
@@ -551,11 +551,11 @@ fn sampleNodeVirtual(p : vec3<f32>, leafBox : AABB, dataSrc : u32, leafDepth : u
         neighbour = getContainingLeafNode(points[i]);
         // check if the neighbouring node overlaps this one
         if (
-            neighbour.box.min[checkDims[i][0]] > leafBox.min[checkDims[i][0]] || 
-            neighbour.box.max[checkDims[i][0]] < leafBox.max[checkDims[i][0]] ||
-            neighbour.box.min[checkDims[i][1]] > leafBox.min[checkDims[i][1]] || 
-            neighbour.box.max[checkDims[i][1]] < leafBox.max[checkDims[i][1]]
-            // neighbour.depth > leafDepth
+            // neighbour.box.min[checkDims[i][0]] > leafBox.min[checkDims[i][0]] || 
+            // neighbour.box.max[checkDims[i][0]] < leafBox.max[checkDims[i][0]] ||
+            // neighbour.box.min[checkDims[i][1]] > leafBox.min[checkDims[i][1]] || 
+            // neighbour.box.max[checkDims[i][1]] < leafBox.max[checkDims[i][1]]
+            neighbour.depth > leafDepth && neighbour.node.cellCount == 0
         ) {
             // this neighbour is active sample inside
             sampledValue += weights[i] * sampleNodeCornerVals(points[i], neighbour.box, dataSrc);
