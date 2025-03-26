@@ -33,14 +33,18 @@ const isDynamicLeaf = (node, nodeCount) => {
 // range -> [min, max]
 // limits -> [min, max]
 const getBoxIsoScore = (range, limits, isoVal) => {
+    // how much to reduce the score by if range doesn't overlap iso
+    const penaltyMult = 0.1;
     if (range[0] <= isoVal) {
         if (range[1] >= isoVal) {
             return 1;
         } else {
-            return (range[1] - limits[0])/(isoVal - limits[0]);
+            // range entirely below isoval
+            return (range[1] - limits[0])/(isoVal - limits[0]) * penaltyMult;
         }
     } else {
-        return (limits[1] - range[0])/(limits[1] - isoVal);
+        // range entirely above isoval
+        return (limits[1] - range[0])/(limits[1] - isoVal) * penaltyMult;
     }
 }
 
