@@ -627,10 +627,10 @@ export class StopWatch {
     #elapsed;
     #currStart;
     constructor() {
+        this.#elapsed = 0
         this.start()
     }
     start() {
-        this.#elapsed = 0
         this.#currStart = performance.now();
     }
     stop() {
