@@ -55,21 +55,24 @@ export class Benchmarker {
     #currBenchmark;
     #screenShotQueue;
     #running;
-    #name = "";
+    #name;
+    #noImages;
+
     constructor(frametimeStore, view, canvas, name="") {
         this.#frametimeStore = frametimeStore;
         this.#view = view;
         this.#canvas = canvas;
         this.#name = name;
     }
-
-    start(t, benchmark) {
+    
+    start(t, benchmark, noImages=false) {
         this.#startTime = t;
         this.#frametimeStore.reset();
         this.#currBenchmark = benchmark;
         this.#screenShotQueue = benchmark.screenshots.slice().sort((a, b) => a - b)
+        this.#noImages = noImages;
         console.log(`**BENCHMARK START FOR ${this.#currBenchmark.duration}MS**`)
-
+        
         this.#running = true;
     }
 
@@ -84,8 +87,7 @@ export class Benchmarker {
             this.end();
             return;
         }
-
-        if (this.#screenShotQueue.length > 0 && benchTime > this.#screenShotQueue[0]) {
+        if (!this.#noImages && this.#screenShotQueue.length > 0 && benchTime > this.#screenShotQueue[0]) {
             // take a screenshot
             downloadCanvas(this.#canvas, `${this.#name}_t${this.#screenShotQueue[0]}.png`, "image/png")
             this.#screenShotQueue.shift();
@@ -232,7 +234,7 @@ export class JobRunner {
 
         // pause to allow system to settle
         await pause(this.#pauseMS);
-        this.#currBenchmarker.start(performance.now(), BENCHMARKS[benchmarkID]);
+        this.#currBenchmarker.start(performance.now(), BENCHMARKS[benchmarkID], job.noImages);
     }
 
     async #advanceJob() {
