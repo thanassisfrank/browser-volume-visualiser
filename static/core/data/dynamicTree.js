@@ -48,9 +48,9 @@ const getBoxIsoScore = (range, limits, isoVal) => {
     }
 }
 
-const pointInsideFrustrum = (p, mat) => {
+const pointInsideFrustrum = (x, y, z, mat) => {
     const clipPos = vec4.create();
-    vec4.transformMat4(clipPos, [p[0], p[1], p[2], 1], mat);
+    vec4.transformMat4(clipPos, [x, y, z, 1], mat);
     const ndc = [
         clipPos[0]/clipPos[3],
         clipPos[1]/clipPos[3],
@@ -77,7 +77,16 @@ const calcBoxScore = (box, camInfo) => {
         (box.min[2] + box.max[2]) * 0.5
     ];
 
-    if (pointInsideFrustrum(mid, camInfo.mat) == 0) return 0;
+    if (
+        pointInsideFrustrum(box.min[0], box.min[1], box.min[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.min[0], box.min[1], box.max[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.min[0], box.max[1], box.min[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.min[0], box.max[1], box.max[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.max[0], box.min[1], box.min[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.max[0], box.min[1], box.max[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.max[0], box.max[1], box.min[2], camInfo.mat) == 0 &&
+        pointInsideFrustrum(box.max[0], box.max[1], box.max[2], camInfo.mat) == 0
+    ) return 0;
 
     const distToCam =  VecMath.magnitude(VecMath.vecMinus(camInfo.pos, mid));
     // if (distToCam > 2*camInfo.distToFoc) return 0;
