@@ -147,6 +147,8 @@ export class MeshCache {
         }
         const writeNodes = renderNodes ?? nodeCache.getBuffers()["nodes"];
 
+        let currInUseMeshBlocks = 0;
+        
         // collect a list of all blocks that need to be requested
         for (let node of scores) {
             const fullNode = readNodeFromBuffer(fullNodes, node.thisFullPtr * NODE_BYTE_LENGTH);
@@ -156,7 +158,10 @@ export class MeshCache {
             if (
                 this.#treeletDepth > 0 && node.rightPtr > 0 || 
                 this.#treeletDepth == 0 && node.cellCount > 0
-            ) continue;
+            ) {
+                currInUseMeshBlocks++;
+                continue;
+            }
             // node is not connected with its mesh block
 
             // cache the full cell count for later loading
@@ -207,6 +212,8 @@ export class MeshCache {
                 rightPtr: 0,
             }});
         }
+
+        frameInfoStore.add("in_use_blocks", currInUseMeshBlocks);
 
         if (nodesToRequest.size > 0) {
             if (sw) sw.stop();
