@@ -17,7 +17,7 @@ export {dataManager};
 
 
 const getAsAbsolute = (x, max) => {
-    if (typeof x == 'string' || myVar instanceof String) {
+    if (typeof x == 'string' || x instanceof String) {
         // treat as a percentage of total nodes
         if (!x.includes("%")) throw Error("Value is string but not percentage");
 
