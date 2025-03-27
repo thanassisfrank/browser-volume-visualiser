@@ -16,6 +16,20 @@ import { VectorMappingHandler } from "./vectorDataArray.js";
 export {dataManager};
 
 
+const getAsAbsolute = (x, max) => {
+    if (typeof x == 'string' || myVar instanceof String) {
+        // treat as a percentage of total nodes
+        if (!x.includes("%")) throw Error("Value is string but not percentage");
+
+        const proportion = parseFloat(x)/100;
+        
+        return Math.round(max * proportion);
+    } else {
+        return x;
+    }
+};
+
+
 // object in charge of creating, transforming and deleting data objects
 const dataManager = {
     // keep the config set too
@@ -102,16 +116,21 @@ const dataManager = {
         console.log(config);
         console.log(opts);
 
+        
         // create dynamic mesh information
         if (opts.dynamicMesh) {
             try {
+                // get the absolute sizes of node and mesh caches if supplied as percentages
+                const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.leafCount * 2);
+                const absMeshCount = getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount);
+
                 this.createDynamicMeshCache(
                     newData, 
                     dataSource.meshBlockSizes, 
                     dataSource.leafCount, 
-                    opts.dynamicMeshBlockCount,
+                    absMeshCount,
                 );
-                this.createDynamicTree(newData, opts.dynamicNodeCount);
+                this.createDynamicTree(newData, absNodeCount);
                 newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
