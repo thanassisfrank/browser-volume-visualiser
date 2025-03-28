@@ -227,8 +227,10 @@ async function main() {
         " ": {
             description: "Print the camera position and threshold val",
             f: function (e) {
-                camera.printVals();
-                console.log("threshold", Object.values(viewManager.views)[0].threshold);
+                const view = viewManager.getFirst();
+                if (!view) return;
+                view.camera.printVals();
+                console.log("threshold", view.threshold);
             }
         },
         "a": {
@@ -488,7 +490,7 @@ async function main() {
     };
 
     document.body.addEventListener("keydown", function(e) {
-        shortcuts[e.key]?.f(e);
+        shortcuts[e.key.toLowerCase()]?.f(e);
     });
 
     console.info("Press 'h' for a list of shortcuts");
