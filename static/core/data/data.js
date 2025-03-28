@@ -17,16 +17,19 @@ export {dataManager};
 
 
 const getAsAbsolute = (x, max) => {
+    let val;
     if (typeof x == 'string' || x instanceof String) {
         // treat as a percentage of total nodes
         if (!x.includes("%")) throw Error("Value is string but not percentage");
 
         const proportion = parseFloat(x)/100;
         
-        return Math.round(max * proportion);
+        val =  Math.round(max * proportion);
     } else {
-        return x;
+        val =  x;
     }
+
+    return Math.max(0, Math.min(val, max));
 };
 
 
@@ -108,7 +111,13 @@ const dataManager = {
         if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
         if (resolutionMode != ResolutionModes.FULL) {
-            dynamicTree = new DynamicTree(resolutionMode, opts.treeletDepth, dataSource.extentBox);
+            dynamicTree = new DynamicTree(
+                resolutionMode, 
+                opts.treeletDepth, 
+                dataSource.extentBox,
+                opts.nodeItersPerFrame,
+                opts.nodeHysteresis
+            );
         }
 
         const newData = new Data(0, dataSource, dynamicTree);
@@ -121,7 +130,7 @@ const dataManager = {
         if (opts.dynamicMesh) {
             try {
                 // get the absolute sizes of node and mesh caches if supplied as percentages
-                const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.leafCount * 2);
+                const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount);
                 const absMeshCount = getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount);
 
                 this.createDynamicMeshCache(
@@ -149,7 +158,7 @@ const dataManager = {
     createDynamicTree: function(dataObj, dynamicNodeCount) {
         if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
-        if (dynamicNodeCount >= dataObj.data.treeNodeCount) {
+        if (dynamicNodeCount > dataObj.data.treeNodeCount) {
             console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
             return;
         }
@@ -165,7 +174,7 @@ const dataManager = {
         }
         
         // the total number of leaves of a binary tree of node count n is n/2
-        if (dynamicLeafCount >= fullLeafCount) {
+        if (dynamicLeafCount > fullLeafCount) {
             console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
             return;
         }

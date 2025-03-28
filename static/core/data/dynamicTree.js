@@ -109,11 +109,16 @@ export class DynamicTree {
 
     #extentBox;
 
-    constructor(resolutionMode, treeletDepth, extentBox) {
+    #nodeUpdateIters;
+    #hysteresis;
+
+    constructor(resolutionMode, treeletDepth, extentBox, nodeIters=1, hysteresis=true) {
         this.resolutionMode = resolutionMode;
         this.treeletDepth = treeletDepth;
         this.usesTreelets = treeletDepth > 0;
         this.#extentBox = extentBox;
+        this.#nodeUpdateIters = nodeIters;
+        this.#hysteresis = hysteresis;
     }
 
     // create the buffers used for dynamic data resolution
@@ -363,7 +368,7 @@ export class DynamicTree {
             // can't be split if its a true leaf
             if (currFullNode.rightPtr == 0) continue;
             // can't be split if previously merged
-            if (NodeStates.MERGED == currNode.state) continue;
+            if (this.#hysteresis && NodeStates.MERGED == currNode.state) continue;
 
             // passed all checks
             splitList.push(currNode);
@@ -386,7 +391,7 @@ export class DynamicTree {
             // check if sibling is already in merge list
             if (mergeList.some(x => x.parentPtr == currNode.parentPtr)) continue;
             // can't be merged if previously split
-            if (NodeStates.SPLIT == currNode.state) continue;
+            if (this.#hysteresis && NodeStates.SPLIT == currNode.state) continue;
 
             // passed all checks
             mergeList.push(currNode);
@@ -515,44 +520,26 @@ export class DynamicTree {
             // reset the record of modifications to nodes
             this.nodeCache.syncBuffer("state", tag => {return [NodeStates.NONE]});
         }
-    
-        if (
-            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT || 
-            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
-        ) {
+        
+        // return if no updates should happen
+        if (this.resolutionMode == ResolutionModes.FULL) return;
+
+        
+        // update node cache
+        let nodeModifications = 0
+
+        let leafScores = [];
+        for (let i = 0; i < this.#nodeUpdateIters; i++) {
             // get a list of all nodes in the dynamic node tree with their scores
-            const scores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo, getRangesFuncExt));
+            leafScores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo, getRangesFuncExt));
     
-            if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                if (!this.meshCacheBusy) {
-                    nodeUpdateSW.stop();
-                    
-                    const meshUpdateSW = new StopWatch();
-                    // const meshCacheTimeStart = performance.now();
-                    this.meshCacheBusy = true;
-                    this.meshCache.updateScores(scores);
-                    // update the mesh blocks that are loaded in the cache
-                    this.meshCache.updateLoadedBlocks(
-                        this.nodeCache, 
-                        this.renderNodes,
-                        getMeshBlockFuncExt, 
-                        this.fullNodes, 
-                        scores, 
-                        activeValueNames, 
-                        meshUpdateSW
-                    )
-                    .then(() => {
-                        this.meshCacheBusy = false;
-                        frameInfoStore.add("mesh_update", meshUpdateSW.stop());
-                    });
+            leafScores.sort((a, b) => a.score - b.score);
+            const mergeSplitLists = this.#createMergeSplitLists(leafScores, 20);
 
-
-                    nodeUpdateSW.start();
-                }
-            }
-    
-            scores.sort((a, b) => a.score - b.score);
-            const mergeSplitLists = this.#createMergeSplitLists(scores, 20);
+            nodeModifications += Math.min(
+                mergeSplitLists.merge.length, 
+                mergeSplitLists.split.length
+            );
             
             // update the dynamic buffer contents
             this.#updateDynamicNodeCache(
@@ -561,9 +548,36 @@ export class DynamicTree {
                 mergeSplitLists,
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
             );  
-            
-            frameInfoStore.add("node_update", nodeUpdateSW.stop());
         }
+        
+        frameInfoStore.add("nodes_modified", nodeModifications);
+        frameInfoStore.add("node_update", nodeUpdateSW.stop());
+
+
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT == 0) return;
+        if (this.meshCacheBusy) return;
+        
+        
+        // update the mesh cache
+
+        const meshUpdateSW = new StopWatch();
+        // const meshCacheTimeStart = performance.now();
+        this.meshCacheBusy = true;
+        this.meshCache.updateScores(leafScores);
+        // update the mesh blocks that are loaded in the cache
+        this.meshCache.updateLoadedBlocks(
+            this.nodeCache, 
+            this.renderNodes,
+            getMeshBlockFuncExt, 
+            this.fullNodes, 
+            leafScores, 
+            activeValueNames, 
+            meshUpdateSW
+        )
+        .then(() => {
+            this.meshCacheBusy = false;
+            frameInfoStore.add("mesh_update", meshUpdateSW.stop());
+        });
     }
 
     // concatenate the render nodes and treelet nodes buffers
