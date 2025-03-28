@@ -78,6 +78,10 @@ fn getNodeDepthAtPoint(p : vec3<f32>) -> u32 {
     return 0;
 }
 
+fn getNodeIndexAtPoint(p : vec3<f32>) -> u32 {
+    return 0;
+}
+
 fn getNodeCellCountAtPoint(p : vec3<f32>) -> u32 {
     return 1;
 }
