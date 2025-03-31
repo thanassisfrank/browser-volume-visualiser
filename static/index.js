@@ -375,6 +375,14 @@ async function main() {
                 });
             }
         },
+        "e": {
+            description: "export scores log",
+            f: (e) => {
+                const view = viewManager.getFirst();
+                const dynamicTree = view.data.dynamicTree;
+                dynamicTree.exportScoreLog();
+            }
+        },
         "f": {
             description: "Export frame times",
             f: function (e) {
@@ -418,7 +426,15 @@ async function main() {
             description: "Toggle dynamic tree updates",
             f: (e) => {
                 const currView = Object.values(viewManager.views)[0];
-                currView.updateDynamicTree = !currView.updateDynamicTree;
+                if (currView.updateDynamicTree) {
+                    // turn update off
+                    currView.updateDynamicTree = false;
+                } else {
+                    // turn update on
+                    currView.updateDynamicTree = true;
+                    currView.data.dynamicTree.clearScoreLog();
+                }
+                // currView.updateDynamicTree = !currView.updateDynamicTree;
             }
         },
         "r": {

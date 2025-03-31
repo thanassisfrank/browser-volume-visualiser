@@ -37,7 +37,7 @@ export class MeshCache {
     }
 
     #shouldScoreBeLoaded(score) {
-        const worstScore = this.#cache.getWorstScore().val;
+        const worstScore = this.#cache.getWorstScore();
         // score too low, dont load
         return worstScore < score
     }

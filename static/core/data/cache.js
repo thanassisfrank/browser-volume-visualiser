@@ -218,34 +218,28 @@ export class ScoredCacheManager extends EmptyCacheManager {
     #scores;
     #worstScore;
     #bestScore;
-    #reversed;
 
     #currentWorstScore = {
         valid: false
     };
 
-    constructor(cache, reversed = false) {
+    // the indices of the slots in descending score order
+    #sortedIndices;
+
+    constructor(cache) {
         super(cache);
         this.#scores = Array(cache.slotCount);
-        this.#reversed = reversed;
-        if (!reversed) {
-            this.#worstScore = Number.NEGATIVE_INFINITY;
-            this.#bestScore = Number.POSITIVE_INFINITY;
-        } else {
-            this.#worstScore = Number.POSITIVE_INFINITY;
-            this.#bestScore = Number.NEGATIVE_INFINITY;
-
+        this.#sortedIndices = Array(cache.slotCount);
+        for (let i = 0; i < this.#sortedIndices.length; i++) {
+            this.#sortedIndices[i] = i;
         }
+
+        this.#worstScore = Number.NEGATIVE_INFINITY;
+        this.#bestScore = Number.POSITIVE_INFINITY;
     }
 
     get directory() {
         return this.cache.directory;
-    }
-
-    // returns true is a is a better score that b
-    better(a, b) {
-        if (!this.#reversed) return a > b;
-        return a < b;
     }
 
     syncScores(getScoresFunc) {
@@ -257,47 +251,57 @@ export class ScoredCacheManager extends EmptyCacheManager {
                 this.#scores[i] = getScoresFunc(this.cache.tags[i])
             }
         }
-        this.#currentWorstScore.valid = false;
+
+        this.#getSortedindices();
+    }
+
+    // recalculate the correct order of indices
+    #getSortedindices() {
+        // sort in descending order
+        // this.#sortedIndices.sort((a, b) => this.#scores[b] - this.#scores[a])
+
+        for (let i = 0; i < this.#sortedIndices.length; i++) {
+            let highestVal = this.#worstScore;
+            let highestValIndex = i;
+            // find the next highest val
+            for (let j = i; j < this.#sortedIndices.length; j++) {
+                const thisVal = this.#scores[this.#sortedIndices[j]];
+                if (thisVal > highestVal) {
+                    highestVal = thisVal;
+                    highestValIndex = j;
+                }
+            }
+            // swap values in i and j
+            const temp = this.#sortedIndices[i];
+            this.#sortedIndices[i] = this.#sortedIndices[highestValIndex]; 
+            this.#sortedIndices[highestValIndex] = temp;
+        }
     }
 
     // find what the worst score is in the cache at the moment
     // used externally to decide whether to write to cache
     // used internally to decide where to write to cache
     getWorstScore() {
-        const worstScoreFound = {
-            val: this.#bestScore,
-            index: 0
-        };
-
-        for (let i = 0; i < this.#scores.length; i++) {
-            if (this.better(this.#scores[i], worstScoreFound.val)) continue
-            // found a new worse score
-            worstScoreFound.val = this.#scores[i];
-            worstScoreFound.index = i;
-
-            // check if equal to the worst possible score
-            if (this.#scores[i] == this.#worstScore) break;
-        }
-
-        this.#currentWorstScore.val = worstScoreFound.val;
-        this.#currentWorstScore.index = worstScoreFound.index;
-        this.#currentWorstScore.valid = true;
-
-        return worstScoreFound;
+        const worstIndex = this.#sortedIndices.at(-1);
+        return this.#scores[worstIndex];
     }
 
     // insert new block to replace
     insertNewBlock(newScore, newTag, newData = {}) {
-        let newSlot;
-        if (!this.#currentWorstScore.valid) this.getWorstScore();
-        newSlot = this.#currentWorstScore.index;
+        // get the index of the block with the current worst score
+        // removes its entry from the sorted list
+        let newSlot = this.#sortedIndices.pop();
+
+        // insert the block back into the sorted list at the correct location
+        let spliceIndex = 0;
+        while (spliceIndex < this.#sortedIndices.length && this.#sortedIndices[spliceIndex] > newScore) spliceIndex++;
+        this.#sortedIndices.splice(spliceIndex, 0, newSlot);
 
         // update the cache
         return this.#insertNewBlockAt(newSlot, newScore, newTag, newData);
     }
 
     #insertNewBlockAt(newSlot, newScore, newTag, newData = {}) {
-        this.#currentWorstScore.valid = false;
         if (undefined == newSlot) return;
         if (newSlot >= this.slotCount || newSlot < 0) return;
         // update score
