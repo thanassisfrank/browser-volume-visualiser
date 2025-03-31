@@ -228,8 +228,8 @@ export class ScoredCacheManager extends EmptyCacheManager {
 
     constructor(cache) {
         super(cache);
-        this.#scores = Array(cache.slotCount);
-        this.#sortedIndices = Array(cache.slotCount);
+        this.#scores = new Float32Array(cache.slotCount);
+        this.#sortedIndices = new Float32Array(cache.slotCount);
         for (let i = 0; i < this.#sortedIndices.length; i++) {
             this.#sortedIndices[i] = i;
         }
@@ -258,24 +258,7 @@ export class ScoredCacheManager extends EmptyCacheManager {
     // recalculate the correct order of indices
     #getSortedindices() {
         // sort in descending order
-        // this.#sortedIndices.sort((a, b) => this.#scores[b] - this.#scores[a])
-
-        for (let i = 0; i < this.#sortedIndices.length; i++) {
-            let highestVal = this.#worstScore;
-            let highestValIndex = i;
-            // find the next highest val
-            for (let j = i; j < this.#sortedIndices.length; j++) {
-                const thisVal = this.#scores[this.#sortedIndices[j]];
-                if (thisVal > highestVal) {
-                    highestVal = thisVal;
-                    highestValIndex = j;
-                }
-            }
-            // swap values in i and j
-            const temp = this.#sortedIndices[i];
-            this.#sortedIndices[i] = this.#sortedIndices[highestValIndex]; 
-            this.#sortedIndices[highestValIndex] = temp;
-        }
+        this.#sortedIndices.sort((a, b) => this.#scores[b] - this.#scores[a])
     }
 
     // find what the worst score is in the cache at the moment
@@ -290,13 +273,8 @@ export class ScoredCacheManager extends EmptyCacheManager {
     insertNewBlock(newScore, newTag, newData = {}) {
         // get the index of the block with the current worst score
         // removes its entry from the sorted list
-        let newSlot = this.#sortedIndices.pop();
-
-        // insert the block back into the sorted list at the correct location
-        let spliceIndex = 0;
-        while (spliceIndex < this.#sortedIndices.length && this.#sortedIndices[spliceIndex] > newScore) spliceIndex++;
-        this.#sortedIndices.splice(spliceIndex, 0, newSlot);
-
+        let newSlot = this.#sortedIndices.at(-1);
+        
         // update the cache
         return this.#insertNewBlockAt(newSlot, newScore, newTag, newData);
     }
@@ -304,8 +282,10 @@ export class ScoredCacheManager extends EmptyCacheManager {
     #insertNewBlockAt(newSlot, newScore, newTag, newData = {}) {
         if (undefined == newSlot) return;
         if (newSlot >= this.slotCount || newSlot < 0) return;
-        // update score
+        // update score in scores record
         this.#scores[newSlot] = newScore;
+        // re-sort scores
+        this.#getSortedindices();
         // update data
         return this.cache.insertNewBlockAt(newSlot, newTag, newData);
     }
