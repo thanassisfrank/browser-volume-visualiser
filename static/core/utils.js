@@ -621,7 +621,7 @@ class FrameInfoStore {
 }
 
 // create singleton
-export const frameInfoStore = new FrameInfoStore("frameInfo.csv", 400);
+export const frameInfoStore = new FrameInfoStore("frameInfo.csv", 2000);
 
 export class StopWatch {
     #elapsed;
