@@ -306,6 +306,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
 
     #socket;
 
+    #maxBlocksPerRequest = 1000;
+
 
 
     constructor(name, path, meshPath) {
@@ -395,11 +397,24 @@ export class PartialCGNSDataSource extends EmptyDataSource {
 
     // takes the monolithic buffer returned by the server and splits it
     // returns an object with geometry and scala buffers broken out
-    parseRespBuffer(buff, indices, geometry, scalarNames) {
-        let result = {};
-        for (let i = 0; i < indices.length; i++) {
-            result[indices[i]] = {};
+    parseRespBuffer(buff, parsed, indices, geometry, scalarNames) {
+        let bytesExpected = 0;
+        if (geometry) {
+            bytesExpected += indices.length * this.maxVertCount * 3 * 4;
+            bytesExpected += indices.length * this.maxCellCount * this.vertsPerCell * 4;
         }
+        bytesExpected += indices.length * this.maxVertCount * scalarNames.length * 4;
+
+        const bytesDiff = bytesExpected - buff.byteLength;
+        if (bytesDiff !== 0) {
+            throw Error("Could not extract data from received buffer; Bytes Difference: " + bytesDiff);
+        }
+
+
+        for (let i = 0; i < indices.length; i++) {
+            parsed[indices[i]] = {};
+        }
+        // debugger;
         
         let byteOffset = 0;
         const extractSection = (name, type, elementCount) => {
@@ -412,7 +427,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
             }
 
             for (let i = 0; i < indices.length; i++) {
-                result[indices[i]][name] = new type(buff, byteOffset, elementCount);
+                parsed[indices[i]][name] = new type(buff, byteOffset, elementCount);
                 
                 byteOffset += elementCount * type.BYTES_PER_ELEMENT;
             }
@@ -429,7 +444,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
             extractSection(scalarNames[i], Float32Array, this.maxVertCount);
         }
 
-        return result;
+        return parsed;
     }
 
     // requests the mesh block from the server with this node index
@@ -437,25 +452,30 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     // can return the geometry (vert positions, connectivity)
     // returns the vert-centred data with the supplied identifiers
     async getMeshBlocks(indices, geometry, scalarNames) {
-        // convert the node indices into leaf indices
-        // create the json request
-        const request = {
-            mode: "meshblocks",
-            path: this.meshPath,
-            blocks: indices,
-            geometry: !!geometry,
-            scalars: scalarNames ?? []
+        // debugger;
+        let parsed = {};
+        const reqCount = Math.ceil(indices.length/this.#maxBlocksPerRequest);
+        for (let i = 0; i < reqCount; i++) {
+            const thisIndices = indices.slice(i * this.#maxBlocksPerRequest, (i + 1) * this.#maxBlocksPerRequest);
+            // convert the node indices into leaf indices
+            // create the json request
+            const request = {
+                mode: "meshblocks",
+                path: this.meshPath,
+                blocks: thisIndices,
+                geometry: !!geometry,
+                scalars: scalarNames ?? []
+            }
+    
+            // send the request
+            const resp = await this.#socket.fetch(JSON.stringify(request));
+            const buff = await resp.arrayBuffer();
+            // console.log(buff);
+
+            this.parseRespBuffer(buff, parsed, thisIndices, geometry, scalarNames);
         }
 
-        // send the request
-        const resp = await this.#socket.fetch(JSON.stringify(request));
-        const buff = await resp.arrayBuffer();
-        // console.log(buff);
-
         // pull out the different buffers
-        const parsed = this.parseRespBuffer(buff, indices, geometry, scalarNames);
-
-        // console.log(parsed);
 
         return parsed;
     }
