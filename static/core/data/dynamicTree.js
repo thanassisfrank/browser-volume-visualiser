@@ -563,7 +563,9 @@ export class DynamicTree {
         const meshUpdateSW = new StopWatch();
         // const meshCacheTimeStart = performance.now();
         this.meshCacheBusy = true;
+        const meshUpdateScoresSW = new StopWatch();
         this.meshCache.updateScores(leafScores);
+        frameInfoStore.add("mesh_update_scores", meshUpdateScoresSW.stop());
         // update the mesh blocks that are loaded in the cache
         this.meshCache.updateLoadedBlocks(
             this.nodeCache, 

@@ -222,13 +222,17 @@ export class MeshCache {
             frameInfoStore.add("new_blocks", nodesToRequest.size);
             frameInfoStore.add("server", reqSW.stop());
             if (sw) sw.start();
+
+            const loadMeshesSW = new StopWatch();
             if (this.#treeletDepth > 0) {
                 this.#loadNodeMeshesTreelet(nodesToRequest, meshData, writeNodesCount);
             } else {
                 this.#loadNodeMeshes(nodesToRequest, meshData);
             }
+            frameInfoStore.add("load_meshes", loadMeshesSW.stop());
         }
         
+        const linkMeshesSW = new StopWatch();
         if (nodesToLink.size > 0) {
             if (this.#treeletDepth > 0) {
                 this.#linkNodeMeshesTreelet(nodesToLink, nodeCache, writeNodes, renderNodes != undefined);
@@ -236,6 +240,7 @@ export class MeshCache {
                 this.#linkNodeMeshes(nodesToLink, nodeCache, writeNodes, renderNodes != undefined);
             }
         }
+        frameInfoStore.add("link_meshes", linkMeshesSW.stop());
     }
 
     updateScores(scores) {
