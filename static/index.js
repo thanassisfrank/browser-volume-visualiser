@@ -429,10 +429,13 @@ async function main() {
                 if (currView.updateDynamicTree) {
                     // turn update off
                     currView.updateDynamicTree = false;
+                    // stop streaming data to ray marcher
+                    renderEngine.rayMarcher.noDataUpdates = true;
                 } else {
                     // turn update on
                     currView.updateDynamicTree = true;
                     currView.data.dynamicTree.clearScoreLog();
+                    renderEngine.rayMarcher.noDataUpdates = false;
                 }
                 // currView.updateDynamicTree = !currView.updateDynamicTree;
             }
@@ -440,7 +443,7 @@ async function main() {
         "r": {
             description: "Move camera to initial position",
             f: function (e) {
-                camera.moveToStart();
+                viewManager.getFirst().camera.moveToStart();
             }
         },
         "s": {

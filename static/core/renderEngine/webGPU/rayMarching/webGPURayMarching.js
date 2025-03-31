@@ -48,6 +48,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     this.timestampQuerySet
 
+    this.noDataUpdates = false;
+
 
     // materials used as the defaults for the ray-marched iso-surface
     this.materials = {
@@ -57,8 +59,8 @@ export function WebGPURayMarchingEngine(webGPUBase) {
             shininess: 1000
         },
         backMaterial: {
-            diffuseCol: [0.2, 0.2, 0.7],
-            specularCol: [0.4, 0.4, 0.9],
+            diffuseCol: [0.5, 0.2, 0.2],
+            specularCol: [0.4, 0.4, 0.4],
             shininess: 1000
         }
     };
@@ -710,6 +712,9 @@ export function WebGPURayMarchingEngine(webGPUBase) {
 
     // updates the renderables for a data object
     this.updateDataObj = async function(dataObj, updateObj) {
+
+        if (this.noDataUpdates) return;
+
         // update the data renderable first 
         let dataRenderable;
         let valueBufferCreated = false;
