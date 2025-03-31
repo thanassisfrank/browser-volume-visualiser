@@ -251,10 +251,52 @@
 		"path": "data/yf17_hdf5.cgns",
 		"type": "cgns"
 	},
+	"yf17_4096": {
+		"name": "YF17p 4096",
+		"path": "data/local/yf17_4096/_partial.cgns",
+		"meshPath": "data/local/yf17_4096/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"yf17_2048": {
+		"name": "YF17p 2048",
+		"path": "data/local/yf17_2048/_partial.cgns",
+		"meshPath": "data/local/yf17_2048/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
 	"yf17_1024": {
-		"name": "YF17p",
-		"path": "data/yf17_partial.cgns",
-		"meshPath": "data/yf17_block_mesh.cgns", 
+		"name": "YF17p 1024",
+		"path": "data/local/yf17_1024/_partial.cgns",
+		"meshPath": "data/local/yf17_1024/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"yf17_512": {
+		"name": "YF17p 512",
+		"path": "data/local/yf17_512/_partial.cgns",
+		"meshPath": "data/local/yf17_512/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"yf17_256": {
+		"name": "YF17p 256",
+		"path": "data/local/yf17_256/_partial.cgns",
+		"meshPath": "data/local/yf17_256/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"yf17_128": {
+		"name": "YF17p 128",
+		"path": "data/local/yf17_128/_partial.cgns",
+		"meshPath": "data/local/yf17_128/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"turb_1024": {
+		"name": "Turb p 1024",
+		"path": "data/local/turb_1024/_partial.cgns",
+		"meshPath": "data/local/turb_1024/_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
+	"mag_4096": {
+		"name": "Magnetic p 4096",
+		"path": "data/local/mag_4096/_partial.cgns",
+		"meshPath": "data/local/mag_4096/_block_mesh.cgns", 
 		"type": "cgns-partial"
 	},
 	"partial_test": {

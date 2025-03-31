@@ -3,6 +3,10 @@ import { downloadCanvas, frameInfoStore, pause } from "./core/utils.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 import { VecMath } from "./core/VecMath.js";
 
+
+let globalRender;
+
+
 const BENCHMARKS = {};
 
 BENCHMARKS["test"] = {
@@ -44,6 +48,144 @@ BENCHMARKS["points"] = {
     }
 };
 
+BENCHMARKS["pointsTurb"] = {
+    duration: 30000, // benchmark suration in ms
+    setState: (t, view) => {
+        let newEye;
+        let newTarg;
+        if (t < 10000) {
+            newEye = [270, 177, 190];
+            newTarg = [243, 167, 170];
+        } else if (t < 20000) {
+            newEye = [7, 303, 365];
+            newTarg = [56, 218, 264];
+        } else if (t < 25000) {
+            newEye = [-17, 138, 12.5];
+            newTarg = [26, 132, 29];
+        } else {
+            newEye = [180, 123, 152];
+            newTarg = [136, 124, 136];
+        }
+        const currPos = view.camera.getEyePos();
+        if (VecMath.magnitude(VecMath.vecMinus(newEye, currPos)) > 0.1) {
+            view.camera.setEyePos(newEye);
+            view.camera.setTarget(newTarg);
+        }
+    }
+};
+
+BENCHMARKS["pointsMag"] = {
+    duration: 20000, // benchmark suration in ms
+    screenshots: [ // timestamps to take screenshots in ms since start
+        1000,
+        4500
+    ],
+    setState: (t, view) => {
+        let newEye;
+        if (t < 5000) {
+            newEye = [300, 300, 800];
+        } else if (t < 10000) {
+            newEye = [230, 265, 331];
+        } else if (t < 15000) {
+            newEye = [-25, 270, 162];
+        } else {
+            newEye = [202, -16, 198];
+        }
+        const cameraPos = newEye;
+        const currPos = view.camera.getEyePos();
+        if (VecMath.magnitude(VecMath.vecMinus(currPos, cameraPos)) > 0.1) {
+            view.camera.setEyePos(cameraPos);
+        }
+    }
+}
+
+BENCHMARKS["pointsMagSlow"] = {
+    duration: 40000, // benchmark suration in ms
+    screenshots: [ // timestamps to take screenshots in ms since start
+        1000,
+        4500
+    ],
+    setState: (t, view) => {
+        let newEye;
+        if (t < 20000) {
+            newEye = [300, 300, 800];
+        } else {
+            newEye = [-25, 270, 162];
+        }
+        const cameraPos = newEye;
+        const currPos = view.camera.getEyePos();
+        if (VecMath.magnitude(VecMath.vecMinus(currPos, cameraPos)) > 0.1) {
+            view.camera.setEyePos(cameraPos);
+        }
+    }
+}
+
+BENCHMARKS["magPicTeaser"] = {
+    duration: 125_000,
+    screenshots: [118_000, 119_000, 123_000],
+    setState: (t, view) => {
+        if (t < 1000) {
+            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", false);
+        }
+
+
+        if (t < 116_000) {
+            view.camera.setEyePos([270, -35, 327]);
+            view.camera.setTarget([236, 42, 273]);
+        }
+
+        if (t > 118_500) {
+            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
+            globalRender.rayMarcher.noDataUpdates = true
+        } else {
+            globalRender.rayMarcher.noDataUpdates = false
+        }
+
+        // move to far
+        if (t > 120_000 && t < 121_000) {
+            view.camera.setEyePos([288, 269, 807]);
+            view.camera.setTarget([249, 206, 233]);
+        }
+    }
+}
+
+BENCHMARKS["yf17Pic"] = {
+    duration: 30_000,
+    screenshots: [29_000],
+    setState: (t, view) => {
+        // move to the screenshot place
+        if (t < 25_000) {
+            view.camera.setEyePos([-77, 113, 81]);
+            view.camera.setTarget([-13, 38, 15]);
+        }
+    }
+}
+
+BENCHMARKS["turbPic"] = {
+    duration: 120_000,
+    screenshots: [119_000],
+    setState: (t, view) => {
+        // move to the screenshot place
+        if (t < 1_000) {
+            view.camera.setEyePos([174, 249, 168]);
+            view.camera.setTarget([118, 190, 123]);
+        } else if (t < 116_000) {
+            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
+        }
+    }
+}
+
+BENCHMARKS["magPic"] = {
+    duration: 120_000,
+    screenshots: [119_000],
+    setState: (t, view) => {
+        // move to the screenshot place
+        if (t < 25_000) {
+            view.camera.setEyePos([-77, 113, 81]);
+            view.camera.setTarget([-13, 38, 15]);
+        }
+    }
+}
 
 // Class that handles automatic benchmarking of the program
 // When started, takes control of the view, setting its state
@@ -69,7 +211,7 @@ export class Benchmarker {
         this.#startTime = t;
         this.#frametimeStore.reset();
         this.#currBenchmark = benchmark;
-        this.#screenShotQueue = benchmark.screenshots.slice().sort((a, b) => a - b)
+        this.#screenShotQueue = benchmark.screenshots?.slice().sort((a, b) => a - b) ?? [];
         this.#noImages = noImages;
         console.log(`**BENCHMARK START FOR ${this.#currBenchmark.duration}MS**`)
         
@@ -116,10 +258,13 @@ function viewOptsFromJob(job) {
             dynamicMeshBlockCount: job.meshes ?? 100,
             cornerValType: job.cornerValType ?? CornerValTypes.SAMPLE,
             treeletDepth: job.treelet ?? 4,
+            // node update options
+            nodeItersPerFrame: job.nodeIters ?? 1,
+            nodeHysteresis: job.nodeHyst ?? true
         },
         renderOpts: {
             DATA_RAY_VOLUME: true,
-            BOUNDING_WIREFRAME: true,
+            BOUNDING_WIREFRAME: false,
         }
     };
 }
@@ -150,6 +295,9 @@ export class JobRunner {
         this.#deleteViewFn = deleteViewFn;
 
         this.#renderEngine = renderEngine;
+        //TEMP:
+        globalRender = renderEngine;
+
         this.#pauseMS = pauseMS;
 
         // expand all of the jobs into individual tasks
@@ -206,14 +354,21 @@ export class JobRunner {
         jobNameParts.push(viewOpts.dataOpts.dynamicNodeCount);
         jobNameParts.push(viewOpts.dataOpts.dynamicMeshBlockCount);
         jobNameParts.push(viewOpts.dataOpts.treeletDepth);
+        jobNameParts.push(viewOpts.dataOpts.nodeItersPerFrame);
+        jobNameParts.push(viewOpts.dataOpts.nodeHysteresis);
         jobNameParts.push(benchmarkID);
 
         const jobName = jobNameParts.join("_");
 
+
+
         // create view
+        this.#renderEngine.rayMarcher.noDataUpdates = false;
         this.#currView = await this.#createViewFn(viewOpts);
+        this.#currView.camera.setEyePos(this.#currView.data.getMidPoint());
 
         await pause(this.#pauseMS);
+        this.#renderEngine.rayMarcher.noDataUpdates = true;
         
         // set the iso data array
         await this.#currView.updateIsoSurfaceSrc({
@@ -223,6 +378,11 @@ export class JobRunner {
         });
         // set the iso-value
         this.#currView.updateThreshold(job.isoVal ?? 0);
+
+        // set global render options
+        this.#renderEngine.rayMarcher.setPassFlag("contCornerVals", job.contCorn ?? false);
+        this.#renderEngine.rayMarcher.setPassFlag("backStep", job.backStep ?? true);
+        // initialise camera to centre
         
         // run benchmark
         this.#currBenchmarker = new Benchmarker(
@@ -233,7 +393,10 @@ export class JobRunner {
         );
 
         // pause to allow system to settle
+        this.#renderEngine.rayMarcher.noDataUpdates = false;
         await pause(this.#pauseMS);
+        this.#renderEngine.rayMarcher.noDataUpdates = job.noGPUUpdates ?? false;
+        this.#renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
         this.#currBenchmarker.start(performance.now(), BENCHMARKS[benchmarkID], job.noImages);
     }
 
