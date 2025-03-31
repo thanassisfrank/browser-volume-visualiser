@@ -108,8 +108,11 @@ const dataManager = {
         
         let resolutionMode = ResolutionModes.FULL;
         if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-        if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
-
+        if (opts.dynamicMesh || dataSource.constructor === PartialCGNSDataSource) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+        
+        // debugger;
+        // if the resolution mode is not full or it is a partial cgns file, needs a dynamic tree
+        
         if (resolutionMode != ResolutionModes.FULL) {
             dynamicTree = new DynamicTree(
                 resolutionMode, 
@@ -125,9 +128,10 @@ const dataManager = {
         console.log(config);
         console.log(opts);
 
+        newData.noUpdates = !opts.dynamicNodes && !opts.dynamicMesh;
         
-        // create dynamic mesh information
-        if (opts.dynamicMesh) {
+        // create dynamic mesh cache information if needs dynamic mesh or is partial cgns
+        if (resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             try {
                 // get the absolute sizes of node and mesh caches if supplied as percentages
                 const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount);
@@ -139,7 +143,7 @@ const dataManager = {
                     dataSource.leafCount, 
                     absMeshCount,
                 );
-                this.createDynamicTree(newData, absNodeCount);
+                this.createDynamicTree(newData, absNodeCount, newData.noUpdates);
                 newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
                 console.log("Created dynamic mesh dataset");
             } catch (e) {
@@ -150,20 +154,27 @@ const dataManager = {
         // create dynamic tree (nodes)
         if (opts.dynamicNodes) newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
 
+
+        // if it is a partial cgns and not dynamic, do an update here to get mesh cache information
+        await newData.updateDynamicTree({changed: true}, {changed: true}, [], true);
+
         return newData;
     },
 
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
-    createDynamicTree: function(dataObj, dynamicNodeCount) {
+    createDynamicTree: function(dataObj, dynamicNodeCount, depthFirst=false) {
         if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
         if (dynamicNodeCount > dataObj.data.treeNodeCount) {
-            console.warn("Attempted to create dynamic tree that is too large, creating full tree instead");
-            return;
+            console.warn("Attempted to create dynamic tree that is too large, clipping to max nodes");
         }
 
-        dataObj.dynamicTree.setFullNodes(dataObj.data.treeNodes, dynamicNodeCount);
+        dataObj.dynamicTree.setFullNodes(
+            dataObj.data.treeNodes, 
+            Math.min(dataObj.data.treeNodeCount, dynamicNodeCount),
+            depthFirst
+        );
     },
 
     // create dynamic mesh buffers that contain a varying subset of the leaves cell data
@@ -175,11 +186,13 @@ const dataManager = {
         
         // the total number of leaves of a binary tree of node count n is n/2
         if (dynamicLeafCount > fullLeafCount) {
-            console.warn("Attempted to create dynamic mesh data that is too large, using full cell data instead");
-            return;
+            console.warn("Attempted to create dynamic mesh data that is too large, clipping to max");
         }
 
-        const meshCache = dataObj.dynamicTree.createDynamicMeshCache(blockSizes, dynamicLeafCount);
+        const meshCache = dataObj.dynamicTree.createDynamicMeshCache(
+            blockSizes, 
+            Math.min(dynamicLeafCount, fullLeafCount)
+        );
 
         const buffers = meshCache.getBuffers();
         dataObj.data.dynamicPositions = buffers.positions;
@@ -306,8 +319,7 @@ class Data extends SceneObject {
     // returns either the correct node buffer given resolution mode
     getNodeBuffer() {
         if (
-            this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT || 
-            this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+            this.resolutionMode !== ResolutionModes.FULL || this.dataSource.constructor === PartialCGNSDataSource
         ) {
             // get the node buffer from the dynamic tree
             return this.dynamicTree.getNodeBuffer();
@@ -318,7 +330,7 @@ class Data extends SceneObject {
     }
 
     getTreeCells() {
-        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT || this.dataSource.constructor === PartialCGNSDataSource) {
             // dynamic mesh with treelets and dynamic nodes
             return this.dynamicTree.getTreeCells();
         }
@@ -359,7 +371,7 @@ class Data extends SceneObject {
         }
     }
 
-    updateDynamicTree(camInfo, isoInfo, activeValueSlots) {
+    async updateDynamicTree(camInfo, isoInfo, activeValueSlots, noNodeUpdate=false) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
@@ -371,13 +383,14 @@ class Data extends SceneObject {
             return this.data.values?.[this.valueDirectory?.[valueName]]?.ranges;
         }
         // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-        this.dynamicTree.update(
+        await this.dynamicTree.update(
             camInfo,
             isoInfo,
             getCornerVals,
             getRangeVals,
             this.getNodeBlockRequestFunc().bind(this), 
             activeValueSlots.map(i => this.data.values[i].name),
+            noNodeUpdate
         );
     }
 
@@ -425,7 +438,7 @@ class Data extends SceneObject {
 
         this.valueDirectory[desc.name] = newSlotNum;
 
-        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
+        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode || this.dataSource.constructor === PartialCGNSDataSource) {
             // dynamic cells, need to 
             // create new entry in the dynamic mesh cache object
             await this.createDynamicBlockValues(newSlotNum);
@@ -434,7 +447,7 @@ class Data extends SceneObject {
             // not dynamic cells, need to have the whole scalar data set on hand here
         }
         // initialise the dynamic corner values buffer to match dynamic nodes
-        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
+        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode || this.dataSource.constructor === PartialCGNSDataSource) {
             this.createDynamicCornerValues(newSlotNum);
             console.log("created dynamic corners");
         } else {

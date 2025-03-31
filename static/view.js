@@ -363,6 +363,8 @@ function View(id, camera, data, renderMode) {
             case "YF17":
                 // camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
                 break;
+            case "Magnetic p 4096":
+                camera.setStartPositionAbs([236, 42, 273], [283, -43, 327]);
         }
 
         camera.moveToStart();
@@ -441,6 +443,7 @@ function View(id, camera, data, renderMode) {
         }
         this.updateSlider(limits);
         if (desc.name == "Pressure") this.updateThreshold(101353.322975);
+        if (desc.name == "Default" && this.data.dataName == "Magnetic p 4096") this.updateThreshold(1.36);
         // change the source
         this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits, slotNum};
     };
@@ -516,13 +519,13 @@ function View(id, camera, data, renderMode) {
         const camCoords = this.sceneGraph.activeCamera.getEyePos();
 
         // need to find the camera position in world space
-        if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
+        if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree && !this.data.noUpdates) {
             this.data.updateDynamicTree(
                 {
                     changed: cameraChanged,
                     pos: camCoords,
                     focusPos: focusPoint,
-                    distToFoc: VecMath.magnitude(VecMath.vecMinus(focusPoint, camCoords)),
+                    camToFocus: VecMath.magnitude(VecMath.vecMinus(focusPoint, camCoords)),
                     mat: this.sceneGraph.activeCamera.cameraMat
                 },
                 {

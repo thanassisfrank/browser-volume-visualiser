@@ -71,6 +71,8 @@ const pointInsideFrustrum = (x, y, z, mat) => {
 // high score -> too big -> split
 // low score -> too small -> merge
 const calcBoxScore = (box, camInfo) => {
+    let score = 1;
+
     // check if box is inside the view frustrum
     const mid = [
         (box.min[0] + box.max[0]) * 0.5,
@@ -89,8 +91,13 @@ const calcBoxScore = (box, camInfo) => {
         pointInsideFrustrum(box.max[0], box.max[1], box.max[2], camInfo.mat) == 0
     ) return 0;
 
-    const distToCam =  VecMath.magnitude(VecMath.vecMinus(camInfo.pos, mid));
-    // if (distToCam > 2*camInfo.distToFoc) return 0;
+    const distToCam = VecMath.magnitude(VecMath.vecMinus(camInfo.pos, mid));
+    // const distToFoc = VecMath.magnitude(VecMath.vecMinus(camInfo.focusPos, mid));
+
+    // if (distToFoc < camInfo.camToFocus/4) {
+    //     score *= 2;
+    // }
+    
     // estimate box effective pixel area
     const lMax = Math.abs(Math.max(...VecMath.vecMinus(box.max, box.min)));
     return (lMax/distToCam)**2;
@@ -114,11 +121,15 @@ export class DynamicTree {
 
     // max number of nodes to attempt to merge/split in one iteration
     #modifyListLength = 20;
+    #modifyListLengthFact = 0.005;
 
     #updating = false;
+    #meshCacheBusy = false;
 
     #nodeUpdateIters;
     #hysteresis;
+
+    #buffersChanged = true;
 
     constructor(resolutionMode, treeletDepth, extentBox, nodeIters=1, hysteresis=true) {
         this.resolutionMode = resolutionMode;
@@ -131,9 +142,9 @@ export class DynamicTree {
 
     // create the buffers used for dynamic data resolution
     // fills dynamic nodes from full nodes breadth first
-    #createDynamicNodeCache(fullNodes, maxNodes) {
+    #createDynamicNodeCache(fullNodes, maxNodes, depthFirst=false) {
         this.fullNodes = fullNodes
-        this.#modifyListLength = maxNodes * 0.1;
+        this.#modifyListLength = maxNodes * this.#modifyListLengthFact;
         // set up the cache object for the dynamic nodes
         this.nodeCache = new AssociativeCache(maxNodes);
         this.nodeCache.createBuffer("state", Uint8Array, 1);
@@ -197,8 +208,13 @@ export class DynamicTree {
             });
             
             // check if left and right have children
-            if (leftNode.rightPtr != 0) nodePtrs.unshift({full: leftNode.thisPtr, dynamic: leftPtr});
-            if (rightNode.rightPtr != 0) nodePtrs.unshift({full: rightNode.thisPtr, dynamic: rightPtr});
+            if (depthFirst) {
+                if (leftNode.rightPtr != 0) nodePtrs.push({full: leftNode.thisPtr, dynamic: leftPtr});
+                if (rightNode.rightPtr != 0) nodePtrs.push({full: rightNode.thisPtr, dynamic: rightPtr});
+            } else {
+                if (leftNode.rightPtr != 0) nodePtrs.unshift({full: leftNode.thisPtr, dynamic: leftPtr});
+                if (rightNode.rightPtr != 0) nodePtrs.unshift({full: rightNode.thisPtr, dynamic: rightPtr});
+            }
         }
 
         return this.nodeCache;
@@ -238,8 +254,8 @@ export class DynamicTree {
         return renderNodes;
     }
 
-    setFullNodes(fullNodes, dynamicNodeCount) {
-        this.#createDynamicNodeCache(fullNodes, dynamicNodeCount);
+    setFullNodes(fullNodes, dynamicNodeCount, depthFirst = false) {
+        this.#createDynamicNodeCache(fullNodes, dynamicNodeCount, depthFirst);
         if (!(this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT)) {
             // full size render nodes
             this.renderNodes = this.#createFullRenderNodes(fullNodes);
@@ -466,8 +482,13 @@ export class DynamicTree {
     #getScoreFunc(camInfo, isoInfo, getValFunc) {
         let scoreFunc;
         let nodeRangeBuff;
-        // deal with x, y, z isovalue
-        if (DataSrcTypes.AXIS == isoInfo.source.type) {
+        // empty cam and isoInfo, return dummy score function
+        if (camInfo.pos === undefined && isoInfo.source === undefined) {
+            scoreFunc = (box, nodeFullPtr) => {
+                return Math.random();
+            }
+        } else if (DataSrcTypes.AXIS == isoInfo.source.type) {
+            // deal with x, y, z isovalue
             switch (isoInfo.source.name) {
                 case "x":
                     scoreFunc =  function (box, nodeFullPtr) {
@@ -523,7 +544,7 @@ export class DynamicTree {
     // this handles updating the dynamic nodes and dynamic mesh
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    async update(camInfo, isoInfo, getCornerValsFuncExt, getRangesFuncExt, getMeshBlockFuncExt, activeValueNames) {
+    async update(camInfo, isoInfo, getCornerValsFuncExt, getRangesFuncExt, getMeshBlockFuncExt, activeValueNames, noNodeUpdate=false) {
         if (this.resolutionMode === ResolutionModes.FULL) return
 
         if (this.#updating) return;
@@ -545,44 +566,56 @@ export class DynamicTree {
             leafScores = this.#getNodeScores(this.#getScoreFunc(camInfo, isoInfo, getRangesFuncExt));
             this.#logScores(leafScores);
             leafScores.sort((a, b) => a.score - b.score);
-            const mergeSplitLists = this.#createMergeSplitLists(leafScores);
 
-            nodeModifications += Math.min(
-                mergeSplitLists.merge.length, 
-                mergeSplitLists.split.length
-            );
-            
-            // update the dynamic buffer contents
-            this.#updateDynamicNodeCache(
-                getCornerValsFuncExt,
-                activeValueNames,
-                mergeSplitLists,
-                this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
-            );  
+
+            // if (!noNodeUpdate) {
+                const mergeSplitLists = this.#createMergeSplitLists(leafScores);
+
+                nodeModifications += Math.min(
+                    mergeSplitLists.merge.length, 
+                    mergeSplitLists.split.length
+                );
+                
+                // update the dynamic buffer contents
+                this.#updateDynamicNodeCache(
+                    getCornerValsFuncExt,
+                    activeValueNames,
+                    mergeSplitLists,
+                    this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+                );  
+            // }
         }
 
         frameInfoStore.add("nodes_modified", nodeModifications);
         frameInfoStore.add("node_update", nodeUpdateSW.stop());
+
         
 
+        // this.#updating = false;
+
+        // if (this.#meshCacheBusy) return;
+        // this.#meshCacheBusy = true;
+        
         if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             
             const meshUpdateSW = new StopWatch();
             // const meshCacheTimeStart = performance.now();
-            this.meshCache.updateScores(scores);
+            this.meshCache.updateScores(leafScores);
             // update the mesh blocks that are loaded in the cache
             await this.meshCache.updateLoadedBlocks(
                 this.nodeCache, 
                 this.renderNodes,
                 getMeshBlockFuncExt, 
                 this.fullNodes, 
-                scores, 
+                leafScores, 
                 activeValueNames, 
                 meshUpdateSW
             )
             
             frameInfoStore.add("mesh_update", meshUpdateSW.stop());
-        }       
+        }     
+        
+        // this.#meshCacheBusy = false;
 
         this.#updating = false;
     }
