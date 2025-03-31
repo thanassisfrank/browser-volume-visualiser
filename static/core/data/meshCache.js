@@ -154,7 +154,7 @@ export class MeshCache {
             const fullNode = readNodeFromBuffer(fullNodes, node.thisFullPtr * NODE_BYTE_LENGTH);
             if (fullNode.rightPtr != 0) continue;
             // this is a true leaf
-    
+
             if (
                 this.#treeletDepth > 0 && node.rightPtr > 0 || 
                 this.#treeletDepth == 0 && node.cellCount > 0
@@ -213,9 +213,11 @@ export class MeshCache {
             }});
         }
 
+        
         frameInfoStore.add("in_use_blocks", currInUseMeshBlocks);
-
+        
         if (nodesToRequest.size > 0) {
+            console.log("requesting blocks:", nodesToRequest.size);
             if (sw) sw.stop();
             const reqSW = new StopWatch()
             const meshData = await getMeshBlocksFunc(Array.from(nodesToRequest.keys()), true, scalarNames);
