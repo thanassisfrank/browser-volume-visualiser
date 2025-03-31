@@ -395,6 +395,10 @@ export class Camera extends SceneObject {
         };
     };
 
+    setStartPositionAbs(target, eye) {
+        this.initialPosition = {target, eye};
+    }
+
     // returns a bool indicating if camera moved since last time this was called with this id
     didThisMove(id = "default") {
         var moveresult = this.#moveTrackers[id] ?? true;
