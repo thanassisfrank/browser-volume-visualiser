@@ -126,12 +126,13 @@ BENCHMARKS["magPicTeaser"] = {
     setState: (t, view) => {
         if (t < 1000) {
             globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", false);
+            view.camera.setEyePos([270, -35, 327]);
+            view.camera.setTarget([236, 42, 273]);
         }
 
 
         if (t < 116_000) {
-            view.camera.setEyePos([270, -35, 327]);
-            view.camera.setTarget([236, 42, 273]);
+            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
         }
 
         if (t > 118_500) {
@@ -150,40 +151,54 @@ BENCHMARKS["magPicTeaser"] = {
 }
 
 BENCHMARKS["yf17Pic"] = {
-    duration: 30_000,
-    screenshots: [29_000],
+    duration: 10_000,
+    screenshots: [9_000],
     setState: (t, view) => {
         // move to the screenshot place
-        if (t < 25_000) {
+        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
+        if (t < 1_000) {
             view.camera.setEyePos([-77, 113, 81]);
             view.camera.setTarget([-13, 38, 15]);
+        } else if (t < 5_000) {
+            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
         }
     }
 }
 
 BENCHMARKS["turbPic"] = {
-    duration: 120_000,
-    screenshots: [119_000],
+    duration: 20_000,
+    screenshots: [19_000],
     setState: (t, view) => {
         // move to the screenshot place
+        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
         if (t < 1_000) {
             view.camera.setEyePos([174, 249, 168]);
             view.camera.setTarget([118, 190, 123]);
-        } else if (t < 116_000) {
+        } else if (t < 15_000) {
             globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
         }
     }
 }
 
 BENCHMARKS["magPic"] = {
-    duration: 120_000,
-    screenshots: [119_000],
+    duration: 103_000,
+    screenshots: [98_000, 101_000],
     setState: (t, view) => {
         // move to the screenshot place
-        if (t < 25_000) {
-            view.camera.setEyePos([-77, 113, 81]);
-            view.camera.setTarget([-13, 38, 15]);
+        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", false);
+        if (t < 1_000) {
+            // view.camera.setEyePos([320, 194, 313]);
+            // view.camera.setTarget([297, 197, 289]);
+            view.camera.setEyePos([336, 206, 420]);
+            view.camera.setTarget([247, 208, 233]);
+        } else if (t < 95_000) {
+            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
+        } 
+
+        if (t > 98_500) {
+            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
         }
+
     }
 }
 
@@ -365,7 +380,7 @@ export class JobRunner {
         // create view
         this.#renderEngine.rayMarcher.noDataUpdates = false;
         this.#currView = await this.#createViewFn(viewOpts);
-        this.#currView.camera.setEyePos(this.#currView.data.getMidPoint());
+        // this.#currView.camera.setEyePos(this.#currView.data.getMidPoint());
 
         await pause(this.#pauseMS);
         this.#renderEngine.rayMarcher.noDataUpdates = true;

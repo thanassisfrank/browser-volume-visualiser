@@ -139,23 +139,51 @@
     },
 
 
+
+
     {
-	    "ignore": true,
-        "desc": "cache sizes test yf17",
+	    "ignore": false,
+        "desc": "yf17 pics",
         "data": "yf17_1024", 
-        "nodes": "30%", 
-        "meshes": "5%", 
+        "nodes": ["10%"], 
+        "meshes": ["40%"], 
         "treelet": 4, 
         "isoSrc": "Pressure", 
         "isoVal": 101353.3,
+        "contCorn": true,
         "test": "yf17Pic"
     },
     {
-        "ignore": false,
+	    "ignore": true,
+        "desc": "yf17 pics",
+        "data": "yf17_1024", 
+        "nodes": "30%", 
+        "meshes": "10%", 
+        "treelet": 4, 
+        "isoSrc": "Pressure", 
+        "isoVal": 101353.3,
+        "contCorn": true,
+        "test": "yf17Pic"
+    },
+
+    {
+        "ignore": true,
+        "desc": "turb pics",
+        "data": "turb_1024", 
+        "nodes": ["1%", "10%"],
+        "meshes": ["0.1%", "0.4%"],
+        "dynamicNodes": true,
+	    "treelet": 4, 
+        "isoVal": 1.5,
+        "contCorn": true,
+        "test": "turbPic"
+    },
+    {
+        "ignore": true,
         "desc": "cache sizes test turb",
         "data": "turb_1024", 
-        "nodes": "8%",
-        "meshes": "0.2%",
+        "nodes": "2%",
+        "meshes": "0.4%",
         "dynamicNodes": true,
 	    "treelet": 4, 
         "isoVal": 1.5,
@@ -173,8 +201,31 @@
 	    "treelet": 6, 
         "isoVal": 0.8,
         "contCorn": true,
-        "test": "magPic",
-	    "noImages": true
+        "test": "magPic"
+    },
+    {
+        "ignore": false,
+        "desc": "cache sizes test mag",
+        "data": "mag_4096", 
+        "nodes": ["1%", "10%"], 
+        "meshes": ["0.1%", "0.5%"], 
+        "dynamicNodes": true,
+	    "treelet": 6, 
+        "isoVal": 0.8,
+        "contCorn": true,
+        "test": "magPic"
+    },
+    {
+        "ignore": false,
+        "desc": "cache sizes test mag",
+        "data": "mag_4096", 
+        "nodes": ["8%"], 
+        "meshes": ["0.4%"], 
+        "dynamicNodes": true,
+	    "treelet": 6, 
+        "isoVal": 0.8,
+        "contCorn": true,
+        "test": "magPic"
     }
 
 

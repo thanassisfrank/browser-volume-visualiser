@@ -269,6 +269,12 @@
 		"meshPath": "data/local/yf17_1024/_block_mesh.cgns", 
 		"type": "cgns-partial"
 	},
+	"yf17_1024_2": {
+		"name": "YF17p 1024 2",
+		"path": "data/yf17_partial.cgns",
+		"meshPath": "data/yf17_block_mesh.cgns", 
+		"type": "cgns-partial"
+	},
 	"yf17_512": {
 		"name": "YF17p 512",
 		"path": "data/local/yf17_512/_partial.cgns",
