@@ -118,21 +118,6 @@ async function main() {
     
     const frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
 
-    async function setupRenderEngine(canvas) {
-        let renderEngine;
-        try {
-            // debugger;
-            renderEngine = await createRenderEngine(canvas);
-            await renderEngine.setup();
-            setUpRayMarchOptions(renderEngine.rayMarcher);
-        } catch (e) {
-            console.error("Could not create rendering engine: " + e);
-            renderEngine = null;
-        }
-        
-        return renderEngine;
-    }
-
     async function setupDataManager() {
         let datasetsJSON;
 
@@ -163,13 +148,10 @@ async function main() {
 
         return jobJSON;
     }
-        
-
-    
 
     
     const [renderEngine, allDatasets, jobs] = await Promise.all([
-        setupRenderEngine(canvas), 
+        createRenderEngine(canvas), 
         setupDataManager(), 
         getJobFile()
     ]);

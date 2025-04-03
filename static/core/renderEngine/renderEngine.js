@@ -125,6 +125,8 @@ export async function createRenderEngine(canvas) {
     // use webGPU
     var webGPUBase = new WebGPUBase(false);
     await webGPUBase.setupWebGPU();
-    return new WebGPURenderEngine(webGPUBase, canvas);
+    const renderEngine = new WebGPURenderEngine(webGPUBase, canvas);
+    await renderEngine.setup();
+    return renderEngine;
 }
 
