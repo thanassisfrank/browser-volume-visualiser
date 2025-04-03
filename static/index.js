@@ -160,6 +160,8 @@ async function main() {
         console.error("Could not initialise program");
         return;
     }
+
+    setUpRayMarchOptions(renderEngine.rayMarcher);
     
     // set the max views
     viewManager.maxViews = 1;
