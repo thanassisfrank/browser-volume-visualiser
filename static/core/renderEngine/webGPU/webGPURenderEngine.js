@@ -11,43 +11,52 @@ import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 // the main rendering object that handles interacting with the GPU
 // when drawing, takes a scene object (view) as input and draws it
 // inhertis from the empty render engine base class
-export function WebGPURenderEngine(webGPUBase, canvas) {
-    EmptyRenderEngine.call(this);
-    var webGPU = webGPUBase;
+// the main rendering object that handles interacting with the GPU
+// when drawing, takes a scene object (view) as input and draws it
+// inhertis from the empty render engine base class
+export class WebGPURenderEngine {
+    webGPU;
+    rayMarcher;
+    renderableManager;
 
-    this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
-    this.renderableManager = new WebGPURenderableManager(webGPUBase, this.rayMarcher);
     // stores a reference to the canvas element
-    this.canvas = canvas;
-    this.ctx;
-    this.canvasResized = true;
+    canvas;
+    ctx;
+    canvasResized = true;
 
     // this.clearColor = { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
-    this.clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
-    
-    this.meshRenderPipeline;
-    this.pointsRenderPipeline;
-    this.linesRenderPipeline;
+    clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
 
-    this.uniformBuffer;
+    meshRenderPipeline;
+    pointsRenderPipeline;
+    linesRenderPipeline;
 
-    this.renderDepthTexture = null;
-    this.renderColorTexture = null;
+    uniformBuffer;
 
-    var shaderCode = webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
+    renderDepthTexture = null;
+    renderColorTexture = null;
 
-    this.getWebGPU = function() {
-        return webGPU;
+    constructor(webGPUBase, canvas) {
+        this.webGPU = webGPUBase;
+
+        this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
+        this.renderableManager = new WebGPURenderableManager(webGPUBase, this.rayMarcher);
+        // stores a reference to the canvas element
+        this.canvas = canvas;
     }
 
-    this.setup = async function() {
-        // begin setting up modules
-        var rayMarcherSetupPromise = this.rayMarcher.setupEngine();
+    getWebGPU() {
+        return this.webGPU;
+    }
 
+    async setup() {
+        // begin setting up modules
+        const rayMarcherSetupPromise = this.rayMarcher.setupEngine();
+        // debugger;
         // setup the canvas for drawing to
         this.ctx = this.canvas.getContext("webgpu");
         this.ctx.configure({
-            device: webGPU.getDevice(),
+            device: this.webGPU.getDevice(),
             format: "bgra8unorm",
             alphaMode: "opaque"
         });
@@ -57,58 +66,56 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         this.renderDepthTexture = renderTextures.depth;
         this.renderColorTexture = renderTextures.color;
 
-        this.uniformBuffer = webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
+        this.uniformBuffer = this.webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
-        shaderCode = await shaderCode;
+        const shaderCode = await this.webGPU.fetchShader("core/renderEngine/webGPU/shaders/shader.wgsl");
 
-        var t0 = performance.now();
+        const t0 = performance.now();
 
-        this.surfaceRenderPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER, 
+        this.surfaceRenderPassDescriptor = this.webGPU.createPassDescriptor(
+            this.webGPU.PassTypes.RENDER,
             {
-                vertexLayout: webGPU.vertexLayouts.position,
-                colorAttachmentFormats: ["bgra8unorm"], 
-                topology: "triangle-list", 
+                vertexLayout: this.webGPU.vertexLayouts.position,
+                colorAttachmentFormats: ["bgra8unorm"],
+                topology: "triangle-list",
                 indexed: true
             },
-            [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}},
+            [this.webGPU.bindGroupLayouts.render0],
+            { str: shaderCode, formatObj: {} },
             "surface render pass"
         );
-        this.pointsRenderPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER, 
+        this.pointsRenderPassDescriptor = this.webGPU.createPassDescriptor(
+            this.webGPU.PassTypes.RENDER,
             {
-                vertexLayout: webGPU.vertexLayouts.position, 
+                vertexLayout: this.webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
-                topology: "point-list", 
+                topology: "point-list",
                 indexed: false
             },
-            [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}},
+            [this.webGPU.bindGroupLayouts.render0],
+            { str: shaderCode, formatObj: {} },
             "points render pass"
         );
-        this.linesRenderPassDescriptor = webGPU.createPassDescriptor(
-            webGPU.PassTypes.RENDER, 
+        this.linesRenderPassDescriptor = this.webGPU.createPassDescriptor(
+            this.webGPU.PassTypes.RENDER,
             {
-                vertexLayout: webGPU.vertexLayouts.position, 
+                vertexLayout: this.webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
-                topology: "line-list", 
+                topology: "line-list",
                 indexed: true
             },
-            [webGPU.bindGroupLayouts.render0],
-            {str: shaderCode, formatObj: {}},
+            [this.webGPU.bindGroupLayouts.render0],
+            { str: shaderCode, formatObj: {} },
             "lines render pass"
         );
 
-        await Promise.all([webGPU.waitForDone(), rayMarcherSetupPromise]);
+        await Promise.all([this.webGPU.waitForDone(), rayMarcherSetupPromise]);
 
         console.log(performance.now() - t0, "ms for pipeline creation");
-
-        return this;
     }
 
-    this.createRenderTextures = function(width, height) {
-        var depthTexture = webGPU.makeTexture({
+    createRenderTextures(width, height) {
+        var depthTexture = this.webGPU.makeTexture({
             label: "render depth texture",
             size: {
                 width: width,
@@ -120,7 +127,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
         });
 
-        var colorTexture = webGPU.makeTexture({
+        var colorTexture = this.webGPU.makeTexture({
             label: "render color texture",
             size: {
                 width: width,
@@ -129,28 +136,26 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             },
             dimension: "2d",
             format: "bgra8unorm",
-            usage: 
-                GPUTextureUsage.RENDER_ATTACHMENT | 
-                GPUTextureUsage.TEXTURE_BINDING | 
-                GPUTextureUsage.STORAGE_BINDING | 
+            usage: GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.STORAGE_BINDING |
                 GPUTextureUsage.COPY_SRC |
                 GPUTextureUsage.COPY_DST
         });
 
-        return {depth: depthTexture, color: colorTexture};
+        return { depth: depthTexture, color: colorTexture };
     }
 
-    this.beginFrame = function(cameraMoved, thresholdChanged) {
+    beginFrame(cameraMoved, thresholdChanged) {
         this.rayMarcher.beginFrame(this.ctx, this.canvasResized, cameraMoved, thresholdChanged);
     }
 
-    this.endFrame = function() {
+    endFrame() {
         this.rayMarcher.endFrame(this.ctx);
     }
 
     // clears the screen and creates the empty depth texture
-    this.getClearedRenderAttachments = async function() {
-        
+    async getClearedRenderAttachments() {
         // provide details of load and store part of pass
         // here there is one color output that will be cleared on load
 
@@ -169,47 +174,47 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             }
         };
 
-        var commandEncoder = await webGPU.createCommandEncoder();
+        var commandEncoder = await this.webGPU.createCommandEncoder();
 
         const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-        
+
         passEncoder.end();
 
-        webGPU.submitCommandEncoder(commandEncoder);
+        this.webGPU.submitCommandEncoder(commandEncoder);
 
         return {
             color: this.renderColorTexture,
             depth: this.renderDepthTexture
-        }
-    };
+        };
+    }
 
     // calls the same function from the renderable manager to create the renderables needed
-    this.setupSceneObject = function(...args) {
+    setupSceneObject(...args) {
         this.renderableManager.setupSceneObject(...args);
-    };
+    }
 
-    this.updateSceneObject = function(...args) {
+    updateSceneObject(...args) {
         this.renderableManager.updateSceneObject(...args);
     }
-    
-    this.cleanupSceneObj = function(sceneObj) {
+
+    cleanupSceneObj(sceneObj) {
         this.renderableManager.clearRenderables(sceneObj);
     }
 
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
-    this.renderMesh = async function(renderable, camera, outputColourAttachment, outputDepthAttachment, box) {        
+    async renderMesh(renderable, camera, outputColourAttachment, outputDepthAttachment, box) {
         if (renderable.indexCount == 0 && renderable.vertexCount == 0) {
             return;
         }
 
-        var commandEncoder = await webGPU.createCommandEncoder();
+        var commandEncoder = await this.webGPU.createCommandEncoder();
 
         if (renderable.renderMode == RenderableRenderModes.MESH_POINTS) {
             var thisPassDescriptor = this.pointsRenderPassDescriptor;
         } else if (renderable.renderMode == RenderableRenderModes.MESH_WIREFRAME) {
             var thisPassDescriptor = this.linesRenderPassDescriptor;
-        } else if (renderable.renderMode == RenderableRenderModes.MESH_SURFACE){
+        } else if (renderable.renderMode == RenderableRenderModes.MESH_SURFACE) {
             var thisPassDescriptor = this.surfaceRenderPassDescriptor;
         }
         var renderPass = {
@@ -219,7 +224,7 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             vertexBuffers: [renderable.renderData.buffers.vertex],
             indexBuffer: renderable.renderData.buffers?.index,
             bindGroups: {
-                0: webGPU.generateBG(
+                0: this.webGPU.generateBG(
                     thisPassDescriptor.bindGroupLayouts[0],
                     [this.uniformBuffer, renderable.renderData.buffers.objectInfo]
                 ),
@@ -230,30 +235,30 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
             },
             box: box,
             boundingBox: this.ctx.canvas.getBoundingClientRect(),
-        }
+        };
 
-        webGPU.encodeGPUPass(commandEncoder, renderPass);
+        this.webGPU.encodeGPUPass(commandEncoder, renderPass);
 
         // write buffers
-        webGPU.writeDataToBuffer(
+        this.webGPU.writeDataToBuffer(
             this.uniformBuffer,
             [camera.serialise(), new Uint32Array([performance.now()])]
         );
-        webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.objectInfo, 
+        this.webGPU.writeDataToBuffer(
+            renderable.renderData.buffers.objectInfo,
             [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
-        webGPU.submitCommandEncoder(commandEncoder);
-    };
+        this.webGPU.submitCommandEncoder(commandEncoder);
+    }
 
-    this.clearScreen = async function () {
+    async clearScreen() {
         var clearedAttachments = await this.getClearedRenderAttachments();
 
-        webGPU.copyTextureToTexture(clearedAttachments.color, this.ctx.getCurrentTexture());
+        this.webGPU.copyTextureToTexture(clearedAttachments.color, this.ctx.getCurrentTexture());
     }
     // renders a view object, datasets
     // for now, all share a canvas
-    this.renderView = async function (view) {
+    async renderView(view) {
 
         // create the render attachments (color and depth textures) that will be used to create the final view
         // these are initialised to a cleared state
@@ -285,14 +290,14 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
                 storeOp: "store",
                 texture: outputRenderAttachments.color,
                 view: outputRenderAttachments.color.createView()
-            }
+            };
             var outputDepthAttachment = {
                 depthClearValue: 1.0,
                 depthLoadOp: "load",
                 depthStoreOp: "store",
                 texture: outputRenderAttachments.depth,
                 view: outputRenderAttachments.depth.createView()
-            }
+            };
             if (renderable.renderMode == RenderableRenderModes.NONE) continue;
 
             if (renderable.type == RenderableTypes.MESH) {
@@ -312,24 +317,24 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
         }
 
         // copy the working colour texture to the canvas
-        await webGPU.waitForDone();
-        webGPU.copyTextureToTexture(outputRenderAttachments.color, this.ctx.getCurrentTexture());
-        
-        // await webGPU.waitForDone();
+        await this.webGPU.waitForDone();
+        this.webGPU.copyTextureToTexture(outputRenderAttachments.color, this.ctx.getCurrentTexture());
+
+        // await this.webGPU.waitForDone();
         // end the frame
         this.endFrame();
     }
 
-    this.resizeRenderingContext = function() {
+    resizeRenderingContext() {
         this.ctx.configure({
-            device: webGPU.getDevice(),
+            device: this.webGPU.getDevice(),
             format: "bgra8unorm",
             alphaMode: "opaque",
             usage: GPUTextureUsage.COPY_DST
         });
 
-        webGPU.deleteTexture(this.renderDepthTexture);
-        webGPU.deleteTexture(this.renderColorTexture);
+        this.webGPU.deleteTexture(this.renderDepthTexture);
+        this.webGPU.deleteTexture(this.renderColorTexture);
 
         const renderTextures = this.createRenderTextures(this.canvas.width, this.canvas.height);
         this.renderDepthTexture = renderTextures.depth;

@@ -118,58 +118,61 @@ async function main() {
     
     const frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
 
-    let benchmarker;
-
-    const renderEnginePromise = createRenderEngine(canvas)
-        .then((renderEngine) => renderEngine.setup())
-        .then((renderEngine) => {
+    async function setupRenderEngine(canvas) {
+        let renderEngine;
+        try {
+            // debugger;
+            renderEngine = await createRenderEngine(canvas);
+            await renderEngine.setup();
             setUpRayMarchOptions(renderEngine.rayMarcher);
-            return renderEngine;
-        })
-        .catch((reason) => {
-            console.error("Could not create rendering engine: " + reason);
-            return null;
-        });
+        } catch (e) {
+            console.error("Could not create rendering engine: " + e);
+            renderEngine = null;
+        }
+        
+        return renderEngine;
+    }
 
-    
-    const serverDatasetsPromise = fetch("./data/datasets.json")
-        .then((res) => res.json())
-        .then((serverDatasets) => {
-            return {
-                ...serverDatasets,
-                test: {
-                    name: "Small Test",
-                    type: "function",
-                    size: {
-                        x: 4,
-                        y: 4,
-                        z: 4
-                    },
-                    cellSize: {
-                        x: 1,
-                        y: 1,
-                        z: 1
-                    },
-                    f: (x, y, z) => Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2))
-                }
-            }
-        })
-        .then((allDatasets) => {
-            dataManager.setConfigSet(allDatasets);
+    async function setupDataManager() {
+        let datasetsJSON;
+
+        try {
+            const res = await fetch("./data/datasets.json");
+            datasetsJSON = await res.json();
+            dataManager.setConfigSet(datasetsJSON);
             populateDataOptions(dataManager);
             populateKDTreeOptions();
             populateCornerValOptions();
-            return allDatasets
-        })
-        .catch((reason) => {
+        } catch (e) {
             console.error("Could not get datasets: " + reason);
-            return null;
-        });
+            datasetsJSON = null;
+        }
+        
+        return datasetsJSON
+    }
+
+    async function getJobFile() {
+        let jobJSON;
+        try {
+            const res = await fetch("./clientJobs.json")
+            jobJSON = await res.json();
+        } catch (e) {
+            console.error("Could not get job file: " + e);
+            jobJSON = null;
+        }
+
+        return jobJSON;
+    }
+        
+
     
-    const jobsFilePromise = fetch("./clientJobs.json")
-        .then((res) => res.json());
+
     
-    const [renderEngine, allDatasets, jobs] = await Promise.all([renderEnginePromise, serverDatasetsPromise, jobsFilePromise]);
+    const [renderEngine, allDatasets, jobs] = await Promise.all([
+        setupRenderEngine(canvas), 
+        setupDataManager(), 
+        getJobFile()
+    ]);
 
     if (!renderEngine || !allDatasets) {
         console.error("Could not initialise program");
@@ -443,7 +446,7 @@ async function main() {
         "r": {
             description: "Move camera to initial position",
             f: function (e) {
-                viewManager.getFirst().camera.moveToStart();
+                viewManager.getFirst()?.camera.moveToStart();
             }
         },
         "s": {

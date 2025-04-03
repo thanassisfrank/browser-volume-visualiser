@@ -5,15 +5,18 @@ import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} 
 import {mat4, vec4, vec3} from '../../gl-matrix.js';
 import { SceneObjectTypes, SceneObjectRenderModes, defaultMaterial} from "../sceneObjects.js";
 
-export function WebGPURenderableManager(webGPUBase, rayMarcher) {
-    var webGPU = webGPUBase;
-    this.rayMarcher = rayMarcher;
+export class WebGPURenderableManager {
+    webGPU;
+    rayMarcher;
+    constructor(webGPUBase, rayMarcher) {
+        this.webGPU = webGPUBase;
+        this.rayMarcher = rayMarcher;
+    }
 
     // setup scene object for rendering ===========================================================
     // create the needed renderables for a scene object to be displayed as desired
-    
     // take a scene object as input and creates its needed renderables
-    this.setupSceneObject = function(sceneObj, setupObj) {
+    setupSceneObject(sceneObj, setupObj) {
         // get rid of any renderables already present
         for (let renderable of sceneObj.renderables) {
             this.destroyRenderable(renderable);
@@ -32,7 +35,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 break;
             case SceneObjectTypes.DATA:
                 this.setupDataSceneObject(sceneObj, setupObj);
-                break; 
+                break;
             case SceneObjectTypes.AXES:
                 this.setupAxesSceneObject(sceneObj);
                 break;
@@ -46,9 +49,9 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             default:
                 break;
         }
-    }  
+    }
 
-    this.updateSceneObject = function(dt, sceneObj, updateObj) {
+    updateSceneObject(dt, sceneObj, updateObj) {
         switch (sceneObj.objectType) {
             case SceneObjectTypes.DATA:
                 // propogate the threshold to its renderables
@@ -73,44 +76,44 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             default:
                 break;
         }
-        
+
     }
 
-    this.clearRenderables = function(sceneObj) {
+    clearRenderables(sceneObj) {
         for (let renderable of sceneObj.renderables) {
             this.destroyRenderable(renderable);
         }
     }
 
-    this.destroyRenderable = function(renderable) {
+    destroyRenderable(renderable) {
         // the important data is stored within renderData
         var textures = renderable.renderData.textures;
         for (let textureName in textures) {
-            webGPU.deleteTexture(textures[textureName]);
+            this.webGPU.deleteTexture(textures[textureName]);
         }
         var buffers = renderable.renderData.buffers;
         for (let bufferName in buffers) {
             const entry = buffers[bufferName];
             if (Array.isArray(entry)) {
                 for (let buff of entry) {
-                    webGPU.deleteBuffer(buff);
+                    this.webGPU.deleteBuffer(buff);
                 }
             } else {
-                webGPU.deleteBuffer(entry);
+                this.webGPU.deleteBuffer(entry);
             }
         }
     }
 
-    this.createBoundingWireFrame = function(sceneObj) {
+    createBoundingWireFrame(sceneObj) {
         // get the bounding points first
         var points = sceneObj.getBoundaryPoints();
 
         // check if points were generated properly
         if (!points || points.length != 8 * 3) return;
 
-        var renderable = webGPU.meshRenderableFromArrays(
+        var renderable = this.webGPU.meshRenderableFromArrays(
             points,
-            new Float32Array(points.length * 3), 
+            new Float32Array(points.length * 3),
             new Uint32Array([
                 0, 1,
                 0, 2,
@@ -124,50 +127,49 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
                 4, 6,
                 5, 7,
                 6, 7
-            ]), 
+            ]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-        
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials({}, {});
+
         return renderable;
     }
 
-    this.createFloorWireFrame = function(sceneObj) {
+    createFloorWireFrame(sceneObj) {
         // get the bounding points first
         var points = sceneObj.getDatasetBoundaryPoints();
 
         // check if points were generated properly
         if (!points || points.length != 8 * 3) return;
 
-        var renderable = webGPU.meshRenderableFromArrays(
+        var renderable = this.webGPU.meshRenderableFromArrays(
             points,
-            new Float32Array(points.length * 3), 
+            new Float32Array(points.length * 3),
             new Uint32Array([
                 0, 1,
                 0, 4,
                 1, 5,
                 4, 5,
-            ]), 
+            ]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({}, {});
-        
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials({}, {});
+
         return renderable;
     }
 
     // move mesh data to renderable
-    this.setupMeshSceneObject = async function(mesh) {
-        var renderable = webGPU.meshRenderableFromArrays(mesh.verts, mesh.norms, mesh.indices, mesh.renderMode);
+    async setupMeshSceneObject(mesh) {
+        var renderable = this.webGPU.meshRenderableFromArrays(mesh.verts, mesh.norms, mesh.indices, mesh.renderMode);
 
         // set the materials
-        renderable.serialisedMaterials = webGPU.serialiseMaterials(mesh.frontMaterial, mesh.backMaterial);
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials(mesh.frontMaterial, mesh.backMaterial);
 
         mesh.renderables.push(renderable);
     }
 
-
     // perform the setup needed depending on the data render mode
-    this.setupDataSceneObject = async function(data, setupObj) {
+    async setupDataSceneObject(data, setupObj) {
         if (data.renderMode & SceneObjectRenderModes.DATA_POINTS) {
             // create data points mesh renderable
             try {
@@ -187,8 +189,7 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             }
         }
         if (data.renderMode & SceneObjectRenderModes.DATA_MARCH_SURFACE ||
-            data.renderMode & SceneObjectRenderModes.DATA_MARCH_POINTS
-        ) {
+            data.renderMode & SceneObjectRenderModes.DATA_MARCH_POINTS) {
             // interface with marching cubes engine to move data to GPU
             console.warn("sorry, Marching cubes data render modes are not supported yet");
         }
@@ -210,26 +211,26 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         }
     }
 
-    this.setupDatasetMeshGeometry = function(data, setupObj) {
+    setupDatasetMeshGeometry(data, setupObj) {
         for (let meshName in data.geometry) {
             let renderMode = RenderableRenderModes.NONE;
             if (setupObj.enabledGeometry[meshName]) renderMode = RenderableRenderModes.MESH_SURFACE;
-            var renderable = webGPU.meshRenderableFromArrays(
-                data.geometry[meshName].positions, 
-                null, 
-                data.geometry[meshName].indices, 
+            var renderable = this.webGPU.meshRenderableFromArrays(
+                data.geometry[meshName].positions,
+                null,
+                data.geometry[meshName].indices,
                 renderMode
             );
 
             renderable.geometryName = meshName;
 
             var mag = 0.7;
-            renderable.serialisedMaterials = webGPU.serialiseMaterials(
+            renderable.serialisedMaterials = this.webGPU.serialiseMaterials(
                 {
                     diffuseCol: [mag, mag, mag],
                     specularCol: [mag, mag, mag],
                     shininess: 50
-                }, 
+                },
                 {
                     diffuseCol: [mag, mag, mag],
                     specularCol: [mag, mag, mag],
@@ -241,19 +242,19 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         }
     }
 
-    this.setupDataPointsMeshObject = function(data) {
-        var renderable = webGPU.meshRenderableFromArrays(
-            data.data.positions, 
-            new Float32Array(data.data.positions.length), 
-            new Uint32Array(64), 
+    setupDataPointsMeshObject(data) {
+        var renderable = this.webGPU.meshRenderableFromArrays(
+            data.data.positions,
+            new Float32Array(data.data.positions.length),
+            new Uint32Array(64),
             RenderableRenderModes.MESH_POINTS
         );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
 
         data.renderables.push(renderable);
     }
 
-    this.setupDataCellsWireframeMeshObject = function(data) {
+    setupDataCellsWireframeMeshObject(data) {
         var indices = [];
         // iterate through all cells in the dataset, adding the edge indices for each
         let cellType, cellOffset;
@@ -277,55 +278,55 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             indices.push(data.data.cellConnectivity[cellOffset + 3]);
         }
 
-        var renderable = webGPU.meshRenderableFromArrays(
-            data.data.positions, 
-            new Float32Array(data.data.positions.length), 
-            Uint32Array.from(indices), 
+        var renderable = this.webGPU.meshRenderableFromArrays(
+            data.data.positions,
+            new Float32Array(data.data.positions.length),
+            Uint32Array.from(indices),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials(defaultMaterial, defaultMaterial);
 
         data.renderables.push(renderable);
     }
 
-    this.setupAxesSceneObject = async function(axes) {
+    async setupAxesSceneObject(axes) {
         // make x axis
-        var renderableX = webGPU.meshRenderableFromArrays(
+        var renderableX = this.webGPU.meshRenderableFromArrays(
             new Float32Array([
                 0, 0, 0,
                 axes.scale, 0, 0
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
+            ]),
+            new Float32Array(2 * 3),
+            new Uint32Array([0, 1]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderableX.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [1, 0, 0]}, {diffuseCol: [1, 0, 0]});
+        renderableX.serialisedMaterials = this.webGPU.serialiseMaterials({ diffuseCol: [1, 0, 0] }, { diffuseCol: [1, 0, 0] });
         renderableX.highPriority = true;
-        
+
         // make y axis
-        var renderableY = webGPU.meshRenderableFromArrays(
+        var renderableY = this.webGPU.meshRenderableFromArrays(
             new Float32Array([
                 0, 0, 0,
                 0, axes.scale, 0
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
+            ]),
+            new Float32Array(2 * 3),
+            new Uint32Array([0, 1]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderableY.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 1, 0]}, {diffuseCol: [0, 1, 0]});
+        renderableY.serialisedMaterials = this.webGPU.serialiseMaterials({ diffuseCol: [0, 1, 0] }, { diffuseCol: [0, 1, 0] });
         renderableY.highPriority = true;
 
         // make z axis
-        var renderableZ = webGPU.meshRenderableFromArrays(
+        var renderableZ = this.webGPU.meshRenderableFromArrays(
             new Float32Array([
                 0, 0, 0,
                 0, 0, axes.scale
-            ]), 
-            new Float32Array(2 * 3), 
-            new Uint32Array([0, 1]), 
+            ]),
+            new Float32Array(2 * 3),
+            new Uint32Array([0, 1]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderableZ.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: [0, 0, 1]}, {diffuseCol: [0, 0, 1]});
+        renderableZ.serialisedMaterials = this.webGPU.serialiseMaterials({ diffuseCol: [0, 0, 1] }, { diffuseCol: [0, 0, 1] });
         renderableZ.highPriority = true;
 
         axes.renderables.push(renderableX);
@@ -333,30 +334,26 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
         axes.renderables.push(renderableZ);
     }
 
-    this.setupVectorObject = function(vector) {
-        var renderable = webGPU.meshRenderableFromArrays(
+    setupVectorObject(vector) {
+        var renderable = this.webGPU.meshRenderableFromArrays(
             new Float32Array([
                 0, 0, 0,
                 ...vector.endPoint
-            ]), 
-            new Float32Array([2]), 
-            new Uint32Array([0, 1]), 
+            ]),
+            new Float32Array([2]),
+            new Uint32Array([0, 1]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderable.serialisedMaterials = webGPU.serialiseMaterials({diffuseCol: vector.color}, {diffuseCol: vector.color});
+        renderable.serialisedMaterials = this.webGPU.serialiseMaterials({ diffuseCol: vector.color }, { diffuseCol: vector.color });
 
         vector.renderables.push(renderable);
     }
-
-
-
-
 
     // sorts a list of renderables, primarily by distance from camera
     // -1 -> a before b, 0 -> either, 1 -> b before a
     // the sorted list will look like (in reverse):
     // [high priority se (sorted), high priority sd (unsorted), sort enabled (sorted), sort disabled (unsorted)]
-    this.sortRenderables = function(renderables, camera) {
+    sortRenderables(renderables, camera) {
         var camPos = camera.getEyePos();
         var renderablesSortFunc = (a, b) => {
             // move ray march renderable last
@@ -369,17 +366,17 @@ export function WebGPURenderableManager(webGPUBase, rayMarcher) {
             if (a.depthSort && !b.depthSort) return -1;
             if (!a.depthSort && !b.depthSort) return 0;
             if (!a.depthSort && b.depthSort) return 1;
-            
+
             // get worldspace a and b
             var aObj = vec4.fromValues(...a.objectSpaceMidPoint, 1);
             var aWorld = vec4.create();
             vec4.transformMat4(aWorld, aObj, a.transform);
-            var aDist = vec3.distance([aWorld[0], aWorld[1], aWorld[2]],  camPos);
+            var aDist = vec3.distance([aWorld[0], aWorld[1], aWorld[2]], camPos);
 
             var bObj = vec4.fromValues(...b.objectSpaceMidPoint, 1);
             var bWorld = vec4.create();
             vec4.transformMat4(bWorld, bObj, b.transform);
-            var bDist = vec3.distance([bWorld[0], bWorld[1], bWorld[2]],  camPos);
+            var bDist = vec3.distance([bWorld[0], bWorld[1], bWorld[2]], camPos);
 
             return aDist - bDist;
         };
