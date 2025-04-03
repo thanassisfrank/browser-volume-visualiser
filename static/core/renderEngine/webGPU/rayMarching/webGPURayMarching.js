@@ -527,7 +527,8 @@ export class WebGPURayMarchingEngine {
             this.computeRayMarchPassDescriptor.bindGroupLayouts[0],
             [
                 renderData.buffers.combinedPassInfo,
-            ]
+            ],
+            "compute 0"
         );
 
         renderData.bindGroups.compute1 = this.webGPU.generateBG(
@@ -538,7 +539,8 @@ export class WebGPURayMarchingEngine {
                 renderData.buffers.positions,
                 renderData.buffers.cellConnectivity,
                 renderData.buffers.cellOffsets,
-            ]
+            ],
+            "initial compute 1"
         );
         renderData.bindGroups.compute2 = this.webGPU.generateBG(
             this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
@@ -547,7 +549,8 @@ export class WebGPURayMarchingEngine {
                 renderData.buffers.values[1],
                 renderData.buffers.cornerValues[0],
                 renderData.buffers.cornerValues[1],
-            ]
+            ],
+            "empty compute 2"
         );
 
         return renderable;
@@ -650,11 +653,6 @@ export class WebGPURayMarchingEngine {
             throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
         }
 
-        // add the data renderable
-        dataObj.renderables.push(dataRenderable);
-
-        console.log("setup data for ray marching");
-
         return dataRenderable;
     }
 
@@ -716,172 +714,140 @@ export class WebGPURayMarchingEngine {
         return { uint: dataUints[cacheSlot], created };
     }
 
-
-    // updates the renderables for a data object
-    async updateDataObj(dataObj, updateObj) {
-
+    async updateDataRenderable(renderable, updateObj) {
         if (this.noDataUpdates) return;
 
-        // update the data renderable first 
-        let dataRenderable;
+        const { data } = updateObj;
+        const { passData, renderData } = renderable;
+        
         let valueBufferCreated = false;
         let treeCellsResized = false;
 
-        for (let renderable of dataObj.renderables) {
-            // reset offset optimisation if bounding box has changed
-            if (!boxesEqual(renderable.passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
-            // renderable.passData.clippedDataBox = {
-            //     min: [...updateObj.clippedDataBox.min],
-            //     max: [...updateObj.clippedDataBox.max],
-            // };
-            renderable.passData.clippedDataBox = copyBox(updateObj.clippedDataBox);
+        // reset offset optimisation if bounding box has changed
+        if (!boxesEqual(passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
+        passData.clippedDataBox = copyBox(updateObj.clippedDataBox);
 
-            renderable.passData.volumeTransferFunction = {
-                colour: [...updateObj.volumeTransferFunction.colour],
-                opacity: [...updateObj.volumeTransferFunction.opacity]
-            };
+        passData.threshold = updateObj.threshold;
 
-            if (renderable.type != RenderableTypes.UNSTRUCTURED_DATA && renderable.type != RenderableTypes.DATA) continue;
+        passData.volumeTransferFunction = {
+            colour: [...updateObj.volumeTransferFunction.colour],
+            opacity: [...updateObj.volumeTransferFunction.opacity]
+        };
 
-            dataRenderable = renderable;
-            let passData = renderable.passData;
 
-            // iso surface src
-            const isoLoadResult = this.loadDataArray(
-                dataObj,
-                renderable,
-                updateObj.isoSurfaceSrc,
-                passData.surfaceColSrc
-            );
+        // iso surface src
+        const isoLoadResult = this.loadDataArray(
+            data,
+            renderable,
+            updateObj.isoSurfaceSrc,
+            passData.surfaceColSrc
+        );
 
-            passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
-            // this has to be assigned after the previous line
-            passData.isoSurfaceSrc.uint = isoLoadResult.uint;
-            valueBufferCreated |= isoLoadResult.created;
+        passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
+        // this has to be assigned after the previous line
+        passData.isoSurfaceSrc.uint = isoLoadResult.uint;
+        valueBufferCreated |= isoLoadResult.created;
 
-            // surface col src
-            const colLoadResult = this.loadDataArray(
-                dataObj,
-                renderable,
-                updateObj.surfaceColSrc,
-                passData.isoSurfaceSrc
-            );
+        // surface col src
+        const colLoadResult = this.loadDataArray(
+            data,
+            renderable,
+            updateObj.surfaceColSrc,
+            passData.isoSurfaceSrc
+        );
 
-            passData.surfaceColSrc = updateObj.surfaceColSrc;
-            // this has to be assigned after the previous line
-            passData.surfaceColSrc.uint = colLoadResult.uint;
-            valueBufferCreated |= colLoadResult.created;
+        passData.surfaceColSrc = updateObj.surfaceColSrc;
+        // this has to be assigned after the previous line
+        passData.surfaceColSrc.uint = colLoadResult.uint;
+        valueBufferCreated |= colLoadResult.created;
 
-            // update any dynamic buffers
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                // write updated mesh data to the GPU
-                this.webGPU.writeDataToBuffer(renderable.renderData.buffers.positions, [dataObj.data.dynamicPositions]);
-                this.webGPU.writeDataToBuffer(renderable.renderData.buffers.cellOffsets, [dataObj.data.dynamicCellOffsets]);
-                this.webGPU.writeDataToBuffer(renderable.renderData.buffers.cellConnectivity, [dataObj.data.dynamicCellConnectivity]);
+        // update any dynamic buffers
+        debugger;
+        if (data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            // write updated mesh data to the GPU
+            this.webGPU.writeDataToBuffer(renderData.buffers.positions, [data.data.dynamicPositions]);
+            this.webGPU.writeDataToBuffer(renderData.buffers.cellOffsets, [data.data.dynamicCellOffsets]);
+            this.webGPU.writeDataToBuffer(renderData.buffers.cellConnectivity, [data.data.dynamicCellConnectivity]);
 
-                if (dataObj.usesTreelets) {
+            if (data.usesTreelets) {
 
-                    // update tree cells block size
-                    const newVal = dataObj.getBufferBlockSizes()["treeletCells"];
-                    passData.blockSizes["treeletCells"] = newVal;
+                // update tree cells block size
+                const newVal = data.getBufferBlockSizes()["treeletCells"];
+                passData.blockSizes["treeletCells"] = newVal;
 
-                    // update tree cells (resizable)
-                    const loadResult = this.webGPU.writeOrCreateNewBuffer(
-                        renderable.renderData.buffers.treeCells,
-                        dataObj.getTreeCells(),
-                        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-                        "data tree cells"
-                    );
+                // update tree cells (resizable)
+                const loadResult = this.webGPU.writeOrCreateNewBuffer(
+                    renderData.buffers.treeCells,
+                    data.getTreeCells(),
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+                    "data tree cells"
+                );
 
-                    treeCellsResized = loadResult.created;
-                    renderable.renderData.buffers.treeCells = loadResult.buffer;
-                }
-            }
-
-            if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT ||
-                dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                // update the nodes buffer
-                this.webGPU.writeDataToBuffer(renderable.renderData.buffers.treeNodes, [new Uint8Array(dataObj.getNodeBuffer())]);
-            }
-
-            if (dataObj.resolutionMode != ResolutionModes.FULL) {
-                // update the corner values buffer(s)
-                const doneNames = new Set();
-
-                for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
-                    if (dataSrc.type != DataSrcTypes.ARRAY) continue;
-                    if (doneNames.has(dataSrc.name)) continue;
-                    doneNames.add(dataSrc.name);
-
-                    let newData = {
-                        "cornerValues": dataObj.getCornerValues(dataSrc.slotNum),
-                    };
-                    if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                        newData["values"] = dataObj.getDynamicValues(dataSrc.slotNum);
-                    }
-
-                    passData.dataCache.updateBlockAt(
-                        passData.dataCache.getTagSlotNum(dataSrc.name), newData
-                    );
-                }
+                treeCellsResized = loadResult.created;
+                renderData.buffers.treeCells = loadResult.buffer;
             }
         }
 
-        if (!dataRenderable) return;
+        if (data.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT ||
+            data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            // update the nodes buffer
+            this.webGPU.writeDataToBuffer(renderData.buffers.treeNodes, [new Uint8Array(data.getNodeBuffer())]);
+        }
 
-        if (dataRenderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
+        if (data.resolutionMode != ResolutionModes.FULL) {
+            // update the corner values buffer(s)
+            const doneNames = new Set();
+
+            for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
+                if (dataSrc.type != DataSrcTypes.ARRAY) continue;
+                if (doneNames.has(dataSrc.name)) continue;
+                doneNames.add(dataSrc.name);
+
+                let newData = {
+                    "cornerValues": data.getCornerValues(dataSrc.slotNum),
+                };
+                if (data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+                    newData["values"] = data.getDynamicValues(dataSrc.slotNum);
+                }
+
+                passData.dataCache.updateBlockAt(
+                    passData.dataCache.getTagSlotNum(dataSrc.name), newData
+                );
+            }
+        }
+
+
+        if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
             if (treeCellsResized) {
-                dataRenderable.renderData.bindGroups.compute1 = this.webGPU.generateBG(
+                renderData.bindGroups.compute1 = this.webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[1],
                     [
-                        dataRenderable.renderData.buffers.treeNodes,
-                        dataRenderable.renderData.buffers.treeCells,
-                        dataRenderable.renderData.buffers.positions,
-                        dataRenderable.renderData.buffers.cellConnectivity,
-                        dataRenderable.renderData.buffers.cellOffsets,
-                    ]
+                        renderData.buffers.treeNodes,
+                        renderData.buffers.treeCells,
+                        renderData.buffers.positions,
+                        renderData.buffers.cellConnectivity,
+                        renderData.buffers.cellOffsets,
+                    ],
+                    "filled compute 1"
                 );
             }
 
             if (valueBufferCreated) {
                 // recreate bindgroup 2 from the compute pass
-                dataRenderable.renderData.bindGroups.compute2 = this.webGPU.generateBG(
+                renderData.bindGroups.compute2 = this.webGPU.generateBG(
                     this.computeRayMarchPassDescriptor.bindGroupLayouts[2],
                     [
-                        dataRenderable.renderData.buffers.values[0],
-                        dataRenderable.renderData.buffers.values[1],
-                        dataRenderable.renderData.buffers.cornerValues[0],
-                        dataRenderable.renderData.buffers.cornerValues[1],
-                    ]
+                        renderData.buffers.values[0],
+                        renderData.buffers.values[1],
+                        renderData.buffers.cornerValues[0],
+                        renderData.buffers.cornerValues[1],
+                    ],
+                    "filled compute 2"
                 );
             }
 
         }
-
-
-        // update the face renderables
-        for (let renderable of dataObj.renderables) {
-            if (renderable.type != RenderableTypes.MESH) continue;
-            if (!(renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME)) continue;
-            // update the information about values A and values B
-            renderable.passData.values = dataRenderable.passData.values;
-
-            renderable.passData.isoSurfaceSrc = dataRenderable.passData.isoSurfaceSrc;
-            renderable.passData.surfaceColSrc = dataRenderable.passData.surfaceColSrc;
-
-            if (!valueBufferCreated) continue;
-            if (dataRenderable.type != RenderableTypes.DATA) continue;
-            renderable.renderData.bindGroups.rayMarch1 = this.webGPU.generateBG(
-                this.rayMarchPassDescriptor.bindGroupLayouts[1],
-                [
-                    renderable.sharedData.buffers.passInfo,
-                    dataRenderable.renderData.textures.values[0].createView(),
-                    dataRenderable.renderData.textures.values[1].createView(),
-                ]
-            );
-        }
     }
-
 
     beginFrame(ctx, resized, cameraMoved, thresholdChanged) {
         if (cameraMoved || thresholdChanged) {

@@ -114,9 +114,26 @@ export class WebGPUScene {
         return this.#graph;
     }
 
-    // updates the internal states of the renderables
-    update(updates) {
+    getRenderablesOfType(type) {
+        return this.getRenderables().filter(r => r.type & type);
+    }
 
+    // updates the internal states of a renderable
+    // updates is an object that can hold arbitrary data
+    updateRenderable(renderable, updates) {
+        // see what type this renderable is
+        // see what render mode this renderable has
+
+        if (renderable.type & RenderableTypes.MESH) {
+            // turn visibility on/off
+        }
+
+        if (renderable.type & RenderableTypes.DATA || renderable.type & RenderableTypes.UNSTRUCTURED_DATA) {
+            if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
+                // update renderable using the ray marcher
+                this.#rayMarcher.updateDataRenderable(renderable, updates);
+            }
+        }
     }
 
     // called to manually delete all renderables and free resources

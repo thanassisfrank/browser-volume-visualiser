@@ -11,7 +11,7 @@ import { DataSrcSelectElem } from "./viewElems.js";
 
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 
-import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
+import { DataSrcTypes, RenderableTypes } from "./core/renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 const BINCOUNT = 100;
@@ -523,6 +523,7 @@ function View(id, camera, data, renderMode) {
 
         // object which holds all the updates for the render engine
         const updateObj = {
+            data: this.data,
             threshold: this.threshold,
             isoSurfaceSrc: this.isoSurfaceSrc,
             surfaceColSrc: this.surfaceColSrc,
@@ -531,8 +532,12 @@ function View(id, camera, data, renderMode) {
           
             enabledGeometry: this.enabledGeometry,
         };
-
-
+        
+        // update the data renderable
+        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.DATA | RenderableTypes.UNSTRUCTURED_DATA);
+        if (dataRenderables.length > 0) {
+            this.scene.updateRenderable(dataRenderables[0], updateObj);
+        }
     };
 
     this.getFrameElem = function() {

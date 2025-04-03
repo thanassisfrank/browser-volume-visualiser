@@ -9,7 +9,6 @@ import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { newId } from "../utils.js";
 import { DynamicTree } from "./dynamicTree.js";
 
-import { SceneObject, SceneObjectTypes, SceneObjectRenderModes } from "../renderEngine/sceneObjects.js";
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { VectorMappingHandler } from "./vectorDataArray.js";
 
@@ -206,7 +205,7 @@ const dataManager = {
 
 
 
-class Data extends SceneObject {
+class Data {
     users = 0;
     config;
     opts;
@@ -254,7 +253,6 @@ class Data extends SceneObject {
     
     // source must be initialised first
     constructor(id, dataSource, dynamicTree) {
-        super(SceneObjectTypes.DATA, SceneObjectRenderModes.DATA_RAY_VOLUME);
         this.id = id;
 
         // where data to be stored here is pulled from

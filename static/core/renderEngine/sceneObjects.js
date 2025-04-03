@@ -41,79 +41,9 @@ export const defaultMaterial = {
     shininess: 100,
 };
 
-export class SceneObject {
-    sceneParent = null;
-    sceneChildren = [];
-    // the list of objects passed to the render engine to render this object fully
-    renderables = [];
-    // this scene object's transform relative to parent object
-    transform = mat4.create();
-    constructor(objectType = SceneObjectTypes.EMPTY, renderMode = SceneObjectRenderModes.NONE) {
-        // what kind of scene object this is
-        this.objectType = objectType;
-        // how it should be rendered
-        this.renderMode = renderMode;
-    }
-
-    getTotalTransform() {
-        // need to get the transform of object it i.e. rotation and scale as mat4
-        var transform = this.transform;
-        var parent = this.parent;
-        while (parent) {
-            mat4.multiply(transform, parent.transform, transform);
-            parent = parent.parent;
-        }
-
-        return transform;
-    }
-    // implemented in derivative scene objects
-    getBoundaryPoints() { };
-}
 
 
-
-export class Mesh extends SceneObject {
-    verts = [];
-    indices = [];
-    normals = [];
-    indicesNum = 0;
-    vertsNum = 0;
-    users = 0;
-    forceCPUSide = false;
-    marchNormals = false;
-
-    frontMaterial = { ...defaultMaterial };
-    backMaterial = { ...defaultMaterial };
-    buffers = {};
-
-    constructor() {
-        super(SceneObjectTypes.MESH, SceneObjectRenderModes.MESH_SURFACE)
-    }
-
-    clear() {
-        this.verts = [];
-        this.indices = [];
-        this.normals = [];
-    };
-}
-
-export class Axes extends SceneObject {
-    constructor(scale) {
-        super(SceneObjectTypes.AXES, SceneObjectRenderModes.MESH_WIREFRAME);
-        this.scale = scale;
-    }
-}
-
-export class Vector extends SceneObject {
-    constructor(endPoint = [0, 0, 0], color = [0, 0, 0]) {
-        super(SceneObjectTypes.VECTOR, SceneObjectRenderModes.MESH_WIREFRAME);
-
-        this.endPoint = endPoint;
-        this.color = color;
-    }
-}
-
-export class Camera extends SceneObject {
+export class Camera {
     eye = [0, 0, 0];
 
     initialPosition = {
@@ -151,7 +81,6 @@ export class Camera extends SceneObject {
     }
 
     constructor(aspect) {
-        super(SceneObjectTypes.CAMERA);
         this.setAspectRatio(aspect);
     }
 
@@ -336,6 +265,3 @@ export class Camera extends SceneObject {
         console.log("target", this.target);
     };
 }
-
-
-
