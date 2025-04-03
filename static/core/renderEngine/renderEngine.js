@@ -120,17 +120,11 @@ export function EmptyRenderEngine() {
 }
 
 export async function createRenderEngine(canvas) {
-    if (navigator.gpu) {
-        // use webGPU
-        console.log("webgpu is supported")
-        var webGPUBase = new WebGPUBase(false);
-        await webGPUBase.setupWebGPU();
-        return new WebGPURenderEngine(webGPUBase, canvas);
-    } else {
-        // use webgl
-        module = "gl";
-        console.log("webgpu is not supported, using webgl")
-        return new EmptyRenderEngine();
-    }
+    if (!navigator.gpu) throw Error("WebGPU not supported");
+
+    // use webGPU
+    var webGPUBase = new WebGPUBase(false);
+    await webGPUBase.setupWebGPU();
+    return new WebGPURenderEngine(webGPUBase, canvas);
 }
 

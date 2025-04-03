@@ -6,7 +6,6 @@ import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} 
 import { WebGPURenderableManager } from "./webGPURenderableManager.js";
 
 // extension modules for more complex rendering operations
-import { WebGPUMarchingCubesEngine } from "./marchingCubes/webGPUMarchingCubes.js";
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 
 // the main rendering object that handles interacting with the GPU
@@ -16,7 +15,6 @@ export function WebGPURenderEngine(webGPUBase, canvas) {
     EmptyRenderEngine.call(this);
     var webGPU = webGPUBase;
 
-    // this.marchingCubes = new WebGPUMarchingCubesEngine(webGPUBase);
     this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
     this.renderableManager = new WebGPURenderableManager(webGPUBase, this.rayMarcher);
     // stores a reference to the canvas element
