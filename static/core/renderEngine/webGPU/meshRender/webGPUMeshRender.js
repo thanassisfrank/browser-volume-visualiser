@@ -1,6 +1,8 @@
 import { Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
+import { WebGPUBase } from "../webGPUBase.js";
 
 export class WebGPUMeshRenderer {
+    /** @type {WebGPUBase} */
     #webGPU;
 
     #uniformBuffer;
@@ -17,8 +19,8 @@ export class WebGPUMeshRenderer {
         this.#uniformBuffer = this.#webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
         const shaderCode = await this.#webGPU.fetchShader("core/renderEngine/webGPU/meshRender/shaders/shader.wgsl");
-
-        const bindGroupLayout =  this.#webGPU.createBindGroupLayout([
+        const shader = this.#webGPU.createShader(shaderCode);
+        const bindGroupLayouts =  [this.#webGPU.createBindGroupLayout([
             {
                 visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                 buffer: { type: "uniform" }
@@ -27,47 +29,42 @@ export class WebGPUMeshRenderer {
                 visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                 buffer: { type: "uniform" }
             }
-        ], "render0");
+        ], "render0")];
 
         
-        this.#surfaceRenderPassDescriptor = this.#webGPU.createPassDescriptor(
-            this.#webGPU.PassTypes.RENDER,
+        this.#surfaceRenderPassDescriptor = this.#webGPU.createRenderPass(
+            bindGroupLayouts,
+            shader,
             {
                 vertexLayout: this.#webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "triangle-list",
                 indexed: true
             },
-            [bindGroupLayout],
-            { str: shaderCode, formatObj: {} },
             "surface render pass"
         );
-        this.#pointsRenderPassDescriptor = this.#webGPU.createPassDescriptor(
-            this.#webGPU.PassTypes.RENDER,
+        this.#pointsRenderPassDescriptor = this.#webGPU.createRenderPass(
+            bindGroupLayouts,
+            shader,
             {
                 vertexLayout: this.#webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "point-list",
                 indexed: false
             },
-            [bindGroupLayout],
-            { str: shaderCode, formatObj: {} },
             "points render pass"
         );
-        this.#linesRenderPassDescriptor = this.#webGPU.createPassDescriptor(
-            this.#webGPU.PassTypes.RENDER,
+        this.#linesRenderPassDescriptor = this.#webGPU.createRenderPass(
+            bindGroupLayouts,
+            shader,
             {
                 vertexLayout: this.#webGPU.vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "line-list",
                 indexed: true
             },
-            [bindGroupLayout],
-            { str: shaderCode, formatObj: {} },
             "lines render pass"
         );
-
-        
     }
     
     createMeshRenderable = function(points, indices, renderMode, material) {

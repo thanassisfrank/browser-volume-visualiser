@@ -315,7 +315,7 @@ export class WebGPUBase {
         });
     };
 
-    createFormattedShaderModule(codeStr, formatObj) {
+    createShader(codeStr, formatObj={}) {
         // format any constants and imports
         const codeFormatted = stringFormat(
             codeStr,
@@ -749,15 +749,43 @@ export class WebGPUBase {
         console.log("couldn't read");
     };
 
-    // Pass and command encoder management ==================================================================
-    async createCommandEncoder() {
-        return await this.#device.createCommandEncoder();
-    };
+    // Pass and command encoder management ========================================================
 
-    // creates a pass descriptor object
-    createPassDescriptor(passType, passOptions, bindGroupLayouts, code, label = "") {
+    #getPassTimingMixins() {
+        const querySet = this.createTimingQueryPair();
+        // write timestamps to here from query set
+        const resolveBuffer = this.#device.createBuffer({
+            size: querySet.count * 8,
+            usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC
+        });
+
+        // copy from resolveBuffer to here for mapping
+        // start with one
+        const timingReadBuffers = [
+            this.#device.createBuffer({
+                size: resolveBuffer.size,
+                usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+            })
+        ];
+
+        return {
+            encoder: {
+                timestampWrites: {
+                    querySet,
+                    beginningOfPassWriteIndex: 0,
+                    endOfPassWriteIndex: 1,
+                }
+            },
+            pass: {
+                timingQuerySet: querySet,
+                timingResolveBuffer: resolveBuffer,
+                timingReadBuffers
+            }
+        }
+    }
+
+    createRenderPass(bindGroupLayouts, shader, options, label="") {
         let pipelineLayout = this.#device.createPipelineLayout({ bindGroupLayouts: bindGroupLayouts });
-        let shaderModule = this.createFormattedShaderModule(code.str, code.formatObj);
 
         // input to create*passEncoder()
         let passEncoderDescriptor = {};
@@ -767,200 +795,198 @@ export class WebGPUBase {
         // return value
         let passDescriptor = {};
 
-        if (passOptions.timing) {
-            const querySet = this.createTimingQueryPair();
-            // write timestamps to here from query set
-            const resolveBuffer = this.#device.createBuffer({
-                size: querySet.count * 8,
-                usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC
-            });
-
-            // copy from resolveBuffer to here for mapping
-            // start with one
-            const timingReadBuffers = [
-                this.#device.createBuffer({
-                    size: resolveBuffer.size,
-                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-                })
-            ];
-
-            passEncoderDescriptor = {
-                ...passEncoderDescriptor,
-                timestampWrites: {
-                    querySet,
-                    beginningOfPassWriteIndex: 0,
-                    endOfPassWriteIndex: 1,
-                }
-            };
-
-            passDescriptor = {
-                ...passDescriptor,
-                timingQuerySet: querySet,
-                timingResolveBuffer: resolveBuffer,
-                timingReadBuffers
-            };
+        if (options.timing) {
+            const {pass, encoder} = this.#getPassTimingMixins();
+            passDescriptor = {...pass};
+            passEncoderDescriptor = {...encoder};
         }
+        
+        // create a render pass
+        pipelineDescriptor = {
+            ...pipelineDescriptor,
+            label: label,
+            layout: pipelineLayout,
+            vertex: {
+                module: shader,
+                entryPoint: "vertex_main",
+                buffers: options.vertexLayout
+            },
+            fragment: {
+                module: shader,
+                entryPoint: "fragment_main",
+                targets: []
+            },
+            primitive: {
+                topology: options.topology,
+            },
+        };
 
-
-        if (passType == this.PassTypes.RENDER) {
-            // create a render pass
-            pipelineDescriptor = {
-                ...pipelineDescriptor,
-                label: label,
-                layout: pipelineLayout,
-                vertex: {
-                    module: shaderModule,
-                    entryPoint: "vertex_main",
-                    buffers: passOptions.vertexLayout
-                },
-                fragment: {
-                    module: shaderModule,
-                    entryPoint: "fragment_main",
-                    targets: []
-                },
-                primitive: {
-                    topology: passOptions.topology,
-                },
+        for (let colorAttachmentFormat of options.colorAttachmentFormats) {
+            var colorTarget = {
+                format: colorAttachmentFormat,
             };
-
-            for (let colorAttachmentFormat of passOptions.colorAttachmentFormats) {
-                var colorTarget = {
-                    format: colorAttachmentFormat,
-                };
-                // add blend if
-                if (colorAttachmentFormat == "bgra8unorm") {
-                    colorTarget.blend = {
-                        color: {
-                            operation: "add",
-                            srcFactor: "src-alpha",
-                            dstFactor: "one-minus-src-alpha"
-                        },
-                        alpha: {
-                            operation: "add",
-                            srcFactor: "one",
-                            dstFactor: "zero"
-                        }
-                    };
-                }
-
-                pipelineDescriptor.fragment.targets.push(colorTarget);
-            }
-
-            if (!passOptions.excludeDepth) {
-                pipelineDescriptor.depthStencil = {
-                    format: "depth32float",
-                    depthWriteEnabled: true,
-                    depthCompare: "less"
+            // add blend if
+            if (colorAttachmentFormat == "bgra8unorm") {
+                colorTarget.blend = {
+                    color: {
+                        operation: "add",
+                        srcFactor: "src-alpha",
+                        dstFactor: "one-minus-src-alpha"
+                    },
+                    alpha: {
+                        operation: "add",
+                        srcFactor: "one",
+                        dstFactor: "zero"
+                    }
                 };
             }
 
-            // create the render pass object
-            return {
-                ...passDescriptor,
-                passEncoderDescriptor,
-                passType: this.PassTypes.RENDER,
-                indexed: passOptions.indexed || false,
-                bindGroupLayouts: bindGroupLayouts,
-                pipeline: this.#device.createRenderPipeline(pipelineDescriptor),
-            };
-        } else if (passType == this.PassTypes.COMPUTE) {
-            // create a compute pass
-            pipelineDescriptor = {
-                ...pipelineDescriptor,
-                layout: pipelineLayout,
-                compute: {
-                    module: shaderModule,
-                    entryPoint: "main"
-                }
-            };
-            // create the compute pass object
-            return {
-                ...passDescriptor,
-                passEncoderDescriptor,
-                passType: this.PassTypes.COMPUTE,
-                bindGroupLayouts: bindGroupLayouts,
-                pipeline: this.#device.createComputePipeline(pipelineDescriptor),
-            };
-        } else {
-            // not a valid pass type
-            return;
+            pipelineDescriptor.fragment.targets.push(colorTarget);
         }
+
+        if (!options.excludeDepth) {
+            pipelineDescriptor.depthStencil = {
+                format: "depth32float",
+                depthWriteEnabled: true,
+                depthCompare: "less"
+            };
+        }
+
+        // create the render pass object
+        return {
+            ...passDescriptor,
+            passEncoderDescriptor,
+            passType: this.PassTypes.RENDER,
+            indexed: options.indexed || false,
+            bindGroupLayouts: bindGroupLayouts,
+            pipeline: this.#device.createRenderPipeline(pipelineDescriptor),
+        };
+    }
+
+    createComputePass(bindGroupLayouts, shader, options, label="") {
+        let pipelineLayout = this.#device.createPipelineLayout({ bindGroupLayouts: bindGroupLayouts });
+
+        // input to create*passEncoder()
+        let passEncoderDescriptor = {};
+
+        let passDescriptor = {};
+
+        if (options.timing) {
+            const {pass, encoder} = this.#getPassTimingMixins();
+            passDescriptor = {...pass};
+            passEncoderDescriptor = {...encoder};
+        }
+
+        const pipelineDescriptor = {
+            layout: pipelineLayout,
+            compute: {
+                module: shader,
+                entryPoint: "main"
+            },
+            label
+        };
+        // create the compute pass object
+        return {
+            ...passDescriptor,
+            passEncoderDescriptor,
+            passType: this.PassTypes.COMPUTE,
+            bindGroupLayouts: bindGroupLayouts,
+            pipeline: this.#device.createComputePipeline(pipelineDescriptor),
+        };
+    }
+
+    
+    // encode passes ==============================================================================
+    async createCommandEncoder() {
+        return await this.#device.createCommandEncoder();
     };
+    
+    #encodeRenderPass(commandEncoder, pass) {
+        const passEncoder = commandEncoder.beginRenderPass(pass.passEncoderDescriptor);
+        var box = pass.box;
+        var bounds = pass.boundingBox;
+        passEncoder.setViewport(
+            Math.floor(box.left - bounds.left),
+            Math.floor(box.top - bounds.top),
+            Math.floor(box.width),
+            Math.floor(box.height),
+            0, 1
+        );
+
+        box = clampBox(box, bounds);
+        box = floorBox(box);
+
+        // will support rect outside the attachment size for V1 of webgpu
+        // https://github.com/gpuweb/gpuweb/issues/373 
+        passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
+        passEncoder.setPipeline(pass.pipeline);
+
+        for (let i = 0; i < pass.vertexBuffers.length; i++) {
+            passEncoder.setVertexBuffer(i, pass.vertexBuffers[i]);
+        }
+        for (let i in pass.bindGroups) {
+            passEncoder.setBindGroup(i, pass.bindGroups[i]);
+        }
+        if (pass.indexed) {
+            passEncoder.setIndexBuffer(pass.indexBuffer, "uint32");
+            passEncoder.drawIndexed(pass.indicesCount);
+        } else {
+            passEncoder.draw(pass.vertexCount);
+        }
+        passEncoder.end();
+    }
+
+    #encodeComputePass(commandEncoder, pass) {
+        const passEncoder = commandEncoder.beginComputePass(pass.passEncoderDescriptor);
+        passEncoder.setPipeline(pass.pipeline);
+        for (let i in pass.bindGroups) {
+            passEncoder.setBindGroup(i, pass.bindGroups[i]);
+        }
+        passEncoder.dispatchWorkgroups(...pass.workGroups);
+        passEncoder.end();
+    }
+
+    #encodeReadPassTiming(commandEncoder, pass) {
+        commandEncoder.resolveQuerySet(
+            pass.timingQuerySet,
+            0,
+            pass.timingQuerySet.count,
+            pass.timingResolveBuffer,
+            0
+        );
+        let thisReadBuff;
+
+        for (let readBuff of pass.timingReadBuffers) {
+            if (readBuff.mapState !== "unmapped") continue;
+            thisReadBuff = readBuff;
+            break;
+        }
+
+        if (!thisReadBuff) {
+            const newBuff = this.#device.createBuffer({
+                size: pass.timingResolveBuffer.size,
+                usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+            });
+            pass.timingReadBuffers.push(newBuff);
+            thisReadBuff = newBuff;
+        }
+
+        commandEncoder.copyBufferToBuffer(
+            pass.timingResolveBuffer, 0, thisReadBuff, 0, thisReadBuff.size
+        );
+    }
 
     // encodes a GPU pass onto the command encoder
-    encodeGPUPass(commandEncoder, passObj) {
-        if (passObj.passType == this.PassTypes.RENDER) {
-            const passEncoder = commandEncoder.beginRenderPass(passObj.passEncoderDescriptor);
-            var box = passObj.box;
-            var bounds = passObj.boundingBox;
-            passEncoder.setViewport(
-                Math.floor(box.left - bounds.left),
-                Math.floor(box.top - bounds.top),
-                Math.floor(box.width),
-                Math.floor(box.height),
-                0, 1
-            );
-
-            box = clampBox(box, bounds);
-            box = floorBox(box);
-
-            // will support rect outside the attachment size for V1 of webgpu
-            // https://github.com/gpuweb/gpuweb/issues/373 
-            passEncoder.setScissorRect(box.left, box.top, box.width, box.height);
-            passEncoder.setPipeline(passObj.pipeline);
-
-            for (let i = 0; i < passObj.vertexBuffers.length; i++) {
-                passEncoder.setVertexBuffer(i, passObj.vertexBuffers[i]);
-            }
-            for (let i in passObj.bindGroups) {
-                passEncoder.setBindGroup(i, passObj.bindGroups[i]);
-            }
-            if (passObj.indexed) {
-                passEncoder.setIndexBuffer(passObj.indexBuffer, "uint32");
-                passEncoder.drawIndexed(passObj.indicesCount);
-            } else {
-                passEncoder.draw(passObj.vertexCount);
-            }
-            passEncoder.end();
-        } else if (passObj.passType == this.PassTypes.COMPUTE) {
-            const passEncoder = commandEncoder.beginComputePass(passObj.passEncoderDescriptor);
-            passEncoder.setPipeline(passObj.pipeline);
-            for (let i in passObj.bindGroups) {
-                passEncoder.setBindGroup(i, passObj.bindGroups[i]);
-            }
-            passEncoder.dispatchWorkgroups(...passObj.workGroups);
-            passEncoder.end();
+    encodeGPUPass(commandEncoder, pass) {
+        if (pass.passType == this.PassTypes.RENDER) {
+            this.#encodeRenderPass(commandEncoder, pass);
+        } else if (pass.passType == this.PassTypes.COMPUTE) {
+            this.#encodeComputePass(commandEncoder, pass);
         }
 
         // encode the timing reading
-        if (passObj.passEncoderDescriptor.timestampWrites) {
-            commandEncoder.resolveQuerySet(
-                passObj.timingQuerySet,
-                0,
-                passObj.timingQuerySet.count,
-                passObj.timingResolveBuffer,
-                0
-            );
-            let thisReadBuff;
-
-            for (let readBuff of passObj.timingReadBuffers) {
-                if (readBuff.mapState !== "unmapped") continue;
-                thisReadBuff = readBuff;
-                break;
-            }
-
-            if (!thisReadBuff) {
-                const newBuff = this.#device.createBuffer({
-                    size: passObj.timingResolveBuffer.size,
-                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-                });
-                passObj.timingReadBuffers.push(newBuff);
-                thisReadBuff = newBuff;
-            }
-
-            commandEncoder.copyBufferToBuffer(
-                passObj.timingResolveBuffer, 0, thisReadBuff, 0, thisReadBuff.size
-            );
+        if (pass.passEncoderDescriptor.timestampWrites) {
+            this.#encodeReadPassTiming(commandEncoder, pass);
         }
 
         return commandEncoder;

@@ -6,7 +6,7 @@ import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
 import { clamp, frameInfoStore } from "../../../utils.js";
 import { boxesEqual, copyBox } from "../../../boxUtils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
-import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped } from "../webGPUBase.js";
+import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped, WebGPUBase } from "../webGPUBase.js";
 
 export const DataSrcUses = {
     NONE: 0,
@@ -87,6 +87,7 @@ export class WebGPURayMarchingEngine {
     noDataUpdates = false;
 
     // private ==============================
+    /** @type {WebGPUBase} */
     #webGPU;
 
     #offsetOptimisationTextureOld;
@@ -201,14 +202,17 @@ export class WebGPURayMarchingEngine {
         const t0 = performance.now();
 
         const getUnstructPassDesc = async () => {
-            const shader = await this.#webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/unstructRayMarch.wgsl");
+            const shaderStr = await this.#webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/unstructRayMarch.wgsl");
+            const shader = this.#webGPU.createShader(
+                shaderStr, 
+                { WGSizeX: this.#WGSize.x, WGSizeY: this.#WGSize.y, WGVol: this.#WGSize.x * this.#WGSize.y }
+            );
             
-            return this.#webGPU.createPassDescriptor(
-                this.#webGPU.PassTypes.COMPUTE,
-                { timing: true },
+            return this.#webGPU.createComputePass(
                 unstructRayMarchBindGroupLayouts,
-                { str: shader, formatObj: { WGSizeX: this.#WGSize.x, WGSizeY: this.#WGSize.y, WGVol: this.#WGSize.x * this.#WGSize.y } },
-                "ray march pass (compute)"
+                shader,
+                { timing: true },
+                "unstruct ray march pass"
             );
         }
 
