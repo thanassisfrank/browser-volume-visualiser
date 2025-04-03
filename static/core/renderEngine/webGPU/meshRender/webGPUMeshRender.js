@@ -1,10 +1,10 @@
-import { RenderableRenderModes } from "../../renderEngine.js";
+import { Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 
 export class WebGPUMeshRenderer {
     #webGPU;
 
     #uniformBuffer;
-    
+
     #surfaceRenderPassDescriptor;
     #pointsRenderPassDescriptor;
     #linesRenderPassDescriptor;
@@ -18,6 +18,18 @@ export class WebGPUMeshRenderer {
 
         const shaderCode = await this.#webGPU.fetchShader("core/renderEngine/webGPU/meshRender/shaders/shader.wgsl");
 
+        const bindGroupLayout =  this.#webGPU.createBindGroupLayout([
+            {
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: { type: "uniform" }
+            },
+            {
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: { type: "uniform" }
+            }
+        ], "render0");
+
+        
         this.#surfaceRenderPassDescriptor = this.#webGPU.createPassDescriptor(
             this.#webGPU.PassTypes.RENDER,
             {
@@ -26,7 +38,7 @@ export class WebGPUMeshRenderer {
                 topology: "triangle-list",
                 indexed: true
             },
-            [this.#webGPU.bindGroupLayouts.render0],
+            [bindGroupLayout],
             { str: shaderCode, formatObj: {} },
             "surface render pass"
         );
@@ -38,7 +50,7 @@ export class WebGPUMeshRenderer {
                 topology: "point-list",
                 indexed: false
             },
-            [this.#webGPU.bindGroupLayouts.render0],
+            [bindGroupLayout],
             { str: shaderCode, formatObj: {} },
             "points render pass"
         );
@@ -50,12 +62,34 @@ export class WebGPUMeshRenderer {
                 topology: "line-list",
                 indexed: true
             },
-            [this.#webGPU.bindGroupLayouts.render0],
+            [bindGroupLayout],
             { str: shaderCode, formatObj: {} },
             "lines render pass"
         );
+
+        
     }
     
+    createMeshRenderable = function(points, indices, renderMode, material) {
+        const renderable = new Renderable(RenderableTypes.MESH, renderMode);
+        // move vertex data to the gpu
+        renderable.renderData.buffers.vertex = this.#webGPU.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh vert");
+        renderable.renderData.buffers.index = this.#webGPU.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC, "mesh index");
+        // make the uniform to store the constant data
+        renderable.renderData.buffers.objectInfo = this.#webGPU.makeBuffer(
+            256, 
+            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 
+            "mesh info uniform"
+        );
+        renderable.serialisedMaterials = this.#webGPU.serialiseMaterial(material);
+        
+        // set the number of verts
+        renderable.vertexCount = points.length/3;
+        renderable.indexCount = indices.length;
+
+        return renderable;
+    };
+
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
     async render(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {

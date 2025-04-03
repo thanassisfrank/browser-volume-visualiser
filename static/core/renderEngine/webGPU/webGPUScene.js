@@ -35,9 +35,8 @@ export class WebGPUScene {
             ...box.max,
         ]);
         
-        const renderable = this.#webGPU.meshRenderableFromArrays(
+        const renderable = this.#meshRender.createMeshRenderable(
             points,
-            new Float32Array(8),
             new Uint32Array([
                 0, 1,
                 0, 2,
@@ -54,30 +53,22 @@ export class WebGPUScene {
             ]),
             RenderableRenderModes.MESH_WIREFRAME
         );
-        renderable.serialisedMaterials = this.#webGPU.serialiseMaterials({}, {});
 
         // add to the scene graph
         this.#graph.push(renderable);
     }
 
     addMesh(mesh) {
-        const renderable = this.#webGPU.meshRenderableFromArrays(mesh.verts, mesh.norms, mesh.indices, mesh.renderMode);
-
-        // set the materials
-        renderable.serialisedMaterials = this.#webGPU.serialiseMaterials(mesh.frontMaterial, mesh.backMaterial);
+        const renderable = this.#meshRender.createMeshRenderable(mesh.verts, mesh.indices, mesh.renderMode, mesh.material);
         this.#graph.push(renderable);
     }
 
     addVector(start, end, color=[0, 0, 0]) {
-        const renderable = this.#webGPU.meshRenderableFromArrays(
+        const renderable = this.#meshRender.createMeshRenderable(
             new Float32Array([...start, ...end]),
-            new Float32Array([2]),
             new Uint32Array([0, 1]),
-            RenderableRenderModes.MESH_WIREFRAME
-        );
-        renderable.serialisedMaterials = this.#webGPU.serialiseMaterials(
-            { diffuseCol: color }, 
-            { diffuseCol: color }
+            RenderableRenderModes.MESH_WIREFRAME,
+            {front: { diffuseCol: color }, back: { diffuseCol: color }}
         );
 
         this.#graph.push(renderable);
@@ -162,4 +153,3 @@ export class WebGPUScene {
         }
     }
 }
-
