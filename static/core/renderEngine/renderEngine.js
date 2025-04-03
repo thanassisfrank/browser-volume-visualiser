@@ -111,14 +111,6 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
 }
 
 
-
-// the base renderengine prototype
-export function EmptyRenderEngine() {
-    this.setup = function(){};
-    this.renderView = function(){};
-    this.destroy = function(){};
-}
-
 export async function createRenderEngine(canvas) {
     if (!navigator.gpu) throw Error("WebGPU not supported");
 

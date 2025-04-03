@@ -418,6 +418,13 @@ export class WebGPURayMarchingEngine {
         var renderData = renderable.renderData;
         var passData = renderable.passData;
 
+        passData.clippedDataBox = copyBox(dataObj.extentBox);
+
+        passData.volumeTransferFunction = {
+            colour: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            opacity: [0, 0, 0, 0]
+        };
+
         // information about the data being sent
         passData.isoSurfaceSrc = { type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE };
         passData.surfaceColSrc = { type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE };;
@@ -647,6 +654,8 @@ export class WebGPURayMarchingEngine {
         dataObj.renderables.push(dataRenderable);
 
         console.log("setup data for ray marching");
+
+        return dataRenderable;
     }
 
     getDataSrcUint(type, name) {

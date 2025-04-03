@@ -12,7 +12,6 @@ import { DataSrcSelectElem } from "./viewElems.js";
 import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 
 import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
-import { SceneGraph } from "./core/renderEngine/sceneObjects.js";
 import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 
 const BINCOUNT = 100;
@@ -318,7 +317,7 @@ export var viewManager = {
 function View(id, camera, data, renderMode) {
     this.id = id;
 
-    this.sceneGraph = new SceneGraph();
+    this.scene;
     this.camera = camera;
     this.data = data;
 
@@ -359,28 +358,13 @@ function View(id, camera, data, renderMode) {
         this.updateIsoSurfaceSrc(this.isoSurfaceSrc.type, this.isoSurfaceSrc.name);
         this.updateSurfaceColSrc(this.surfaceColSrc.type, this.surfaceColSrc.name);
 
-        switch (data.dataName) {
-            case "YF17":
-                // camera.setStartPosition([-0.0066020588241111604, 2.85478458601422, 0.5043313350465203], 14.7, 180.75, -89);
-                break;
-            case "Magnetic p 4096":
-                camera.setStartPositionAbs([236, 42, 273], [283, -43, 327]);
-        }
-
         camera.moveToStart();
-        // define what rendering type will be performed on dataset object
-        this.data.renderMode = this.renderMode;
-        // setup the scene
-        this.sceneGraph.insertChild(this.camera, undefined, true);
-        this.sceneGraph.insertChild(this.data);
-        
-        // setup the renderables
-        const setupObj = {enabledGeometry: this.enabledGeometry};
-        console.log(setupObj);
-        for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
-            renderEngine.setupSceneObject(sceneObj, setupObj);
-        }
-        console.log(this.sceneGraph.activeCamera.getEyePos());
+
+        // create scene
+        this.scene = renderEngine.createScene();
+        this.scene.addData(this.data, this.renderMode);
+
+
         this.update(0, renderEngine);
 
         this.axesWidget = new AxesWidget(this.elems.axesWidget);
@@ -498,7 +482,7 @@ function View(id, camera, data, renderMode) {
         if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
 
         // calculate the estimated actual focus point every 100ms
-        var cam = this.sceneGraph.activeCamera;
+        var cam = this.camera
         let focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
         let focusMoveDist = 0;
         if ((this.timeSinceFocusAdjusted += dt) > 500) {
@@ -516,7 +500,7 @@ function View(id, camera, data, renderMode) {
 
         // tracks if the camera or adjusted focus point moved to restart the tree modifications
         const cameraChanged = cam.didThisMove("dynamic nodes") || focusMoveDist > 1;
-        const camCoords = this.sceneGraph.activeCamera.getEyePos();
+        const camCoords = cam.getEyePos();
 
         // need to find the camera position in world space
         if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree && !this.data.noUpdates) {
@@ -526,7 +510,7 @@ function View(id, camera, data, renderMode) {
                     pos: camCoords,
                     focusPos: focusPoint,
                     camToFocus: VecMath.magnitude(VecMath.vecMinus(focusPoint, camCoords)),
-                    mat: this.sceneGraph.activeCamera.cameraMat
+                    mat: cam.cameraMat
                 },
                 {
                     changed: this.didThresholdChange("dynamic nodes"),
@@ -544,13 +528,11 @@ function View(id, camera, data, renderMode) {
             surfaceColSrc: this.surfaceColSrc,
             clippedDataBox: this.clippedDataExtentBox,
             volumeTransferFunction: this.volumeTransferFunction,
+          
             enabledGeometry: this.enabledGeometry,
         };
 
-        // update the renderables for the objects in the scene
-        for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
-            renderEngine.updateSceneObject(dt, sceneObj, updateObj);
-        }
+
     };
 
     this.getFrameElem = function() {
@@ -568,10 +550,7 @@ function View(id, camera, data, renderMode) {
     this.delete = function(renderEngine) {
         // remove dom
         this.elems.container.remove();
-        // clean up gpu data referenced in scene objects
-        for (let sceneObj of this.sceneGraph.traverseSceneObjects()) {
-            renderEngine.cleanupSceneObj(sceneObj);
-        }
-        // data object does not need to be cleaned up
+        // clean up gpu data referenced in renderables
+        this.scene.clear();
     };
 }

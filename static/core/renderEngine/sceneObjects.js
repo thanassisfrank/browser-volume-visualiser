@@ -1,88 +1,9 @@
 // sceneObjects.js
 // this file contains prototypes and functions for handling the scene and renderable management
-// a scenegraph 
 
 import {mat4, vec3} from "../gl-matrix.js";
 import {toRads, newId, clamp} from "../utils.js";
 import { VecMath } from "../VecMath.js";
-
-// Scene graph ==================================================================================
-// this is how relative transforms are controlled and managed
-
-// keeps track of the objects in a scene in a renderable context
-// doesn't have the authority to allocate/free resources like buffers
-export class SceneGraph {
-    // the scenegraph consisting of scene objects or derivatives
-    graph = [];
-    // a reference
-    activeCamera = null;
-    constructor() {}
-
-    // adds a new child to the given parent node (or the root) and can set the active camera
-    insertChild(newSceneObject, parent, makeCameraActive) {
-        if (parent) {
-            newSceneObject.sceneParent = parent;
-            parent.sceneChildren.push(newSceneObject);
-        } else {
-            this.graph.push(newSceneObject);
-        }
-        if (makeCameraActive) this.activeCamera = newSceneObject;
-    };
-    
-    // deletes the given branch and all its internal connections
-    deleteBranch(sceneObjectToRemove) {
-        // get rid of its children connections
-        for (let obj of this.traverseSceneObjects(sceneObjectToRemove.sceneChildren)) {
-            if (obj == this.activeCamera) this.activeCamera = null;
-            obj.sceneChildren = [];
-            obj.sceneParent = null;
-        }
-    
-        if (sceneObjectToRemove == this.activeCamera) this.activeCamera = null;
-    
-        // remove the reference to it from its parent
-        var thisParent = sceneObjectToRemove.sceneParent;
-        if (thisParent) {
-            var indexToRemove = thisParent.sceneChildren.findIndex((elem) => elem == sceneObjectToRemove);
-            if (indexToRemove > -1) {
-                thisParent.sceneChildren = thisParent.sceneChildren.toSpliced(indexToRemove, 1);
-            } else {
-                throw new Error("Scene object is not part of the scene graph");
-            }
-        }
-    };
-    
-    // bottom up, depth first tree traversal
-    traverseSceneObjects = function* (scene = this.graph) {
-        for (let obj of scene) {
-            // do children first
-            if (obj.sceneChildren.length > 0) {
-                yield* this.traverseSceneObjects(obj.sceneChildren);
-            }
-            // then yield the object
-            yield obj;
-        }
-    };
-    
-    // get all the renderables from the scene graph
-    getRenderables() {
-        var renderables = [];
-        for (let obj of this.traverseSceneObjects()) {
-            var objTransform = obj.getTotalTransform();
-            for (let renderable of obj.renderables) {
-                renderable.transform = objTransform;
-                renderables.push(renderable);
-            }
-        }
-        return renderables;
-    };
-    
-    // returns the active camera for the scene (null if not present)
-    getActiveCamera() {
-        return this.activeCamera;
-    };
-}
-
 
 // Some Basic Scene Objects =======================================================================
 // scene objects are the nodes in the scene graph

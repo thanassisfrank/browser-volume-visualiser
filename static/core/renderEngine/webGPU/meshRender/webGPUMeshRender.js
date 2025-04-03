@@ -12,6 +12,7 @@ export class WebGPUMeshRenderer {
     constructor(webGPUBase) {
         this.#webGPU = webGPUBase;
     }
+
     async setup() {
         this.#uniformBuffer = this.#webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
@@ -54,6 +55,7 @@ export class WebGPUMeshRenderer {
             "lines render pass"
         );
     }
+    
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
     async render(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {

@@ -350,7 +350,7 @@ async function main() {
                     if (!depth) {
                         currView.adjustedFocusPoint = null;
                     } else {
-                        var cam = currView.sceneGraph.activeCamera;
+                        var cam = currView.camera;
                         currView.adjustedFocusPoint = VecMath.vecAdd(cam.getEyePos(), VecMath.scalMult(depth, cam.getForwardVec()));
                     }
                 })

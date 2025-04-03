@@ -1,9 +1,9 @@
 // webGPURender.js
 // contains the main rendering object
-import { EmptyRenderEngine, Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
+import { Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
 
 // renderable manager
-import { WebGPURenderableManager } from "./webGPURenderableManager.js";
+import { WebGPUScene } from "./webGPUScene.js";
 
 // extension modules for more complex rendering operations
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
@@ -19,7 +19,6 @@ export class WebGPURenderEngine {
     webGPU;
     rayMarcher;
     meshRenderer;
-    #renderableManager;
 
     // stores a reference to the canvas element
     canvas;
@@ -37,7 +36,6 @@ export class WebGPURenderEngine {
 
         this.rayMarcher = new WebGPURayMarchingEngine(webGPUBase);
         this.meshRenderer = new WebGPUMeshRenderer(webGPUBase);
-        this.#renderableManager = new WebGPURenderableManager(webGPUBase, this.rayMarcher);
         // stores a reference to the canvas element
         this.canvas = canvas;
     }
@@ -60,6 +58,11 @@ export class WebGPURenderEngine {
             rayMarcherSetup,
             meshRenderSetup
         ]);
+    }
+
+    // returns a new scene object 
+    createScene() {
+        return new WebGPUScene(this.webGPU, this.rayMarcher, this.meshRenderer);
     }
 
     #createRenderTextures(width, height) {
@@ -136,19 +139,6 @@ export class WebGPURenderEngine {
         };
     }
 
-    // calls the same function from the renderable manager to create the renderables needed
-    setupSceneObject(...args) {
-        this.#renderableManager.setupSceneObject(...args);
-    }
-
-    updateSceneObject(...args) {
-        this.#renderableManager.updateSceneObject(...args);
-    }
-
-    cleanupSceneObj(sceneObj) {
-        this.#renderableManager.clearRenderables(sceneObj);
-    }
-
     async clearScreen() {
         var clearedAttachments = await this.#getClearedRenderAttachments();
 
@@ -165,10 +155,10 @@ export class WebGPURenderEngine {
 
         var box = view.getBox();
 
-        var scene = view.sceneGraph;
+        var scene = view.scene;
 
         // first check if there is a camera in the scene
-        var camera = scene.activeCamera;
+        var camera = view.camera;
         if (!camera) {
             console.warn("no camera in scene");
             return;
@@ -178,7 +168,7 @@ export class WebGPURenderEngine {
 
         // get the renderables from the scene
         var renderables = scene.getRenderables();
-        this.#renderableManager.sortRenderables(renderables, camera);
+        // this.#renderableManager.sortRenderables(renderables, camera);
 
 
         for (let renderable of renderables) {
