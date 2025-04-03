@@ -88,7 +88,7 @@ export class WebGPUScene {
         }
         if (renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
             // create renderable for data
-            this.#graph.push(await this.#rayMarcher.setupRayMarch(data));
+            this.#graph.push(await this.#rayMarcher.createRenderable(data));
         }
         if (renderMode & SceneObjectRenderModes.DATA_MESH_GEOMETRY) {
             // create mesh renderables
