@@ -387,7 +387,17 @@ export class WebGPUBase {
     writeOrCreateNewBuffer(buffer, data, usage, label = "") {
         let resultBuffer = buffer;
         let created = false;
-        if (buffer.size < data.byteLength) {
+
+        if (buffer === undefined) {
+            this.log("create " + label);
+            resultBuffer = this.createFilledBuffer(
+                "u8",
+                new Uint8Array(data.buffer),
+                usage,
+                label
+            );
+            created = true;
+        } else if (buffer.size < data.byteLength) {
             this.log("create " + label);
             // create new buffer in this slot
             this.deleteBuffer(buffer);

@@ -118,10 +118,10 @@ export class WebGPUScene {
             // turn visibility on/off
         }
 
-        if (renderable.type & RenderableTypes.DATA || renderable.type & RenderableTypes.UNSTRUCTURED_DATA) {
+        if (renderable.type & RenderableTypes.UNSTRUCTURED_DATA) {
             if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
                 // update renderable using the ray marcher
-                this.#rayMarcher.updateDataRenderable(renderable, updates);
+                this.#rayMarcher.updateUnstructuredDataRenderable(renderable, updates);
             }
         }
     }

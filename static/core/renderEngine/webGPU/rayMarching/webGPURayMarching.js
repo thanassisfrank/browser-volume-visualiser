@@ -1,7 +1,6 @@
 // webGPURayMarching.js
 // implements the ray marching algorithm with webgpu
 
-import { AssociativeCache } from "../../../data/cache.js";
 import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
 import { clamp, frameInfoStore } from "../../../utils.js";
 import { boxesEqual, copyBox } from "../../../boxUtils.js";
@@ -333,49 +332,14 @@ export class WebGPURayMarchingEngine {
         // buffers and other data 
         var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
 
-        // initialise the values cache
-        renderData.buffers.values = [
-            this.#webGPU.makeBuffer(0, usage, "empty data vert A values"),
-            this.#webGPU.makeBuffer(0, usage, "empty data vert B values"),
-        ];
+        renderData.buffers.placeholder = this.#webGPU.makeBuffer(0, usage, "placeholder");
 
-        renderData.buffers.cornerValues = [
-            this.#webGPU.makeBuffer(0, usage, "empty corner values A"),
-            this.#webGPU.makeBuffer(0, usage, "empty corner values B")
-        ];
 
+        // what buffer is in each slot
         passData.values = [
             { name: "None", limits: [0, 1] },
             { name: "None", limits: [0, 1] },
         ];
-
-        passData.dataCache = new AssociativeCache(2);
-        passData.dataCache.setBuffer("info", passData.values);
-        passData.dataCache.setBuffer("values", renderData.buffers.values);
-        passData.dataCache.setBuffer("cornerValues", renderData.buffers.cornerValues);
-
-        passData.dataCache.setWriteFunc("info", (buff, data, slot) => buff[slot] = data);
-        passData.dataCache.setReadFunc("info", (buff, slot) => buff[slot]);
-        passData.dataCache.setWriteFunc("values", (buff, data, slot) => {
-            const result = this.#webGPU.writeOrCreateNewBuffer(
-                buff[slot],
-                data.buffer,
-                buff[slot].usage,
-                `values ${slot} buffer`
-            );
-            buff[slot] = result.buffer;
-            return result;
-        });
-        passData.dataCache.setWriteFunc("cornerValues", (buff, data, slot) => {
-            const result = this.#webGPU.writeOrCreateNewBuffer(
-                buff[slot],
-                data.buffer,
-                buff[slot].usage,
-                `corner values ${slot} buffer`
-            );
-            buff[slot] = result.buffer;
-            return result;
-        });
 
         renderable.serialisedMaterials = this.#webGPU.serialiseMaterial(this.material);
 
@@ -421,10 +385,10 @@ export class WebGPURayMarchingEngine {
         renderData.bindGroups.compute2 = this.#webGPU.generateBG(
             this.#passes.unstruct.bindGroupLayouts[2],
             [
-                renderData.buffers.values[0],
-                renderData.buffers.values[1],
-                renderData.buffers.cornerValues[0],
-                renderData.buffers.cornerValues[1],
+                renderData.buffers.placeholder,
+                renderData.buffers.placeholder,
+                renderData.buffers.placeholder,
+                renderData.buffers.placeholder,
             ],
             "empty compute 2"
         );
@@ -432,10 +396,7 @@ export class WebGPURayMarchingEngine {
         return renderable;
     }
 
-    // setup the data sceneObj with the correct renderables 
-    // one that contains the data
-    // six face meshes that are actually rendered
-    
+    // create the data renderable for ray marching
     async createRenderable(dataObj) {
         // create the renderable for the data
         if (dataObj.dataFormat == DataFormats.UNSTRUCTURED || dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
@@ -445,13 +406,18 @@ export class WebGPURayMarchingEngine {
         }
     }
 
-    #getDataSrcUint(type, name) {
-        // catch the simple cases
+    #getDataSrcUint(src, slot) {
+        const { type, name } = src;
+
         switch (type) {
             case DataSrcTypes.AXIS:
                 if (name == "x") return DataSrcUints.AXIS_X;
                 if (name == "y") return DataSrcUints.AXIS_Y;
                 if (name == "z") return DataSrcUints.AXIS_Z;
+                break;
+            case DataSrcTypes.ARRAY:
+                if (slot == 0) return DataSrcUints.VALUE_A;
+                if (slot == 1) return DataSrcUints.VALUE_B;
                 break;
             case DataSrcTypes.NONE:
                 return DataSrcUints.NONE;
@@ -459,154 +425,87 @@ export class WebGPURayMarchingEngine {
         return null;
     }
 
-    #loadDataArray(dataObj, renderable, thisSrc, otherSrc) {
-        const dataUints = [DataSrcUints.VALUE_A, DataSrcUints.VALUE_B];
-        let created = false;
-
-        if (thisSrc.type != DataSrcTypes.ARRAY) {
-            // not data, return the uint
-            return { uint: this.#getDataSrcUint(thisSrc.type, thisSrc.name), created: false };
-        }
-
-        // if it is data
-        // check if this data is already in cache
-        let cacheSlot = renderable.passData.dataCache.getTagSlotNum(thisSrc.name);
-        if (-1 == cacheSlot) {
-            // not loaded
-            let newData = {
-                "info": { name: thisSrc.name, limits: thisSrc.limits }
-            };
-            if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA)
-                newData["values"] = { buffer: dataObj.getValues(thisSrc.slotNum) };
-            if (renderable.type == RenderableTypes.DATA)
-                newData["values"] = { texture: dataObj.getValues(thisSrc.slotNum), dimensions: dataObj.getDataSize() };
-            if (dataObj.resolutionMode != ResolutionModes.FULL)
-                newData["cornerValues"] = { buffer: dataObj.getCornerValues(thisSrc.slotNum) };
-
-            // figure out where to write the new data
-            let newCacheSlot;
-            for (let i = 0; i < dataUints.length; i++) {
-                if (dataUints[i] == otherSrc.uint) continue;
-                newCacheSlot = i;
-                break;
-            }
-
-            // write to the new slot
-            const result = renderable.passData.dataCache.insertNewBlockAt(newCacheSlot, thisSrc.name, newData);
-            cacheSlot = result.slot;
-            // check if any value buffers were created
-            for (const buffInfo in result.info) {
-                created |= result.info[buffInfo].created;
-            }
-        }
-
-        return { uint: dataUints[cacheSlot], created };
-    }
-
-    async updateDataRenderable(renderable, updateObj) {
-        if (this.noDataUpdates) return;
-
-        const { data } = updateObj;
+    async updateUnstructuredDataRenderable(renderable, updates) {
+        const { nodeData, valuesData, cornerValsData, meshData, treeletCellsData, blockSizes } = updates;
         const { passData, renderData } = renderable;
         
-        let valueBufferCreated = false;
-        let treeCellsResized = false;
-
-        // reset offset optimisation if bounding box has changed
-        if (!boxesEqual(passData.clippedDataBox, updateObj.clippedDataBox)) this.globalPassInfo.framesSinceMove = 0;
-        passData.clippedDataBox = copyBox(updateObj.clippedDataBox);
-
-        passData.threshold = updateObj.threshold;
-
+        passData.clippedDataBox = copyBox(updates.clippedDataBox);
+        passData.threshold = updates.threshold;
         passData.volumeTransferFunction = {
-            colour: [...updateObj.volumeTransferFunction.colour],
-            opacity: [...updateObj.volumeTransferFunction.opacity]
+            colour: [...updates.volumeTransferFunction.colour],
+            opacity: [...updates.volumeTransferFunction.opacity]
         };
+        Object.assign(passData.blockSizes, blockSizes);
 
-
-        // iso surface src
-        const isoLoadResult = this.#loadDataArray(
-            data,
-            renderable,
-            updateObj.isoSurfaceSrc,
-            passData.surfaceColSrc
-        );
-
-        passData.isoSurfaceSrc = updateObj.isoSurfaceSrc;
-        // this has to be assigned after the previous line
-        passData.isoSurfaceSrc.uint = isoLoadResult.uint;
-        valueBufferCreated |= isoLoadResult.created;
-
-        // surface col src
-        const colLoadResult = this.#loadDataArray(
-            data,
-            renderable,
-            updateObj.surfaceColSrc,
-            passData.isoSurfaceSrc
-        );
-
-        passData.surfaceColSrc = updateObj.surfaceColSrc;
-        // this has to be assigned after the previous line
-        passData.surfaceColSrc.uint = colLoadResult.uint;
-        valueBufferCreated |= colLoadResult.created;
-
-        // update any dynamic buffers
-        if (data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            // write updated mesh data to the GPU
-            this.#webGPU.writeDataToBuffer(renderData.buffers.positions, [data.data.dynamicPositions]);
-            this.#webGPU.writeDataToBuffer(renderData.buffers.cellOffsets, [data.data.dynamicCellOffsets]);
-            this.#webGPU.writeDataToBuffer(renderData.buffers.cellConnectivity, [data.data.dynamicCellConnectivity]);
-
-            if (data.usesTreelets) {
-
-                // update tree cells block size
-                const newVal = data.getBufferBlockSizes()["treeletCells"];
-                passData.blockSizes["treeletCells"] = newVal;
-
-                // update tree cells (resizable)
-                const loadResult = this.#webGPU.writeOrCreateNewBuffer(
-                    renderData.buffers.treeCells,
-                    data.getTreeCells(),
-                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-                    "data tree cells"
-                );
-
-                treeCellsResized = loadResult.created;
-                renderData.buffers.treeCells = loadResult.buffer;
-            }
-        }
-
-        if (data.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT ||
-            data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            // update the nodes buffer
-            this.#webGPU.writeDataToBuffer(renderData.buffers.treeNodes, [new Uint8Array(data.getNodeBuffer())]);
-        }
-
-        if (data.resolutionMode != ResolutionModes.FULL) {
+        if (valuesData) {
             // update the corner values buffer(s)
-            const doneNames = new Set();
-
-            for (const dataSrc of [passData.isoSurfaceSrc, passData.surfaceColSrc]) {
-                if (dataSrc.type != DataSrcTypes.ARRAY) continue;
-                if (doneNames.has(dataSrc.name)) continue;
-                doneNames.add(dataSrc.name);
-
-                let newData = {
-                    "cornerValues": data.getCornerValues(dataSrc.slotNum),
-                };
-                if (data.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-                    newData["values"] = data.getDynamicValues(dataSrc.slotNum);
-                }
-
-                passData.dataCache.updateBlockAt(
-                    passData.dataCache.getTagSlotNum(dataSrc.name), newData
-                );
+            for (let name in valuesData) {
+                renderData.buffers["values " + name] = this.#webGPU.writeOrCreateNewBuffer(
+                    renderData.buffers["values " + name],
+                    valuesData[name], 
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, 
+                    `values: ${name}`
+                ).buffer;
             }
         }
 
+        if (cornerValsData) {
+            // update the corner values buffer(s)
+            for (let name in cornerValsData) {
+                renderData.buffers["corner vals " + name] = this.#webGPU.writeOrCreateNewBuffer(
+                    renderData.buffers["corner vals " + name],
+                    cornerValsData[name], 
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, 
+                    `corner vals: ${name}`
+                ).buffer;
+            }
+        }
 
-        if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
-            if (treeCellsResized) {
+        if (updates.isoSurfaceSrc || updates.surfaceColSrc) {
+            // update the iso surface source info
+            passData.isoSurfaceSrcUint = this.#getDataSrcUint(updates.isoSurfaceSrc, 0);
+            passData.surfaceColSrcUint = this.#getDataSrcUint(updates.surfaceColSrc, 1);
+    
+            
+            if (passData.values[0].name !== updates.isoSurfaceSrc.name || passData.values[1].name !== updates.surfaceColSrc.name) {
+                // recreate bindgroup 2 from the compute pass
+                let isoBuffer = renderData.buffers["values " + updates.isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
+                let isoCornBuffer = renderData.buffers["corner vals " + updates.isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
+                
+                let colBuffer = renderData.buffers["values " + updates.surfaceColSrc.name] ?? renderData.buffers.placeholder;
+                let colCornBuffer = renderData.buffers["corner vals " + updates.surfaceColSrc.name] ?? renderData.buffers.placeholder;
+    
+                renderData.bindGroups.compute2 = this.#webGPU.generateBG(
+                    this.#passes.unstruct.bindGroupLayouts[2],
+                    [isoBuffer, colBuffer, isoCornBuffer, colCornBuffer],
+                    "filled compute 2"
+                );
+            }
+    
+            // update the information about each value buffer
+            passData.values[0] = { name: updates.isoSurfaceSrc.name, limits: updates.isoSurfaceSrc.limits };
+            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits }
+        }
+
+        // write updated mesh data to the GPU
+        if (meshData?.positions) this.#webGPU.writeDataToBuffer(renderData.buffers.positions, [meshData.positions]);
+        if (meshData?.cellOffsets) this.#webGPU.writeDataToBuffer(renderData.buffers.cellOffsets, [meshData.cellOffsets]);
+        if (meshData?.cellConnectivity) this.#webGPU.writeDataToBuffer(renderData.buffers.cellConnectivity, [meshData.cellConnectivity]);
+
+        if (treeletCellsData) {
+            // update tree cells (resizable)
+            const loadResult = this.#webGPU.writeOrCreateNewBuffer(
+                renderData.buffers.treeCells,
+                treeletCellsData,
+                GPUBufferUsage.STORAGE,
+                "data tree cells"
+            );
+
+            renderData.buffers.treeCells = loadResult.buffer;
+
+            // recreate bindgroup
+            if (loadResult.created) {
+                debugger;
                 renderData.bindGroups.compute1 = this.#webGPU.generateBG(
                     this.#passes.unstruct.bindGroupLayouts[1],
                     [
@@ -616,24 +515,14 @@ export class WebGPURayMarchingEngine {
                         renderData.buffers.cellConnectivity,
                         renderData.buffers.cellOffsets,
                     ],
-                    "filled compute 1"
+                    "compute 1"
                 );
             }
+        }
 
-            if (valueBufferCreated) {
-                // recreate bindgroup 2 from the compute pass
-                renderData.bindGroups.compute2 = this.#webGPU.generateBG(
-                    this.#passes.unstruct.bindGroupLayouts[2],
-                    [
-                        renderData.buffers.values[0],
-                        renderData.buffers.values[1],
-                        renderData.buffers.cornerValues[0],
-                        renderData.buffers.cornerValues[1],
-                    ],
-                    "filled compute 2"
-                );
-            }
-
+        if (nodeData) {
+            // update the nodes buffer
+            this.#webGPU.writeDataToBuffer(renderData.buffers.treeNodes, [new Uint8Array(nodeData)]);
         }
     }
 
@@ -775,8 +664,8 @@ export class WebGPURayMarchingEngine {
                     ...passData.dMatInv,
                 ]),
                 new Uint32Array([
-                    passData.isoSurfaceSrc.uint,
-                    passData.surfaceColSrc.uint,
+                    passData.isoSurfaceSrcUint,
+                    passData.surfaceColSrcUint,
                     this.globalPassInfo.colourScale,
                     passData.cornerValType,
                 ]),

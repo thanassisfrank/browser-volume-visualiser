@@ -5,7 +5,7 @@ import { get, show, hide, newId, hexStringToRGBArray } from "./core/utils.js";
 import { VecMath } from "./core/VecMath.js";
 
 import { ResolutionModes } from "./core/data/dataConstants.js";
-import { dataManager } from "./core/data/data.js";
+import { dataManager, Data } from "./core/data/data.js";
 
 import { DataSrcSelectElem } from "./viewElems.js";
 
@@ -13,6 +13,7 @@ import { AxesWidget, FrameTimeGraph } from "./widgets.js";
 
 import { DataSrcTypes, RenderableTypes } from "./core/renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
+import { Camera } from "./core/renderEngine/sceneObjects.js";
 
 const BINCOUNT = 100;
 
@@ -314,51 +315,58 @@ export var viewManager = {
     }
 };
 
-function View(id, camera, data, renderMode) {
-    this.id = id;
+class View {
+    id;
+    scene;
+    /** @type {Camera} */
+    camera;
+    /** @type {Data} */
+    data;
 
-    this.scene;
-    this.camera = camera;
-    this.data = data;
-
-    this.threshold = undefined;
-    this.thresholdTrackers = {};
-    this.marchedThreshold = undefined;
+    threshold;
+    thresholdTrackers = {};
 
     // an estimate of where the viewer is actually focusing on
-    this.adjustedFocusPoint = null;
-    this.timeSinceFocusAdjusted = 0;
+    adjustedFocusPoint;
+    timeSinceFocusAdjusted = 0;
 
-    this.isoSurfaceSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
-    this.surfaceColSrc = {type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null};
+    isoSurfaceSrc = { type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null };
+    surfaceColSrc = { type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null };
 
-    this.clippedDataExtentBox = structuredClone(this.data.extentBox);
+    clippedDataExtentBox;
 
-    this.volumeTransferFunction = {
-        colour:[],
-        opacity:[]
+    volumeTransferFunction = {
+        colour: [],
+        opacity: []
     };
 
-    this.enabledGeometry = {};
+    enabledGeometry = {};
+    renderMode;
 
-    this.renderMode = renderMode;
-
-    this.updateDynamicTree = true;
+    updateDynamicTree = true;
 
     // holds all the important DOM elements for this view
-    this.elems = {}
-    this.box = {};
+    elems = {};
+    box = {};
+    axesWidget;
 
-    this.axesWidget;
+    constructor(id, camera, data, renderMode) {
+        this.id = id;
+        this.camera = camera;
+        this.data = data;
+        this.renderMode = renderMode;
 
-    this.init = function(renderEngine) {
+        this.clippedDataExtentBox = structuredClone(this.data.extentBox);
+    }
+
+    init(renderEngine) {
         // setup camera position
-        camera.setStartPosition(data.getMidPoint(), data.getMaxLength(), 0, 0);
+        this.camera.setStartPosition(this.data.getMidPoint(), this.data.getMaxLength(), 0, 0);
 
         this.updateIsoSurfaceSrc(this.isoSurfaceSrc.type, this.isoSurfaceSrc.name);
         this.updateSurfaceColSrc(this.surfaceColSrc.type, this.surfaceColSrc.name);
 
-        camera.moveToStart();
+        this.camera.moveToStart();
 
         // create scene
         this.scene = renderEngine.createScene();
@@ -370,7 +378,7 @@ function View(id, camera, data, renderMode) {
         this.axesWidget = new AxesWidget(this.elems.axesWidget);
     };
 
-    this.updateThreshold = async function(val) {
+    async updateThreshold(val) {
         this.elems.slider.value = val;
         this.threshold = val;
         for (let id in this.thresholdTrackers) {
@@ -379,7 +387,7 @@ function View(id, camera, data, renderMode) {
         if (this.elems.threshVal) this.elems.threshVal.innerText = val.toPrecision(3);
     };
 
-    this.updateSlider = function(limits) {
+    updateSlider(limits) {
         this.elems.slider.min = limits[0];
         this.elems.slider.max = limits[1];
         this.elems.slider.step = (limits[1] - limits[0]) / 5000;
@@ -387,11 +395,11 @@ function View(id, camera, data, renderMode) {
         this.updateThreshold((limits[0] + limits[1]) / 2);
     };
 
-    this.updateDensityGraph = function(slotNum) {
+    updateDensityGraph(slotNum) {
         if (this.elems.densityGraph) {
             this.elems.densityGraph.width = BINCOUNT;
             this.elems.densityGraph.height = 20;
-            var {counts, max} = this.data.getValueCounts(slotNum, BINCOUNT);
+            var { counts, max } = this.data.getValueCounts(slotNum, BINCOUNT);
             var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, [2, 1]);
             for (let val of counts) {
                 densityPlotter.update(Math.log10(val));
@@ -400,7 +408,7 @@ function View(id, camera, data, renderMode) {
     };
 
     // called when
-    this.updateIsoSurfaceSrc = async function(desc) {
+    async updateIsoSurfaceSrc(desc) {
         console.log("iso " + desc.type + " " + desc.name);
         let limits = [0, 0];
         let slotNum = undefined;
@@ -429,10 +437,10 @@ function View(id, camera, data, renderMode) {
         if (desc.name == "Pressure") this.updateThreshold(101353.322975);
         if (desc.name == "Default" && this.data.dataName == "Magnetic p 4096") this.updateThreshold(1.36);
         // change the source
-        this.isoSurfaceSrc = {type: desc.type, name: desc.name, limits, slotNum};
+        this.isoSurfaceSrc = { type: desc.type, name: desc.name, limits, slotNum };
     };
-    
-    this.updateSurfaceColSrc = async function(desc) {
+
+    async updateSurfaceColSrc(desc) {
         console.log("col " + desc.type + " " + desc.name);
         // load the data array
         let limits = [0, 0];
@@ -450,31 +458,31 @@ function View(id, camera, data, renderMode) {
                 limits = this.data.getLimits(slotNum);
         }
         // change the source
-        this.surfaceColSrc = {type: desc.type, name: desc.name, limits, slotNum};
+        this.surfaceColSrc = { type: desc.type, name: desc.name, limits, slotNum };
     };
 
-    this.updateDataSrc = async function(use, desc) {
+    async updateDataSrc(use, desc) {
         if (DataSrcUses.ISO_SURFACE == use) {
             return await this.updateIsoSurfaceSrc(desc);
         } else if (DataSrcUses.SURFACE_COL == use) {
             return await this.updateSurfaceColSrc(desc);
         } else {
-            console.warn("unrecognised data source use")
+            console.warn("unrecognised data source use");
             return;
         }
-    }
+    };
 
-    this.updateEnabledGeometry = function(name, enable) {
+    updateEnabledGeometry(name, enable) {
         this.enabledGeometry[name] = enable;
     };
 
-    this.didThresholdChange = function(id="default") {
+    didThresholdChange(id = "default") {
         const changed = this.thresholdTrackers[id] ?? true;
         this.thresholdTrackers[id] = false;
         return changed;
     };
 
-    this.update = async function (dt, renderEngine) {
+    async update(dt, renderEngine) {
         this.axesWidget?.update(this.camera.viewMat);
 
         var activeValueSlots = [];
@@ -482,7 +490,7 @@ function View(id, camera, data, renderMode) {
         if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
 
         // calculate the estimated actual focus point every 100ms
-        var cam = this.camera
+        var cam = this.camera;
         let focusPoint = this.adjustedFocusPoint ?? cam.getTarget();
         let focusMoveDist = 0;
         if ((this.timeSinceFocusAdjusted += dt) > 500) {
@@ -517,34 +525,53 @@ function View(id, camera, data, renderMode) {
                     source: this.isoSurfaceSrc,
                     value: this.threshold
                 },
-                activeValueSlots,
+                activeValueSlots
             );
         }
 
         // object which holds all the updates for the render engine
-        const updateObj = {
-            data: this.data,
+        const updates = {
             threshold: this.threshold,
             isoSurfaceSrc: this.isoSurfaceSrc,
             surfaceColSrc: this.surfaceColSrc,
             clippedDataBox: this.clippedDataExtentBox,
             volumeTransferFunction: this.volumeTransferFunction,
-          
+
+            nodeData: this.data.getNodeBuffer(),
+            meshData: {
+                positions: this.data.data.dynamicPositions,
+                cellConnectivity: this.data.data.dynamicCellConnectivity,
+                cellOffsets: this.data.data.dynamicCellOffsets,
+            },
+            valuesData: {},
+            cornerValsData: {},
+            treeletCellsData: this.data.getTreeCells(),
+            blockSizes: this.data.getBufferBlockSizes(),
+
             enabledGeometry: this.enabledGeometry,
         };
-        
+
+        if (this.isoSurfaceSrc.type == DataSrcTypes.ARRAY) {
+            updates.valuesData[this.isoSurfaceSrc.name] = this.data.getValues(this.isoSurfaceSrc.slotNum);
+            updates.cornerValsData[this.isoSurfaceSrc.name] = this.data.getCornerValues(this.isoSurfaceSrc.slotNum);
+        }
+        if (this.surfaceColSrc.type == DataSrcTypes.ARRAY) {
+            updates.valuesData[this.surfaceColSrc.name] = this.data.getValues(this.surfaceColSrc.slotNum);
+            updates.cornerValsData[this.surfaceColSrc.name] = this.data.getCornerValues(this.surfaceColSrc.slotNum);
+        }
+
         // update the data renderable
-        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.DATA | RenderableTypes.UNSTRUCTURED_DATA);
+        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA);
         if (dataRenderables.length > 0) {
-            this.scene.updateRenderable(dataRenderables[0], updateObj);
+            this.scene.updateRenderable(dataRenderables[0], updates);
         }
     };
 
-    this.getFrameElem = function() {
+    getFrameElem() {
         return this.elems.frame;
     };
 
-    this.getBox = function() {
+    getBox() {
         // find the box corresponding to the associated frame element
         // the box is relative to the window
         var rect = this.getFrameElem().getBoundingClientRect();
@@ -552,7 +579,7 @@ function View(id, camera, data, renderMode) {
         return rect;
     };
 
-    this.delete = function(renderEngine) {
+    delete(renderEngine) {
         // remove dom
         this.elems.container.remove();
         // clean up gpu data referenced in renderables

@@ -201,11 +201,7 @@ const dataManager = {
 }
 
 
-
-
-
-
-class Data {
+export class Data {
     users = 0;
     config;
     opts;
