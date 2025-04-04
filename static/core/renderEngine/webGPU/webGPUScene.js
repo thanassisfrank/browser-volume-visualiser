@@ -2,8 +2,7 @@
 // handles the creation of renderable objects for the various scene objects available
 
 import { Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
-import {mat4, vec4, vec3} from '../../gl-matrix.js';
-import { SceneObjectTypes, SceneObjectRenderModes, defaultMaterial} from "../sceneObjects.js";
+import { SceneObjectRenderModes } from "../sceneObjects.js";
 
 export class WebGPUScene {
     #webGPU;

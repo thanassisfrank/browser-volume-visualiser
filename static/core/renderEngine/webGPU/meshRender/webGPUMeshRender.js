@@ -5,11 +5,47 @@ export class WebGPUMeshRenderer {
     /** @type {WebGPUBase} */
     #webGPU;
 
+    #vertexLayouts = {
+        // the layout for only a position buffer, f32
+        position: [
+            {
+                // x y z location, 4 bytes each
+                attributes: [{
+                    shaderLocation: 0,
+                    offset: 0,
+                    format: 'float32x3'
+                }],
+                arrayStride: 12,
+                stepMode: 'vertex'
+            }
+        ],
+        positionAndNormal: [
+            {
+                // x y z location, 4 bytes each
+                attributes: [{
+                    shaderLocation: 0,
+                    offset: 0,
+                    format: 'float32x3'
+                }],
+                arrayStride: 12,
+                stepMode: 'vertex'
+            },
+            {
+                // x y z normal, 4 bytes each
+                attributes: [{
+                    shaderLocation: 1,
+                    offset: 0,
+                    format: 'float32x3'
+                }],
+                arrayStride: 12,
+                stepMode: 'vertex'
+            }
+        ]
+    };
+
     #uniformBuffer;
 
-    #surfaceRenderPassDescriptor;
-    #pointsRenderPassDescriptor;
-    #linesRenderPassDescriptor;
+    #passes = {};
 
     constructor(webGPUBase) {
         this.#webGPU = webGPUBase;
@@ -32,33 +68,33 @@ export class WebGPUMeshRenderer {
         ], "render0")];
 
         
-        this.#surfaceRenderPassDescriptor = this.#webGPU.createRenderPass(
+        this.#passes.surface = this.#webGPU.createRenderPass(
             bindGroupLayouts,
             shader,
             {
-                vertexLayout: this.#webGPU.vertexLayouts.position,
+                vertexLayout: this.#vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "triangle-list",
                 indexed: true
             },
             "surface render pass"
         );
-        this.#pointsRenderPassDescriptor = this.#webGPU.createRenderPass(
+        this.#passes.points = this.#webGPU.createRenderPass(
             bindGroupLayouts,
             shader,
             {
-                vertexLayout: this.#webGPU.vertexLayouts.position,
+                vertexLayout: this.#vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "point-list",
                 indexed: false
             },
             "points render pass"
         );
-        this.#linesRenderPassDescriptor = this.#webGPU.createRenderPass(
+        this.#passes.lines = this.#webGPU.createRenderPass(
             bindGroupLayouts,
             shader,
             {
-                vertexLayout: this.#webGPU.vertexLayouts.position,
+                vertexLayout: this.#vertexLayouts.position,
                 colorAttachmentFormats: ["bgra8unorm"],
                 topology: "line-list",
                 indexed: true
@@ -90,40 +126,38 @@ export class WebGPUMeshRenderer {
     // used for rendering basic meshes with phong shading
     // supports point, line and mesh rendering
     async render(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
-        if (renderable.indexCount == 0 && renderable.vertexCount == 0) {
-            return;
-        }
+        if (renderable.indexCount == 0 && renderable.vertexCount == 0) return;
 
-        var commandEncoder = await this.#webGPU.createCommandEncoder();
+        const commandEncoder = await this.#webGPU.createCommandEncoder();
+        const { renderData } = renderable;
 
+        let pass;
         if (renderable.renderMode == RenderableRenderModes.MESH_POINTS) {
-            var thisPassDescriptor = this.#pointsRenderPassDescriptor;
+            pass = this.#passes.points;
         } else if (renderable.renderMode == RenderableRenderModes.MESH_WIREFRAME) {
-            var thisPassDescriptor = this.#linesRenderPassDescriptor;
+            pass = this.#passes.lines;
         } else if (renderable.renderMode == RenderableRenderModes.MESH_SURFACE) {
-            var thisPassDescriptor = this.#surfaceRenderPassDescriptor;
+            pass = this.#passes.surface;
         }
-        var renderPass = {
-            ...thisPassDescriptor,
+
+        const passOptions = {
             vertexCount: renderable.vertexCount,
             indicesCount: renderable.indexCount,
-            vertexBuffers: [renderable.renderData.buffers.vertex],
-            indexBuffer: renderable.renderData.buffers?.index,
+            vertexBuffers: [renderData.buffers.vertex],
+            indexBuffer: renderData.buffers?.index,
             bindGroups: {
                 0: this.#webGPU.generateBG(
-                    thisPassDescriptor.bindGroupLayouts[0],
-                    [this.#uniformBuffer, renderable.renderData.buffers.objectInfo]
+                    pass.bindGroupLayouts[0],
+                    [this.#uniformBuffer, renderData.buffers.objectInfo]
                 ),
             },
-            passEncoderDescriptor: {
-                colorAttachments: [outputColourAttachment],
-                depthStencilAttachment: outputDepthAttachment
-            },
+            colorAttachments: [outputColourAttachment],
+            depthStencilAttachment: outputDepthAttachment,
             box: box,
             boundingBox: ctx.canvas.getBoundingClientRect(),
         };
 
-        this.#webGPU.encodeGPUPass(commandEncoder, renderPass);
+        this.#webGPU.encodeGPUPass(commandEncoder, pass, passOptions);
 
         // write buffers
         this.#webGPU.writeDataToBuffer(
@@ -131,7 +165,7 @@ export class WebGPUMeshRenderer {
             [camera.serialise(), new Uint32Array([performance.now()])]
         );
         this.#webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.objectInfo,
+            renderData.buffers.objectInfo,
             [new Float32Array(renderable.transform), renderable.serialisedMaterials]
         );
         this.#webGPU.submitCommandEncoder(commandEncoder);

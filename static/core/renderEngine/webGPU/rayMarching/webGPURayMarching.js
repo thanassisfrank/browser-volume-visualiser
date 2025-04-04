@@ -94,7 +94,7 @@ export class WebGPURayMarchingEngine {
     #offsetOptimisationTextureNew;
     #colorCopyDstTexture;
 
-    #passDescriptors = {};
+    #passes = {};
 
     // required: x*y*z <= 256 
     // optimal seems to be 8x8
@@ -218,7 +218,7 @@ export class WebGPURayMarchingEngine {
 
         const passDescriptors = await Promise.all([getUnstructPassDesc()]);
 
-        this.#passDescriptors.unstruct = passDescriptors[0];
+        this.#passes.unstruct = passDescriptors[0];
 
         this.#webGPU.log(performance.now() - t0, "ms for ray pipeline creation");
     }
@@ -400,7 +400,7 @@ export class WebGPURayMarchingEngine {
 
 
         renderData.bindGroups.compute0 = this.#webGPU.generateBG(
-            this.#passDescriptors.unstruct.bindGroupLayouts[0],
+            this.#passes.unstruct.bindGroupLayouts[0],
             [
                 renderData.buffers.combinedPassInfo,
             ],
@@ -408,7 +408,7 @@ export class WebGPURayMarchingEngine {
         );
 
         renderData.bindGroups.compute1 = this.#webGPU.generateBG(
-            this.#passDescriptors.unstruct.bindGroupLayouts[1],
+            this.#passes.unstruct.bindGroupLayouts[1],
             [
                 renderData.buffers.treeNodes,
                 renderData.buffers.treeCells,
@@ -419,7 +419,7 @@ export class WebGPURayMarchingEngine {
             "initial compute 1"
         );
         renderData.bindGroups.compute2 = this.#webGPU.generateBG(
-            this.#passDescriptors.unstruct.bindGroupLayouts[2],
+            this.#passes.unstruct.bindGroupLayouts[2],
             [
                 renderData.buffers.values[0],
                 renderData.buffers.values[1],
@@ -608,7 +608,7 @@ export class WebGPURayMarchingEngine {
         if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
             if (treeCellsResized) {
                 renderData.bindGroups.compute1 = this.#webGPU.generateBG(
-                    this.#passDescriptors.unstruct.bindGroupLayouts[1],
+                    this.#passes.unstruct.bindGroupLayouts[1],
                     [
                         renderData.buffers.treeNodes,
                         renderData.buffers.treeCells,
@@ -623,7 +623,7 @@ export class WebGPURayMarchingEngine {
             if (valueBufferCreated) {
                 // recreate bindgroup 2 from the compute pass
                 renderData.bindGroups.compute2 = this.#webGPU.generateBG(
-                    this.#passDescriptors.unstruct.bindGroupLayouts[2],
+                    this.#passes.unstruct.bindGroupLayouts[2],
                     [
                         renderData.buffers.values[0],
                         renderData.buffers.values[1],
@@ -704,25 +704,26 @@ export class WebGPURayMarchingEngine {
     // this is run for every face of the bounding box
     async marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
         const thisFrameNum = frameInfoStore.getFrameNum();
-        var commandEncoder = await this.#webGPU.createCommandEncoder();
+        const commandEncoder = await this.#webGPU.createCommandEncoder();
+
+        const { renderData, passData } = renderable;
 
         // make a copy of the current colour frame buffer
         this.#webGPU.encodeCopyTextureToTexture(commandEncoder, outputColourAttachment.texture, this.#colorCopyDstTexture);
 
         // do a full ray march pass
-        var WGs = [
+        const workGroups = [
             Math.ceil(ctx.canvas.width / this.#WGSize.x),
             Math.ceil(ctx.canvas.height / this.#WGSize.y)
         ];
 
-        var rayMarchComputePass = {
-            ...this.#passDescriptors.unstruct,
+        const passOptions = {
             bindGroups: {
-                0: renderable.renderData.bindGroups.compute0,
-                1: renderable.renderData.bindGroups.compute1,
-                2: renderable.renderData.bindGroups.compute2,
+                0: renderData.bindGroups.compute0,
+                1: renderData.bindGroups.compute1,
+                2: renderData.bindGroups.compute2,
                 3: this.#webGPU.generateBG(
-                    this.#passDescriptors.unstruct.bindGroupLayouts[3],
+                    this.#passes.unstruct.bindGroupLayouts[3],
                     [
                         outputDepthAttachment.view,
                         this.#offsetOptimisationTextureOld.createView(),
@@ -732,15 +733,15 @@ export class WebGPURayMarchingEngine {
                     ]
                 ),
             },
-            workGroups: WGs
+            workGroups
         };
 
         // encode the render pass
-        this.#webGPU.encodeGPUPass(commandEncoder, rayMarchComputePass);
+        this.#webGPU.encodeGPUPass(commandEncoder, this.#passes.unstruct, passOptions);
 
         // global info buffer for compute
         this.#webGPU.writeDataToBuffer(
-            renderable.renderData.buffers.combinedPassInfo,
+            renderData.buffers.combinedPassInfo,
             [
                 // global info
                 camera.serialise(),
@@ -759,45 +760,45 @@ export class WebGPURayMarchingEngine {
                     this.globalPassInfo.framesSinceMove,
                 ]),
                 new Float32Array([
-                    renderable.passData.threshold,
-                    renderable.passData.values[0].limits[0],
-                    renderable.passData.values[0].limits[1],
-                    renderable.passData.values[1].limits[0],
-                    renderable.passData.values[1].limits[1],
+                    passData.threshold,
+                    passData.values[0].limits[0],
+                    passData.values[0].limits[1],
+                    passData.values[1].limits[0],
+                    passData.values[1].limits[1],
                     0,
-                    ...renderable.passData.clippedDataBox.min, 0,
-                    ...renderable.passData.clippedDataBox.max, 0,
+                    ...passData.clippedDataBox.min, 0,
+                    ...passData.clippedDataBox.max, 0,
                     0, 0, 0, 0,
                     this.#calculateStepSize(),
                     this.globalPassInfo.maxRayLength,
                     0, 0,
-                    ...renderable.passData.dMatInv,
+                    ...passData.dMatInv,
                 ]),
                 new Uint32Array([
-                    renderable.passData.isoSurfaceSrc.uint,
-                    renderable.passData.surfaceColSrc.uint,
+                    passData.isoSurfaceSrc.uint,
+                    passData.surfaceColSrc.uint,
                     this.globalPassInfo.colourScale,
-                    renderable.passData.cornerValType,
+                    passData.cornerValType,
                 ]),
                 new Float32Array([
-                    ...renderable.passData.volumeTransferFunction.colour[0],
-                    renderable.passData.volumeTransferFunction.opacity[0],
-                    ...renderable.passData.volumeTransferFunction.colour[1],
-                    renderable.passData.volumeTransferFunction.opacity[1],
-                    ...renderable.passData.volumeTransferFunction.colour[2],
-                    renderable.passData.volumeTransferFunction.opacity[2],
-                    ...renderable.passData.volumeTransferFunction.colour[3],
-                    renderable.passData.volumeTransferFunction.opacity[3],
+                    ...passData.volumeTransferFunction.colour[0],
+                    passData.volumeTransferFunction.opacity[0],
+                    ...passData.volumeTransferFunction.colour[1],
+                    passData.volumeTransferFunction.opacity[1],
+                    ...passData.volumeTransferFunction.colour[2],
+                    passData.volumeTransferFunction.opacity[2],
+                    ...passData.volumeTransferFunction.colour[3],
+                    passData.volumeTransferFunction.opacity[3],
                 ]),
                 new Uint32Array([
-                    renderable.passData.blockSizes.positions,
-                    renderable.passData.blockSizes.cellOffsets,
-                    renderable.passData.blockSizes.cellConnectivity,
-                    renderable.passData.blockSizes.valuesA,
-                    renderable.passData.blockSizes.valuesB,
-                    renderable.passData.blockSizes.treeletCells,
+                    passData.blockSizes.positions,
+                    passData.blockSizes.cellOffsets,
+                    passData.blockSizes.cellConnectivity,
+                    passData.blockSizes.valuesA,
+                    passData.blockSizes.valuesB,
+                    passData.blockSizes.treeletCells,
                     0, 0,
-                    renderable.passData.cellsPtrType,
+                    passData.cellsPtrType,
                 ]),
             ]
         );
@@ -805,11 +806,10 @@ export class WebGPURayMarchingEngine {
         this.#webGPU.submitCommandEncoder(commandEncoder);
 
         // map timing information
-        const timing = await this.#webGPU.getPassTimingInfo(rayMarchComputePass);
+        const timing = await this.#webGPU.getPassTimingInfo(this.#passes.unstruct);
         if (timing?.duration !== undefined) {
             const durMS = timing.duration / 10 ** 6;
             frameInfoStore.addAt(thisFrameNum, "gpu", durMS);
-            // console.log(`GPU took ${(durMS).toPrecision(3)}ms`);
         }
     }
 
