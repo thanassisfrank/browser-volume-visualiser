@@ -2,15 +2,23 @@
 // handles the storing of the data object, normals etc
 
 import { DataFormats, DataArrayTypes, ResolutionModes } from "./dataConstants.js";
-import { FunctionDataSource, RawDataSource, CGNSDataSource, DownsampleStructDataSource, UnstructFromStructDataSource, TreeUnstructDataSource, BlockFromUnstructDataSource, PartialCGNSDataSource } from "./dataSource.js";
+import { 
+    FunctionDataSource, 
+    RawDataSource, 
+    CGNSDataSource, 
+    DownsampleStructDataSource, 
+    UnstructFromStructDataSource, 
+    TreeUnstructDataSource, 
+    BlockFromUnstructDataSource, 
+    PartialCGNSDataSource 
+} from "./dataSource/dataSource.js";
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
-import { newId } from "../utils.js";
 import { DynamicTree } from "./dynamicTree.js";
 
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
-import { VectorMappingHandler } from "./vectorDataArray.js";
+import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
 
 export {dataManager};
 

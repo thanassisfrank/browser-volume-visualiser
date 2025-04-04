@@ -1,8 +1,8 @@
 // meshCache.js
 
-import { frameInfoStore, StopWatch } from "../utils.js";
+import { frameInfoStore, StopWatch } from "../../utils.js";
 import { AssociativeCache, ScoredCacheManager } from "./cache.js";
-import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer, writeNodeToBuffer } from "./cellTreeUtils.js";
+import { getMeshExtentBox, NODE_BYTE_LENGTH, readNodeFromBuffer, writeNodeToBuffer } from "../cellTreeUtils.js";
 import { generateTreelet, InternalTreeletTopLeftPtr, InternalTreeletTopRightPtr, treeletNodeCountFromDepth } from "./treelet.js";
 
 // implements a cache object for storing mesh data in block format

@@ -1,9 +1,9 @@
 // vectorDataArray.js
 // provides information about mappings from a vector of 
 
-import { DataArrayTypes, DataModifiers } from "./dataConstants.js";
+import { DataArrayTypes, DataModifiers } from "../dataConstants.js";
 
-import { VecMath } from "../VecMath.js";
+import { VecMath } from "../../VecMath.js";
 import { DataSourceSampler } from "./dataSampler.js";
 import { createVertexIterator } from "./vertexIterator.js";
 

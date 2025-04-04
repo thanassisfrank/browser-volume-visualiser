@@ -1,6 +1,6 @@
 // vertexIterator.js
 // provides functions for iterating through the vertices of a data source
-import { DataFormats } from "./dataConstants.js"
+import { DataFormats } from "../dataConstants.js"
 
 class StructuredVertexIterator {
     #dataSource;

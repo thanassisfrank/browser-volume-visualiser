@@ -1,13 +1,12 @@
 // dataSource.js
 // contains classes for handling different types of data sources, backing data objects
-import {mat4} from "../gl-matrix.js";
-import { DATA_TYPES, FetchSocket } from "../utils.js";
-import h5wasm from "../h5wasm/hdf5_hl.js";
-import * as cgns from "./cgns_hdf5.js";
-import { DataFormats, DataArrayTypes } from "./dataConstants.js";
-import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "./cellTree.js";
-import { CornerValTypes, createNodeCornerValuesBuffer, loadCornerValues } from "./treeNodeValues.js";
-import { processLeafMeshDataInfo } from "./cellTreeUtils.js";
+import {mat4} from "../../gl-matrix.js";
+import { DATA_TYPES, FetchSocket } from "../../utils.js";
+import * as cgns from "./cgns/cgns_hdf5.js";
+import { DataFormats, DataArrayTypes } from "../dataConstants.js";
+import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "../cellTree.js";
+import { CornerValTypes, createNodeCornerValuesBuffer, loadCornerValues } from "../treeNodeValues.js";
+import { processLeafMeshDataInfo } from "../cellTreeUtils.js";
 
 
 const DEFAULT_ARRAY_NAME = "Default";
@@ -226,20 +225,14 @@ export class CGNSDataSource extends EmptyDataSource {
     }
 
     async init() {
-        const { FS } = await h5wasm.ready;
+        const f = await cgns.fetchCGNS(this.path, this.name);
 
-        const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
-
-        FS.writeFile(this.name, new Uint8Array(responseBuffer));
-        // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
-        let f = new h5wasm.File(this.name, "r");
-
-        var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
-        var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
-        var zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
+        const CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
+        const CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
+        const zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
         
         // only unstructured zones are currently supported
-        var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
+        const zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);
         if (zoneTypeStr != "Unstructured") {
             throw "Unsupported ZoneType of '" + zoneTypeStr + "'";
         }
@@ -324,19 +317,11 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     // > extracts information about the node tree and mesh block sizes
     // > keeps a reference to the corner value flow solution node for pulling data arrays from
     async init() {
-        await this.#socket.waitForOpen();
+        const f = await cgns.fetchCGNS(this.path, this.name);
 
-        const { FS } = await h5wasm.ready;
-
-        const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
-
-        FS.writeFile(this.name, new Uint8Array(responseBuffer));
-        // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
-        let f = new h5wasm.File(this.name, "r");
-
-        var CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
-        var CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
-        var zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
+        const CGNSBaseNode = cgns.getChildrenWithLabel(f, "CGNSBase_t")[0]; // get first base node
+        const CGNSZoneNode = cgns.getChildrenWithLabel(CGNSBaseNode, "Zone_t")[0]; // get first zone node in base node
+        const zoneTypeNode = cgns.getChildrenWithLabel(CGNSZoneNode, "ZoneType_t")[0]; // get zone type node
         
         // only unstructured zones are currently supported
         var zoneTypeStr = String.fromCharCode(...zoneTypeNode.get(" data").value);

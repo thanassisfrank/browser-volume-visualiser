@@ -1,6 +1,8 @@
 //cgns_hdf5.js
 // library to handle interface with the cgns dataset standard
 
+import h5wasm from "./h5wasm/hdf5_hl.js";
+
 export const ELEMENT_TYPES = [
     "ElementTypeNull", 
     "ElementTypeUserDefined", 
@@ -104,12 +106,21 @@ export const ELEMENT_EDGE_COUNT = [
     6, // TETRA_4
 ];
 
+export async function fetchCGNS(path, name="") {
+    const { FS } = await h5wasm.ready;
+    
+    const responseBuffer = await fetch(path).then(resp => resp.arrayBuffer());
+
+    FS.writeFile(name, new Uint8Array(responseBuffer));
+    // use mode "r" for reading.  All modes can be found in h5wasm.ACCESS_MODES
+    return new h5wasm.File(name, "r");
+}
 
 // labels are not necessarily unique among children
-export var getChildrenWithLabel = (parent, label) => {
-    var children = [];
+export const getChildrenWithLabel = (parent, label) => {
+    const children = [];
     for (let link of parent.keys()) {
-        var node = parent.get(link)
+        const node = parent.get(link)
         if (node?.attrs?.label?.value == label) children.push(node);
     }
     return children;

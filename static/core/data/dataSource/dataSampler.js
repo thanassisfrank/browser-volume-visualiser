@@ -1,7 +1,6 @@
 // dataSampler.js
-import { VecMath } from "../VecMath.js";
-import { DataFormats, DataModifiers } from "./dataConstants.js";
-import { pointInAABB, sampleDataArrayWithCell } from "./cellTreeUtils.js";
+import { DataFormats, DataModifiers } from "../dataConstants.js";
+import { pointInAABB, sampleDataArrayWithCell } from "../cellTreeUtils.js";
 
 const EPSILON_DER = 2**-6;
 
