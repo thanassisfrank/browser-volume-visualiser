@@ -57,6 +57,16 @@ export class WebGPUBase {
     // public ====================
     verbose;
 
+    // convenience combined buffer usages
+    bufferUsage = {
+        S_CD_CS: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+        U_CD_CS: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+        MR_CD: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        V_CS: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC,
+        I_CS: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC,
+        CD_CS: GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    }
+
     // private ===================
     #adapter;
     #device;
@@ -69,14 +79,13 @@ export class WebGPUBase {
         maxStorageBuffersPerShaderStage: 9,
     };
 
-    bindGroupLayouts = {};
-
-    PassTypes = {
+    #PassTypes = {
         RENDER: 1,
         COMPUTE: 2,
     };
 
-    wgslLibs = {};
+    #wgslLibs = {};
+
     constructor(verbose = false) {
         this.verbose = verbose;
     }
@@ -120,14 +129,17 @@ export class WebGPUBase {
         this.log(this.#device.limits);
 
         // load utils.wgsl as a string
-        this.wgslLibs["utils.wgsl"] = await this.fetchShader("core/renderEngine/webGPU/shaders/utils.wgsl");
-        this.wgslLibs["rayMarchUtils.wgsl"] = await this.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/rayMarchUtils.wgsl");
+        this.#wgslLibs["utils.wgsl"] = await this.fetchShaderText("core/renderEngine/webGPU/shaders/utils.wgsl");
     };
 
-    async fetchShader(name) {
+    async fetchShaderText(name) {
         const res = await fetch(name);
         return await res.text();
     };
+
+    registerWGSLLib(name, text) {
+        this.#wgslLibs[name] = text
+    }
 
     getDevice() {
         return this.#device;
@@ -282,7 +294,7 @@ export class WebGPUBase {
             codeStr,
             {
                 ...formatObj, // constants
-                ...this.wgslLibs, // wgsl code imports
+                ...this.#wgslLibs, // wgsl code imports
             }
         );
 
@@ -347,23 +359,13 @@ export class WebGPUBase {
         });
     };
 
-    // works for any usage, doesnt have to include mapwrite
-    createFilledBuffer(type, data, usage, label = "") {
+    // writes a TypedArray into a new buffer
+    createFilledBuffer(data, usage, label = "") {
         const byteLength = Math.max(32, data.byteLength);
-        var buffer = this.makeBuffer(byteLength, usage, label, true);
-        if (type == "f32") {
-            new Float32Array(buffer.getMappedRange()).set(data);
-        } else if (type == "u32") {
-            new Uint32Array(buffer.getMappedRange()).set(data);
-        } else if (type = "u8") {
-            new Uint8Array(buffer.getMappedRange()).set(data);
-        } else {
-            // can't do this
-            console.warn("can't create filled buffer of this type");
-            buffer.unmap();
-            this.deleteBuffer(buffer);
-            return;
-        }
+        const buffer = this.makeBuffer(byteLength, usage, label, true);
+
+        const dataAsUint8 = new Uint8Array(data.buffer);
+        new Uint8Array(buffer.getMappedRange()).set(dataAsUint8);
 
         buffer.unmap();
         return buffer;
@@ -391,7 +393,6 @@ export class WebGPUBase {
         if (buffer === undefined) {
             this.log("create " + label);
             resultBuffer = this.createFilledBuffer(
-                "u8",
                 new Uint8Array(data.buffer),
                 usage,
                 label
@@ -402,7 +403,6 @@ export class WebGPUBase {
             // create new buffer in this slot
             this.deleteBuffer(buffer);
             resultBuffer = this.createFilledBuffer(
-                "u8",
                 new Uint8Array(data.buffer),
                 usage,
                 label
@@ -422,7 +422,7 @@ export class WebGPUBase {
     // copy a buffer to CPU side and return the contents as array buffer
     async readBuffer(buffer, start, byteLength) {
         if (!buffer) return;
-        var readBuffer = this.makeBuffer(byteLength, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, "read buffer"); //"cd mr"
+        var readBuffer = this.makeBuffer(byteLength, this.bufferUsage.MR_CD, "read buffer"); //"cd mr"
 
         var commandEncoder = await this.#device.createCommandEncoder();
         commandEncoder.copyBufferToBuffer(buffer, start, readBuffer, 0, byteLength);
@@ -512,12 +512,12 @@ export class WebGPUBase {
 
                 // create a command encoder
                 var commandEncoder = await this.#device.createCommandEncoder();
-                var chunkBuffer = this.createFilledBuffer("f32",
+                var chunkBuffer = this.createFilledBuffer(
                     typedArrayBuffer.subarray(
                         currentImage * imagesInChunk * textureImageSize / 4,
                         (currentImage + thisImages) * imagesInChunk * textureImageSize / 4
                     ),
-                    GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                    this.bufferUsage.CD_CS
                 );
 
                 commandEncoder.copyBufferToTexture(
@@ -642,7 +642,7 @@ export class WebGPUBase {
         const textureByteLength = texelCount * GPUTexelByteLength?.[texture.format];
         var readBuffer = this.makeBuffer(
             textureByteLength,
-            GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            this.bufferUsage.MR_CD,
             "texture read buffer for " + texture.label
         );
         var commandEncoder = await this.#device.createCommandEncoder();
@@ -735,7 +735,7 @@ export class WebGPUBase {
         const readBuffers = [
             this.#device.createBuffer({
                 size: resolveBuffer.size,
-                usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                usage: this.bufferUsage.MR_CD
             })
         ];
 
@@ -755,7 +755,7 @@ export class WebGPUBase {
 
     createRenderPass(bindGroupLayouts, shader, options, label="") {
         const pass = {
-            passType: this.PassTypes.RENDER,
+            passType: this.#PassTypes.RENDER,
             indexed: options.indexed || false,
             bindGroupLayouts: bindGroupLayouts,
             passEncoderDescriptor: {},
@@ -829,7 +829,7 @@ export class WebGPUBase {
 
     createComputePass(bindGroupLayouts, shader, options, label="") {
         const pass = {
-            passType: this.PassTypes.COMPUTE,
+            passType: this.#PassTypes.COMPUTE,
             bindGroupLayouts: bindGroupLayouts,
             passEncoderDescriptor: {},
             
@@ -946,7 +946,7 @@ export class WebGPUBase {
         if (!thisReadBuff) {
             const newBuff = this.#device.createBuffer({
                 size: timing.resolveBuffer.size,
-                usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                usage: this.bufferUsage.MR_CD
             });
             timing.readBuffers.push(newBuff);
             thisReadBuff = newBuff;
@@ -959,9 +959,9 @@ export class WebGPUBase {
 
     // encodes a GPU pass onto the command encoder
     encodeGPUPass(commandEncoder, pass, options) {
-        if (pass.passType == this.PassTypes.RENDER) {
+        if (pass.passType == this.#PassTypes.RENDER) {
             this.#encodeRenderPass(commandEncoder, pass, options);
-        } else if (pass.passType == this.PassTypes.COMPUTE) {
+        } else if (pass.passType == this.#PassTypes.COMPUTE) {
             this.#encodeComputePass(commandEncoder, pass, options);
         }
         // encode the timing reading

@@ -200,8 +200,12 @@ export class WebGPURayMarchingEngine {
 
         const t0 = performance.now();
 
-        const getUnstructPassDesc = async () => {
-            const shaderStr = await this.#webGPU.fetchShader("core/renderEngine/webGPU/rayMarching/shaders/unstructRayMarch.wgsl");
+        // register the lib file
+        const rayMarchLib = await this.#webGPU.fetchShaderText("core/renderEngine/webGPU/rayMarching/shaders/rayMarchUtils.wgsl");
+        this.#webGPU.registerWGSLLib("rayMarchUtils.wgsl", rayMarchLib);
+
+        const createUnstructPass = async () => {
+            const shaderStr = await this.#webGPU.fetchShaderText("core/renderEngine/webGPU/rayMarching/shaders/unstructRayMarch.wgsl");
             const shader = this.#webGPU.createShader(
                 shaderStr, 
                 { WGSizeX: this.#WGSize.x, WGSizeY: this.#WGSize.y, WGVol: this.#WGSize.x * this.#WGSize.y }
@@ -215,9 +219,9 @@ export class WebGPURayMarchingEngine {
             );
         }
 
-        const passDescriptors = await Promise.all([getUnstructPassDesc()]);
+        const passes = await Promise.all([createUnstructPass()]);
 
-        this.#passes.unstruct = passDescriptors[0];
+        this.#passes.unstruct = passes[0];
 
         this.#webGPU.log(performance.now() - t0, "ms for ray pipeline creation");
     }
@@ -310,13 +314,13 @@ export class WebGPURayMarchingEngine {
         // passData.usesBlockMesh = dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED;
         if (dataObj.usesTreelets) {
             passData.cellsPtrType = CellsPtrTypes.TREELET_BLOCK;
-            console.log("LEAF TYPE: treelet block");
+            this.#webGPU.log("LEAF TYPE: treelet block");
         } else if (dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             passData.cellsPtrType = CellsPtrTypes.BLOCK;
-            console.log("LEAF TYPE: block");
+            this.#webGPU.log("LEAF TYPE: block");
         } else {
             passData.cellsPtrType = CellsPtrTypes.NORMAL;
-            console.log("LEAF TYPE: normal");
+            this.#webGPU.log("LEAF TYPE: normal");
         }
 
         const dataBlockSizes = dataObj.getBufferBlockSizes();
@@ -326,70 +330,89 @@ export class WebGPURayMarchingEngine {
             valuesA: dataBlockSizes?.positions / 3,
             valuesB: dataBlockSizes?.positions / 3,
         };
-
-        console.log(passData.blockSizes);
-
-        // buffers and other data 
-        var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
-
-        renderData.buffers.placeholder = this.#webGPU.makeBuffer(0, usage, "placeholder");
-
-
         // what buffer is in each slot
         passData.values = [
             { name: "None", limits: [0, 1] },
             { name: "None", limits: [0, 1] },
         ];
-
         renderable.serialisedMaterials = this.#webGPU.serialiseMaterial(this.material);
 
+        // buffers and other data 
+        let { buffers } = renderData;
+        buffers.placeholder = this.#webGPU.makeBuffer(0, this.#webGPU.bufferUsage.S_CD_CS, "placeholder");
+
         // write the tree buffer
-        renderData.buffers.treeNodes = this.#webGPU.createFilledBuffer("u8", new Uint8Array(dataObj.getNodeBuffer()), usage, "data tree nodes");
-        renderData.buffers.treeCells = this.#webGPU.createFilledBuffer("u32", dataObj.getTreeCells(), usage, "data tree cells");
+        buffers.treeNodes = this.#webGPU.createFilledBuffer(
+            new Uint8Array(dataObj.getNodeBuffer()), 
+            this.#webGPU.bufferUsage.S_CD_CS, 
+            "data tree nodes"
+        );
+        buffers.treeCells = this.#webGPU.createFilledBuffer(
+            dataObj.getTreeCells(), 
+            this.#webGPU.bufferUsage.S_CD_CS, 
+            "data tree cells"
+        );
 
         if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            renderData.buffers.positions = this.#webGPU.createFilledBuffer("f32", dataObj.data.dynamicPositions, usage, "data dynamic vert positions");
-            renderData.buffers.cellConnectivity = this.#webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellConnectivity, usage, "data dynamic cell connectivity");
-            renderData.buffers.cellOffsets = this.#webGPU.createFilledBuffer("u32", dataObj.data.dynamicCellOffsets, usage, "data dynamic cell offsets");
+            buffers.positions = this.#webGPU.createFilledBuffer(
+                dataObj.data.dynamicPositions, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data dynamic vert positions"
+            );
+            buffers.cellConnectivity = this.#webGPU.createFilledBuffer(
+                dataObj.data.dynamicCellConnectivity, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data dynamic cell connectivity"
+            );
+            buffers.cellOffsets = this.#webGPU.createFilledBuffer(
+                dataObj.data.dynamicCellOffsets, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data dynamic cell offsets"
+            );
         } else {
-            renderData.buffers.positions = this.#webGPU.createFilledBuffer("f32", dataObj.data.positions, usage, "data vert positions");
-            renderData.buffers.cellConnectivity = this.#webGPU.createFilledBuffer("u32", dataObj.data.cellConnectivity, usage, "data cell connectivity");
-            renderData.buffers.cellOffsets = this.#webGPU.createFilledBuffer("u32", dataObj.data.cellOffsets, usage, "data cell offsets");
+            buffers.positions = this.#webGPU.createFilledBuffer(
+                dataObj.data.positions, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data vert positions"
+            );
+            buffers.cellConnectivity = this.#webGPU.createFilledBuffer(
+                dataObj.data.cellConnectivity, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data cell connectivity"
+            );
+            buffers.cellOffsets = this.#webGPU.createFilledBuffer(
+                dataObj.data.cellOffsets, 
+                this.#webGPU.bufferUsage.S_CD_CS, 
+                "data cell offsets"
+            );
         }
 
-        renderData.buffers.consts = this.#webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "face mesh consts"); //"s cs cd"
-        renderData.buffers.objectInfo = this.#webGPU.makeBuffer(256, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "object info buffer s");
+        buffers.consts = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "face mesh consts");
+        buffers.objectInfo = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "object info buffer s");
 
-        renderData.buffers.combinedPassInfo = this.#webGPU.makeBuffer(1024, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, "combined ray march pass info");
+        buffers.combinedPassInfo = this.#webGPU.makeBuffer(1024, this.#webGPU.bufferUsage.S_CD_CS, "combined ray march pass info");
 
 
         renderData.bindGroups.compute0 = this.#webGPU.generateBG(
             this.#passes.unstruct.bindGroupLayouts[0],
-            [
-                renderData.buffers.combinedPassInfo,
-            ],
+            [buffers.combinedPassInfo],
             "compute 0"
         );
 
         renderData.bindGroups.compute1 = this.#webGPU.generateBG(
             this.#passes.unstruct.bindGroupLayouts[1],
             [
-                renderData.buffers.treeNodes,
-                renderData.buffers.treeCells,
-                renderData.buffers.positions,
-                renderData.buffers.cellConnectivity,
-                renderData.buffers.cellOffsets,
+                buffers.treeNodes,
+                buffers.treeCells,
+                buffers.positions,
+                buffers.cellConnectivity,
+                buffers.cellOffsets,
             ],
             "initial compute 1"
         );
         renderData.bindGroups.compute2 = this.#webGPU.generateBG(
             this.#passes.unstruct.bindGroupLayouts[2],
-            [
-                renderData.buffers.placeholder,
-                renderData.buffers.placeholder,
-                renderData.buffers.placeholder,
-                renderData.buffers.placeholder,
-            ],
+            [buffers.placeholder, buffers.placeholder, buffers.placeholder, buffers.placeholder],
             "empty compute 2"
         );
 
@@ -443,7 +466,7 @@ export class WebGPURayMarchingEngine {
                 renderData.buffers["values " + name] = this.#webGPU.writeOrCreateNewBuffer(
                     renderData.buffers["values " + name],
                     valuesData[name], 
-                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, 
+                    this.#webGPU.bufferUsage.S_CD_CS, 
                     `values: ${name}`
                 ).buffer;
             }
@@ -455,7 +478,7 @@ export class WebGPURayMarchingEngine {
                 renderData.buffers["corner vals " + name] = this.#webGPU.writeOrCreateNewBuffer(
                     renderData.buffers["corner vals " + name],
                     cornerValsData[name], 
-                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, 
+                    this.#webGPU.bufferUsage.S_CD_CS, 
                     `corner vals: ${name}`
                 ).buffer;
             }
@@ -497,7 +520,7 @@ export class WebGPURayMarchingEngine {
             const loadResult = this.#webGPU.writeOrCreateNewBuffer(
                 renderData.buffers.treeCells,
                 treeletCellsData,
-                GPUBufferUsage.STORAGE,
+                this.#webGPU.bufferUsage.S_CD_CS,
                 "data tree cells"
             );
 

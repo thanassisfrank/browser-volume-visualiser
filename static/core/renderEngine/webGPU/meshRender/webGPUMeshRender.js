@@ -54,7 +54,7 @@ export class WebGPUMeshRenderer {
     async setup() {
         this.#uniformBuffer = this.#webGPU.makeBuffer(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC, "Render uniform buffer"); //"u cd cs"
 
-        const shaderCode = await this.#webGPU.fetchShader("core/renderEngine/webGPU/meshRender/shaders/shader.wgsl");
+        const shaderCode = await this.#webGPU.fetchShaderText("core/renderEngine/webGPU/meshRender/shaders/shader.wgsl");
         const shader = this.#webGPU.createShader(shaderCode);
         const bindGroupLayouts =  [this.#webGPU.createBindGroupLayout([
             {
@@ -106,12 +106,12 @@ export class WebGPUMeshRenderer {
     createMeshRenderable = function(points, indices, renderMode, material) {
         const renderable = new Renderable(RenderableTypes.MESH, renderMode);
         // move vertex data to the gpu
-        renderable.renderData.buffers.vertex = this.#webGPU.createFilledBuffer("f32", points, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC, "mesh vert");
-        renderable.renderData.buffers.index = this.#webGPU.createFilledBuffer("u32", indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC, "mesh index");
+        renderable.renderData.buffers.vertex = this.#webGPU.createFilledBuffer(points, this.#webGPU.bufferUsage.V_CS, "mesh vert");
+        renderable.renderData.buffers.index = this.#webGPU.createFilledBuffer(indices, this.#webGPU.bufferUsage.I_CS, "mesh index");
         // make the uniform to store the constant data
         renderable.renderData.buffers.objectInfo = this.#webGPU.makeBuffer(
             256, 
-            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 
+            this.#webGPU.bufferUsage.U_CD_CS, 
             "mesh info uniform"
         );
         renderable.serialisedMaterials = this.#webGPU.serialiseMaterial(material);
