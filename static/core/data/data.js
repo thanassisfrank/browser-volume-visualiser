@@ -15,12 +15,12 @@ import {
 
 import { xyzToA } from "../utils.js";
 import {vec3, vec4, mat4} from "../gl-matrix.js";
-import { DynamicTree } from "./dynamicTree.js";
+import { DynamicTree } from "./dynamic/dynamicTree.js";
 
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
-
-export {dataManager};
+import { NodeScorer } from "./dynamic/nodeScorer.js";
+import { DynamicMesh } from "./dynamic/dynamicMesh.js";
 
 
 const getAsAbsolute = (x, max) => {
@@ -41,7 +41,7 @@ const getAsAbsolute = (x, max) => {
 
 
 // object in charge of creating, transforming and deleting data objects
-const dataManager = {
+export const dataManager = {
     // keep the config set too
     configSet: {},
 
@@ -110,112 +110,106 @@ const dataManager = {
 
     createData: async function(config, opts) {
         const dataSource = await this.getDataSource(config, opts);
-
-        let dynamicTree;
         
         let resolutionMode = ResolutionModes.FULL;
         if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-        if (opts.dynamicMesh || dataSource.constructor === PartialCGNSDataSource) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+        if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+
+        const dataOpts = {
+            dynamicNodeCount: getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount),
+            dynamicMeshCount: getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount),
+            nodeHysteresis: opts.nodeHysteresis,
+            treeletDepth: opts.treeletDepth,
+        };
+
+        const newData = new Data(dataSource, resolutionMode, dataOpts);
+
         
-        // debugger;
-        // if the resolution mode is not full or it is a partial cgns file, needs a dynamic tree
-        
-        if (resolutionMode != ResolutionModes.FULL) {
-            dynamicTree = new DynamicTree(
-                resolutionMode, 
-                opts.treeletDepth, 
-                dataSource.extentBox,
-                opts.nodeItersPerFrame,
-                opts.nodeHysteresis
-            );
-        }
+        // // create dynamic mesh cache information if needs dynamic mesh or is partial cgns
+        // if (resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+        //     try {
+        //         // get the absolute sizes of node and mesh caches if supplied as percentages
+        //         const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount);
+        //         const absMeshCount = getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount);
 
-        const newData = new Data(0, dataSource, dynamicTree);
-        newData.opts = opts;
-        console.log(config);
-        console.log(opts);
+        //         this.createDynamicMeshCache(
+        //             newData, 
+        //             dataSource.meshBlockSizes, 
+        //             dataSource.leafCount, 
+        //             absMeshCount,
+        //         );
+        //         this.createDynamicTree(newData, absNodeCount, newData.noUpdates);
+        //         newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+        //         console.log("Created dynamic mesh dataset");
+        //     } catch (e) {
+        //         console.error("Could not create dataset with dynamic cells data:", e)
+        //     }
+        // }
 
-        newData.noUpdates = !opts.dynamicNodes && !opts.dynamicMesh;
-        
-        // create dynamic mesh cache information if needs dynamic mesh or is partial cgns
-        if (resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            try {
-                // get the absolute sizes of node and mesh caches if supplied as percentages
-                const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount);
-                const absMeshCount = getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount);
-
-                this.createDynamicMeshCache(
-                    newData, 
-                    dataSource.meshBlockSizes, 
-                    dataSource.leafCount, 
-                    absMeshCount,
-                );
-                this.createDynamicTree(newData, absNodeCount, newData.noUpdates);
-                newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
-                console.log("Created dynamic mesh dataset");
-            } catch (e) {
-                console.error("Could not create dataset with dynamic cells data:", e)
-            }
-        }
-
-        // create dynamic tree (nodes)
-        if (opts.dynamicNodes) newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
+        // // create dynamic tree (nodes)
+        // if (opts.dynamicNodes) newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
 
 
-        // if it is a partial cgns and not dynamic, do an update here to get mesh cache information
-        await newData.updateDynamicTree({changed: true}, {changed: true}, [], true);
+        // // if it is a partial cgns and not dynamic, do an update here to get mesh cache information
+        // await newData.updateDynamicTree({changed: true}, {changed: true}, [], true);
 
         return newData;
     },
 
     // create the unstructured tree with a varying subset of the nodes
     // fixed number of dynamic nodes
-    createDynamicTree: function(dataObj, dynamicNodeCount, depthFirst=false) {
-        if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
+    // createDynamicTree: function(dataObj, dynamicNodeCount, depthFirst=false) {
+    //     if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
         
-        if (dynamicNodeCount > dataObj.data.treeNodeCount) {
-            console.warn("Attempted to create dynamic tree that is too large, clipping to max nodes");
-        }
+    //     if (dynamicNodeCount > dataObj.data.treeNodeCount) {
+    //         console.warn("Attempted to create dynamic tree that is too large, clipping to max nodes");
+    //     }
 
-        dataObj.dynamicTree.setFullNodes(
-            dataObj.data.treeNodes, 
-            Math.min(dataObj.data.treeNodeCount, dynamicNodeCount),
-            depthFirst
-        );
-    },
+    //     dataObj.dynamicTree.setFullNodes(
+    //         dataObj.data.treeNodes, 
+    //         Math.min(dataObj.data.treeNodeCount, dynamicNodeCount),
+    //         depthFirst
+    //     );
+    // },
 
-    // create dynamic mesh buffers that contain a varying subset of the leaves cell data
-    // fixed number of data slots
-    createDynamicMeshCache: function(dataObj, blockSizes, fullLeafCount, dynamicLeafCount) {
-        if (dataObj.dataFormat != DataFormats.BLOCK_UNSTRUCTURED) {
-            throw new TypeError("Could not create dynamic cells, dataset not of dataFormat BLOCK_UNSTRUCTURED");
-        }
+    // // create dynamic mesh buffers that contain a varying subset of the leaves cell data
+    // // fixed number of data slots
+    // createDynamicMeshCache: function(dataObj, blockSizes, fullLeafCount, dynamicLeafCount) {
+    //     if (dataObj.dataFormat != DataFormats.BLOCK_UNSTRUCTURED) {
+    //         throw new TypeError("Could not create dynamic cells, dataset not of dataFormat BLOCK_UNSTRUCTURED");
+    //     }
         
-        // the total number of leaves of a binary tree of node count n is n/2
-        if (dynamicLeafCount > fullLeafCount) {
-            console.warn("Attempted to create dynamic mesh data that is too large, clipping to max");
-        }
+    //     // the total number of leaves of a binary tree of node count n is n/2
+    //     if (dynamicLeafCount > fullLeafCount) {
+    //         console.warn("Attempted to create dynamic mesh data that is too large, clipping to max");
+    //     }
 
-        const meshCache = dataObj.dynamicTree.createDynamicMeshCache(
-            blockSizes, 
-            Math.min(dynamicLeafCount, fullLeafCount)
-        );
+    //     const meshCache = dataObj.dynamicTree.createDynamicMeshCache(
+    //         blockSizes, 
+    //         Math.min(dynamicLeafCount, fullLeafCount)
+    //     );
 
-        const buffers = meshCache.getBuffers();
-        dataObj.data.dynamicPositions = buffers.positions;
-        dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
-        dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
-    }
+    //     const buffers = meshCache.getBuffers();
+    //     dataObj.data.dynamicPositions = buffers.positions;
+    //     dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
+    //     dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
+    // }
 }
 
 
 export class Data {
-    users = 0;
-    config;
-    opts;
-
     // how the data will be presented to the user
     resolutionMode = ResolutionModes.FULL;    
+
+    /** @type {NodeScorer} */
+    #nodeScorer;
+    /** @type {DynamicTree} */
+    #dynamicTree;
+    /** @type {DynamicMesh} */
+    #dynamicMesh;
+
+    usesTreelets;
+
 
     // the actual data store of the object
     // all entries should be typedarray objects
@@ -224,16 +218,6 @@ export class Data {
         values: [
             // {name: null, data: null, cornerValues: null, limits: [null, null]},
         ],
-
-        // the geometry
-        positions: null,
-        cellOffsets: null,
-        cellConnectivity: null,
-        cellTypes: null,
-
-        dynamicPositions: null,
-        dynamicCellOffsets: null,
-        dynamicCellConnectivity: null,
 
         // 1-based indexing compatability
         zeroBased: true,
@@ -256,38 +240,27 @@ export class Data {
     dataTransformMat = mat4.create();
     
     // source must be initialised first
-    constructor(id, dataSource, dynamicTree) {
-        this.id = id;
-
+    constructor(dataSource, resolutionMode, opts) {
         // where data to be stored here is pulled from
         this.dataSource = dataSource;
+        // if this dataset has dynamic nodes and/or mesh
+        this.resolutionMode = resolutionMode;
+
         // what format of mesh this represents
         this.dataFormat = dataSource.format;
         // the display name
         this.dataName = dataSource.name;
         // for calculation of new data arrays
         this.mappingHandler = new VectorMappingHandler(dataSource);;
-        // dynamic tree object
-        this.dynamicTree = dynamicTree;
-
 
         // the dimensions in data space
         this.size = this.dataSource.size;
         // axis aligned (data space) maximum extent
         this.extentBox = this.dataSource.extentBox;
 
-        if (this.dataSource.mesh) {
-            // get the mesh buffers
-            this.data.positions = this.dataSource.mesh.positions;
-            this.data.cellOffsets = this.dataSource.mesh.cellOffsets;
-            this.data.cellConnectivity = this.dataSource.mesh.cellConnectivity;
-            this.data.cellTypes = this.dataSource.mesh.cellTypes;
+        if (opts.treeletDepth > 0) {
+            this.usesTreelets = true;
         }
-        if (this.dataSource.mesh) {
-            // any additional mesh geometry that is part of the dataset but not part of the mesh
-            this.geometry = this.dataSource.geometry;
-        }
-
         
         if (this.dataSource.tree) {
             this.data.treeNodes = dataSource.tree.nodes;
@@ -307,24 +280,61 @@ export class Data {
             }
         }
 
-        this.usesTreelets = this.dynamicTree?.usesTreelets ?? false;
+        if (resolutionMode != ResolutionModes.FULL) {
+            // create a node scorer
+            this.#nodeScorer = new NodeScorer(this.extentBox);
+        }
+
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
+            this.#dynamicTree = new DynamicTree(
+                dataSource.tree.nodes,
+                opts.dynamicNodeCount,
+                {
+                    hysteresis: opts.nodeHysteresis
+                }
+            );
+        }
+
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            this.#dynamicMesh = new DynamicMesh(
+                this.dataSource.meshBlockSizes, 
+                opts.dynamicMeshCount, 
+                opts.treeletDepth
+            );
+        }
+
+    }
+
+    getMesh() {
+        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
+            return this.#dynamicMesh.getBuffers();
+        } else {
+            return this.dataSource.mesh;
+        }
     }
 
     // returns the block sizes of all the buffers which are blocked
     getBufferBlockSizes() {
         if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            return this.dynamicTree.meshCache.blockSizes;
+            return this.#dynamicMesh.getBlockSizes();
         }
         return this.dataSource.meshBlockSizes
     }
 
     // returns either the correct node buffer given resolution mode
     getNodeBuffer() {
-        if (
-            this.resolutionMode !== ResolutionModes.FULL || this.dataSource.constructor === PartialCGNSDataSource
-        ) {
-            // get the node buffer from the dynamic tree
-            return this.dynamicTree.getNodeBuffer();
+        if (this.resolutionMode !== ResolutionModes.FULL) {
+            const dynamicNodes = this.#dynamicTree.getNodeBuffer();
+            const treeletNodes = this.#dynamicMesh.getTreeletBuffer();
+
+            if (!treeletNodes) return dynamicNodes;
+
+            const combinedNodes = new Uint8Array(dynamicNodes.byteLength + treeletNodes.length);
+            combinedNodes.set(new Uint8Array(dynamicNodes), 0);
+            combinedNodes.set(treeletNodes, dynamicNodes.byteLength);
+
+            // return the array buffer
+            return combinedNodes.buffer;
         }
         
         // full unstructured tree
@@ -332,10 +342,7 @@ export class Data {
     }
 
     getTreeCells() {
-        if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT || this.dataSource.constructor === PartialCGNSDataSource) {
-            // dynamic mesh with treelets and dynamic nodes
-            return this.dynamicTree.getTreeCells();
-        }
+        if (this.#dynamicMesh) return this.#dynamicMesh.getTreeCells();
 
         // just dynamic nodes or full resolution
         return this.data.treeCells;
@@ -373,7 +380,7 @@ export class Data {
         }
     }
 
-    async updateDynamicTree(camInfo, isoInfo, activeValueSlots, noNodeUpdate=false) {
+    async updateDynamicTree(camInfo, isoInfo, activeValueSlots) {
         // getCornerValsFuncExt -> dataObj.getFullCornerValues
         const getCornerVals = (valueName) => {
             // perform mapping from value name => slot num
@@ -384,16 +391,41 @@ export class Data {
             // perform mapping from value name => slot num
             return this.data.values?.[this.valueDirectory?.[valueName]]?.ranges;
         }
-        // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-        await this.dynamicTree.update(
-            camInfo,
-            isoInfo,
-            getCornerVals,
-            getRangeVals,
-            this.getNodeBlockRequestFunc().bind(this), 
-            activeValueSlots.map(i => this.data.values[i].name),
-            noNodeUpdate
+
+        const activeValueNames = activeValueSlots.map(i => this.data.values[i].name);
+
+        // get the scores
+        const scores = this.#nodeScorer.getNodeScores(
+            this.#dynamicTree.nodeCache, 
+            this.dataSource.tree.nodes,
+            camInfo, 
+            isoInfo, 
+            getRangeVals
         );
+
+        if (this.#dynamicTree) {
+            if (camInfo.changed || isoInfo.changed) {
+                // reset the record of modifications to nodes
+                this.#dynamicTree.resetUpdateStates();
+            }
+            // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
+            this.#dynamicTree.update(
+                scores,
+                getCornerVals,
+                activeValueNames,
+                this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
+            );
+        }
+
+        if (this.#dynamicMesh) {
+            this.#dynamicMesh.update(
+                scores,
+                this.#dynamicTree.nodeCache,
+                this.dataSource.tree.nodes,
+                this.getNodeBlockRequestFunc().bind(this), 
+                activeValueNames
+            );
+        }
     }
 
     getAvailableDataArrays() {
@@ -467,14 +499,14 @@ export class Data {
     // matches the nodes currently loaded in dynamic tree
     createDynamicCornerValues(slotNum) {
         const fullCornerValues = this.getFullCornerValues(slotNum);
-        this.data.values[slotNum].dynamicCornerValues = this.dynamicTree.createMatchedDynamicCornerValues(
+        this.data.values[slotNum].dynamicCornerValues = this.#dynamicTree.createMatchedDynamicCornerValues(
             fullCornerValues, 
             this.data.values[slotNum].name
         );
     };
 
     async createDynamicBlockValues(slotNum) {
-        this.data.values[slotNum].dynamicData = await this.dynamicTree.createMatchedDynamicMeshValueArray(
+        this.data.values[slotNum].dynamicData = await this.#dynamicMesh.createValueArray(
             this.getNodeBlockRequestFunc().bind(this), 
             this.data.values[slotNum].name
         );
@@ -489,42 +521,8 @@ export class Data {
         return this.data.values[slotNum]?.limits;
     };
 
-    // returns the positions of the boundary points
-    getBoundaryPoints() {
-        var a = this.extentBox.min;
-        var b = this.extentBox.max;
-        var points = new Float32Array([
-            a[0], a[1], a[2], // 0
-            b[0], a[1], a[2], // 1
-            a[0], b[1], a[2], // 2
-            b[0], b[1], a[2], // 3
-            a[0], a[1], b[2], // 4
-            b[0], a[1], b[2], // 5
-            a[0], b[1], b[2], // 6
-            b[0], b[1], b[2] // 7
-        ]);
-
-        var transformedPoint = [0, 0, 0, 0];
-        for (let i = 0; i < points.length; i += 3) {
-            vec4.transformMat4(
-                transformedPoint,
-                [points[i], points[i + 1], points[i + 2], 1],
-                this.dataTransformMat
-            );
-            points.set([
-                transformedPoint[0],
-                transformedPoint[1],
-                transformedPoint[2]
-            ], i);
-        }
-
-        return points;
-    };
-
     getMidPoint() {
-        var points = this.getBoundaryPoints();
-        var min = points.slice(0, 3);
-        var max = points.slice(21, 24);
+        const { min, max } = this.extentBox;
 
         return [
             (min[0] + max[0]) / 2,
@@ -534,9 +532,7 @@ export class Data {
     };
 
     getMaxLength() {
-        var points = this.getBoundaryPoints();
-        var min = points.slice(0, 3);
-        var max = points.slice(21, 24);
+        const { min, max } = this.extentBox;
 
         return vec3.length([
             min[0] - max[0],
@@ -577,7 +573,8 @@ export class Data {
     };
 
     getDynamicValues(slotNum) {
-        return this.data.values?.[slotNum]?.dynamicData;
+        const scalarName = this.data.values[slotNum].name;
+        return this.#dynamicMesh.getBuffers()[scalarName];
     };
 
     // fetching the corner values buffers
@@ -587,12 +584,12 @@ export class Data {
     };
 
     getFullCornerValues(slotNum) {
-
         return this.data.values?.[slotNum]?.cornerValues;
     };
 
     getDynamicCornerValues(slotNum) {
-        return this.data.values?.[slotNum]?.dynamicCornerValues;
+        const scalarName = this.data.values[slotNum].name;
+        return this.#dynamicTree.getCornerValues(scalarName);
     };
 
     getName() {

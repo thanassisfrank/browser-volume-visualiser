@@ -353,39 +353,23 @@ export class WebGPURayMarchingEngine {
             "data tree cells"
         );
 
-        if (dataObj.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-            buffers.positions = this.#webGPU.createFilledBuffer(
-                dataObj.data.dynamicPositions, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data dynamic vert positions"
-            );
-            buffers.cellConnectivity = this.#webGPU.createFilledBuffer(
-                dataObj.data.dynamicCellConnectivity, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data dynamic cell connectivity"
-            );
-            buffers.cellOffsets = this.#webGPU.createFilledBuffer(
-                dataObj.data.dynamicCellOffsets, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data dynamic cell offsets"
-            );
-        } else {
-            buffers.positions = this.#webGPU.createFilledBuffer(
-                dataObj.data.positions, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data vert positions"
-            );
-            buffers.cellConnectivity = this.#webGPU.createFilledBuffer(
-                dataObj.data.cellConnectivity, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data cell connectivity"
-            );
-            buffers.cellOffsets = this.#webGPU.createFilledBuffer(
-                dataObj.data.cellOffsets, 
-                this.#webGPU.bufferUsage.S_CD_CS, 
-                "data cell offsets"
-            );
-        }
+        const mesh = dataObj.getMesh();
+
+        buffers.positions = this.#webGPU.createFilledBuffer(
+            mesh.positions, 
+            this.#webGPU.bufferUsage.S_CD_CS, 
+            "data vert positions"
+        );
+        buffers.cellConnectivity = this.#webGPU.createFilledBuffer(
+            mesh.cellConnectivity, 
+            this.#webGPU.bufferUsage.S_CD_CS, 
+            "data cell connectivity"
+        );
+        buffers.cellOffsets = this.#webGPU.createFilledBuffer(
+            mesh.cellOffsets, 
+            this.#webGPU.bufferUsage.S_CD_CS, 
+            "data cell offsets"
+        );
 
         buffers.consts = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "face mesh consts");
         buffers.objectInfo = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "object info buffer s");
@@ -528,7 +512,6 @@ export class WebGPURayMarchingEngine {
 
             // recreate bindgroup
             if (loadResult.created) {
-                debugger;
                 renderData.bindGroups.compute1 = this.#webGPU.generateBG(
                     this.#passes.unstruct.bindGroupLayouts[1],
                     [

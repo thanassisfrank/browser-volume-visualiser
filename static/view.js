@@ -538,11 +538,7 @@ class View {
             volumeTransferFunction: this.volumeTransferFunction,
 
             nodeData: this.data.getNodeBuffer(),
-            meshData: {
-                positions: this.data.data.dynamicPositions,
-                cellConnectivity: this.data.data.dynamicCellConnectivity,
-                cellOffsets: this.data.data.dynamicCellOffsets,
-            },
+            meshData: this.data.getMesh(),
             valuesData: {},
             cornerValsData: {},
             treeletCellsData: this.data.getTreeCells(),
@@ -551,6 +547,7 @@ class View {
             enabledGeometry: this.enabledGeometry,
         };
 
+        
         if (this.isoSurfaceSrc.type == DataSrcTypes.ARRAY) {
             updates.valuesData[this.isoSurfaceSrc.name] = this.data.getValues(this.isoSurfaceSrc.slotNum);
             updates.cornerValsData[this.isoSurfaceSrc.name] = this.data.getCornerValues(this.isoSurfaceSrc.slotNum);
@@ -559,7 +556,7 @@ class View {
             updates.valuesData[this.surfaceColSrc.name] = this.data.getValues(this.surfaceColSrc.slotNum);
             updates.cornerValsData[this.surfaceColSrc.name] = this.data.getCornerValues(this.surfaceColSrc.slotNum);
         }
-
+        
         // update the data renderable
         const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA);
         if (dataRenderables.length > 0) {

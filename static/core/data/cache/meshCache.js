@@ -218,6 +218,7 @@ export class MeshCache {
         
         if (nodesToRequest.size > 0) {
             console.log("requesting blocks:", nodesToRequest.size);
+            // debugger;
             if (sw) sw.stop();
             const reqSW = new StopWatch()
             const meshData = await getMeshBlocksFunc(Array.from(nodesToRequest.keys()), true, scalarNames);
