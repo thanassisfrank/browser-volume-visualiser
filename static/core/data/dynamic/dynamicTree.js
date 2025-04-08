@@ -259,7 +259,6 @@ export class DynamicTree {
     }
 
     // this handles updating the dynamic nodes
-    // getCornerValsFuncExt -> dataObj.getFullCornerValues
     update(leafScores, activeValueNames, dynamicCells) {     
         const nodeUpdateSW = new StopWatch();
 

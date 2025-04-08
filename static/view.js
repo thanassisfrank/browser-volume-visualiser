@@ -330,8 +330,8 @@ class View {
     adjustedFocusPoint;
     timeSinceFocusAdjusted = 0;
 
-    isoSurfaceSrc = { type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null };
-    surfaceColSrc = { type: DataSrcTypes.NONE, limits: [0, 0], slotNum: null };
+    isoSurfaceSrc = { type: DataSrcTypes.NONE, limits: [0, 0] };
+    surfaceColSrc = { type: DataSrcTypes.NONE, limits: [0, 0] };
 
     clippedDataExtentBox;
 
@@ -395,23 +395,10 @@ class View {
         this.updateThreshold((limits[0] + limits[1]) / 2);
     };
 
-    updateDensityGraph(slotNum) {
-        if (this.elems.densityGraph) {
-            this.elems.densityGraph.width = BINCOUNT;
-            this.elems.densityGraph.height = 20;
-            var { counts, max } = this.data.getValueCounts(slotNum, BINCOUNT);
-            var densityPlotter = new FrameTimeGraph(this.elems.densityGraph, Math.log10(max), true, [2, 1]);
-            for (let val of counts) {
-                densityPlotter.update(Math.log10(val));
-            }
-        }
-    };
-
     // called when
     async updateIsoSurfaceSrc(desc) {
         console.log("iso " + desc.type + " " + desc.name);
         let limits = [0, 0];
-        let slotNum = undefined;
         switch (desc.type) {
             case DataSrcTypes.AXIS:
                 if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
@@ -421,13 +408,8 @@ class View {
                 break;
             case DataSrcTypes.ARRAY:
                 // load data
-                slotNum = await this.data.loadDataArray(desc, BINCOUNT);
-                console.log("slotnum is " + slotNum);
-                if (slotNum == -1) return;
-                // update the limits of slider
-                limits = this.data.getLimits(slotNum);
-                show(this.elems.densityGraph);
-                // this.updateDensityGraph(slotNum);
+                limits = (await this.data.loadDataArray(desc, BINCOUNT)).limits;
+                if (!limits) return;
                 break;
             default:
                 hide(this.elems.densityGraph);
@@ -437,14 +419,13 @@ class View {
         if (desc.name == "Pressure") this.updateThreshold(101353.322975);
         if (desc.name == "Default" && this.data.dataName == "Magnetic p 4096") this.updateThreshold(1.36);
         // change the source
-        this.isoSurfaceSrc = { type: desc.type, name: desc.name, limits, slotNum };
+        this.isoSurfaceSrc = { type: desc.type, name: desc.name, limits };
     };
 
     async updateSurfaceColSrc(desc) {
         console.log("col " + desc.type + " " + desc.name);
         // load the data array
         let limits = [0, 0];
-        let slotNum = undefined;
         switch (desc.type) {
             case DataSrcTypes.AXIS:
                 if (desc.name == "x") limits = [this.data.extentBox.min[0], this.data.extentBox.max[0]];
@@ -453,12 +434,10 @@ class View {
                 break;
             case DataSrcTypes.ARRAY:
                 // load data
-                slotNum = await this.data.loadDataArray(desc, BINCOUNT);
-                // update the limits of slider
-                limits = this.data.getLimits(slotNum);
+                limits = (await this.data.loadDataArray(desc, BINCOUNT)).limits;
         }
         // change the source
-        this.surfaceColSrc = { type: desc.type, name: desc.name, limits, slotNum };
+        this.surfaceColSrc = { type: desc.type, name: desc.name, limits };
     };
 
     async updateDataSrc(use, desc) {
@@ -485,9 +464,9 @@ class View {
     async update(dt, renderEngine) {
         this.axesWidget?.update(this.camera.viewMat);
 
-        var activeValueSlots = [];
-        if (this.isoSurfaceSrc.slotNum != null) activeValueSlots.push(this.isoSurfaceSrc.slotNum);
-        if (this.surfaceColSrc.slotNum != null) activeValueSlots.push(this.surfaceColSrc.slotNum);
+        const activeValueNames = [];
+        if (this.isoSurfaceSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(this.isoSurfaceSrc.name);
+        if (this.surfaceColSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(this.surfaceColSrc.name);
 
         // calculate the estimated actual focus point every 100ms
         var cam = this.camera;
@@ -525,7 +504,7 @@ class View {
                     source: this.isoSurfaceSrc,
                     value: this.threshold
                 },
-                activeValueSlots
+                activeValueNames
             );
         }
 
@@ -549,12 +528,12 @@ class View {
 
         
         if (this.isoSurfaceSrc.type == DataSrcTypes.ARRAY) {
-            updates.valuesData[this.isoSurfaceSrc.name] = this.data.getValues(this.isoSurfaceSrc.slotNum);
-            updates.cornerValsData[this.isoSurfaceSrc.name] = this.data.getCornerValues(this.isoSurfaceSrc.slotNum);
+            updates.valuesData[this.isoSurfaceSrc.name] = this.data.getValues(this.isoSurfaceSrc.name);
+            updates.cornerValsData[this.isoSurfaceSrc.name] = this.data.getCornerValues(this.isoSurfaceSrc.name);
         }
         if (this.surfaceColSrc.type == DataSrcTypes.ARRAY) {
-            updates.valuesData[this.surfaceColSrc.name] = this.data.getValues(this.surfaceColSrc.slotNum);
-            updates.cornerValsData[this.surfaceColSrc.name] = this.data.getCornerValues(this.surfaceColSrc.slotNum);
+            updates.valuesData[this.surfaceColSrc.name] = this.data.getValues(this.surfaceColSrc.name);
+            updates.cornerValsData[this.surfaceColSrc.name] = this.data.getCornerValues(this.surfaceColSrc.name);
         }
         
         // update the data renderable

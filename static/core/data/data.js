@@ -21,7 +21,7 @@ import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
 import { NodeScorer } from "./dynamic/nodeScorer.js";
 import { DynamicMesh } from "./dynamic/dynamicMesh.js";
-import { VecMath } from "../VecMath.js";
+import { boxSize } from "../boxUtils.js";
 
 
 const getAsAbsolute = (x, max) => {
@@ -123,9 +123,7 @@ export const dataManager = {
             treeletDepth: opts.treeletDepth,
         };
 
-        const newData = new Data(dataSource, resolutionMode, dataOpts);
-
-        return newData;
+        return new Data(dataSource, resolutionMode, dataOpts);
     },
 }
 
@@ -146,19 +144,6 @@ export class Data {
     usesTreelets;
 
     cornerValType;
-
-
-    // the actual data store of the object
-    // all entries should be typedarray objects
-    data = {
-        // the data values
-        values: [
-            // {name: null, data: null, cornerValues: null, limits: [null, null]},
-        ]
-    };
-
-    // mapping from value name -> slot number
-    valueDirectory = {};
 
     valueCounts = [];
 
@@ -263,41 +248,7 @@ export class Data {
         return this.data.treeCells;
     }
 
-    // returns the correct function for requesting node mesh blocks
-    // the returned function has expects (blockIndices, geometry, valueNames)
-    getNodeBlockRequestFunc() {
-        if (PartialCGNSDataSource == this.dataSource.constructor) {
-            // get mesh information directly from the data source
-            return this.dataSource.getMeshBlocks.bind(this.dataSource);
-        } else {
-            return function(blockIndices, geometry, valueNames) {
-                let result = {};
-                for (let index of blockIndices) {
-                    // index is the full block index
-                    let mesh = this.dataSource.getNodeMeshBlock(index);
-                    if (!mesh) continue;
-                    result[index] = {};
-
-                    if (geometry) result[index] = mesh.buffers;
-
-                    // slice the needed value buffers
-                    const valueSlots = valueNames.map(s => this.valueDirectory[s]);
-                    for (const slotNum of valueSlots) {
-                        const scalarBuff = this.getFullValues(slotNum);
-                        if (!scalarBuff) continue;
-
-                        result[index][this.data.values[slotNum].name] = scalarBuff.slice(...mesh.valueSliceRange);
-                    }
-                }
-        
-                return result;
-            };
-        }
-    }
-
-    async updateDynamicTree(camInfo, isoInfo, activeValueSlots) {
-        const activeValueNames = activeValueSlots.map(i => this.data.values[i].name);
-
+    async updateDynamicTree(camInfo, isoInfo, activeValueNames) {
         // get the scores
         const scores = this.#nodeScorer.getNodeScores(
             this.#dynamicTree.nodeCache, 
@@ -349,41 +300,24 @@ export class Data {
     // returns the slot number that was written to
     // if it is already is loaded, return its slot number
     async loadDataArray(desc) {
-        // check if already loaded
-        let loadedIndex = this.valueDirectory[desc.name];
-        if (loadedIndex !== undefined) return loadedIndex;
+        const { name } = desc;
+ 
+        const { limits } = this.dataSource.getDataArray(desc);
 
-        let newSlotNum;
-        try {
-            if (DataArrayTypes.DATA == desc.arrayType) {
-                this.data.values.push(await this.dataSource.getDataArray(desc));
-            } else if (DataArrayTypes.CALC == desc.arrayType) {
-                this.data.values.push(await this.mappingHandler.getDataArray(desc));
-            } else {
-                throw Error("Invalid data array type");
-            }
-            newSlotNum = this.data.values.length - 1;   
-        } catch (e) {
-            console.warn("Unable to load data array " + desc.name);
-            console.warn(e);
-            return -1;
-        }
+        if (!limits) return;
 
-        this.valueDirectory[desc.name] = newSlotNum;
+        await this.#dynamicMesh?.createValueArray(name);
+        this.#dynamicTree?.createMatchedDynamicCornerValues(name);
 
-        await this.#dynamicMesh?.createValueArray(desc.name);
-
-        this.#dynamicTree?.createMatchedDynamicCornerValues(desc.name);
-
-        return newSlotNum;
+        return {limits};
     };
 
     setCornerValType(type) {
         this.cornerValType = type;
     };
 
-    getLimits(slotNum) {
-        return this.data.values[slotNum]?.limits;
+    getLimits(name) {
+        return this.dataSource.getDataArray({name}).limits;
     };
 
     getMidPoint() {
@@ -406,15 +340,10 @@ export class Data {
         ]);
     };
 
-    // for structured formats, this returns the dimensions of the data grid in # data points
-    getDataSize() {
-        return VecMath.vecMinus(this.extentBox.max, this.extentBox.min);
-    };
-
     // returns a string which indicates the size of the dataset for the user
     getDataSizeString() {
         if (this.dataFormat == DataFormats.STRUCTURED) {
-            return this.getDataSize().join("x");
+            return boxSize(this.extentBox).join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
             return this.data.cellOffsets.length.toLocaleString() + "u";
         } else if (this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
@@ -423,33 +352,21 @@ export class Data {
         return "";
     };
 
-    getValues(slotNum) {
-        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) return this.getDynamicValues(slotNum);
-        return this.getFullValues(slotNum);
-    };
-
-    getFullValues(slotNum) {
-        return this.data.values?.[slotNum]?.data;
-    };
-
-    getDynamicValues(slotNum) {
-        const scalarName = this.data.values[slotNum].name;
-        return this.#dynamicMesh.getBuffers()[scalarName];
+    getValues(name) {
+        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
+            return this.#dynamicMesh.getBuffers()[name];
+        } else {
+            this.dataSource.getDataArray({name}).values;
+        }
     };
 
     // fetching the corner values buffers
-    getCornerValues(slotNum) {
-        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) return this.getDynamicCornerValues(slotNum);
-        return this.getFullCornerValues(slotNum);
-    };
-
-    getFullCornerValues(slotNum) {
-        return this.data.values?.[slotNum]?.cornerValues;
-    };
-
-    getDynamicCornerValues(slotNum) {
-        const scalarName = this.data.values[slotNum].name;
-        return this.#dynamicTree.getCornerValues(scalarName);
+    getCornerValues(name) {
+        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode) {
+            return this.#dynamicTree.getCornerValues(name);
+        } else {
+            return this.dataSource.getDataArray({name}).cornerValues;
+        }
     };
 
     getName() {
@@ -462,23 +379,5 @@ export class Data {
         var dMatInv = mat4.create();
         mat4.invert(dMatInv, this.dataTransformMat);
         return dMatInv;
-    };
-
-    // returns the number of values within this.data.values that fall into a number of bins
-    // bins are in the range this.limits and there are binCount number
-    getValueCounts(slotNum, binCount) {
-        if (this.valueCounts?.[slotNum]?.counts.length == binCount) return this.valueCounts[slotNum];
-        var counts = new Uint32Array(binCount);
-        var max = 0;
-        var index;
-        var limits = this.getLimits(slotNum);
-        for (let val of this.getFullValues(slotNum)) {
-            index = Math.floor((val - limits[0]) * (binCount - 1) / (limits[1] - limits[0]));
-            max = Math.max(max, ++counts[Math.max(0, Math.min(index, binCount - 1))]);
-        }
-        return {
-            counts: counts,
-            max: max
-        };
     };
 }
