@@ -18,7 +18,7 @@ import {vec3, vec4, mat4} from "../gl-matrix.js";
 import { DynamicTree } from "./dynamic/dynamicTree.js";
 
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
-import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
+// import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
 import { NodeScorer } from "./dynamic/nodeScorer.js";
 import { DynamicMesh } from "./dynamic/dynamicMesh.js";
 import { boxSize } from "../boxUtils.js";
@@ -163,7 +163,7 @@ export class Data {
         // the display name
         this.dataName = dataSource.name;
         // for calculation of new data arrays
-        this.mappingHandler = new VectorMappingHandler(dataSource);;
+        // this.mappingHandler = new VectorMappingHandler(dataSource);;
 
         // axis aligned (data space) maximum extent
         this.extentBox = this.dataSource.extentBox;
@@ -282,14 +282,14 @@ export class Data {
         const sourceArrayDescriptors = this.dataSource.getAvailableDataArrays();
 
         // find the possible calculable data arrays given the source data
-        const mappingOutputNames = this.mappingHandler.getPossibleMappings(sourceArrayDescriptors);
-        const calcArrayDescriptors = mappingOutputNames.map(v => {
-            return {name: v, arrayType: DataArrayTypes.CALC}
-        });
+        // const mappingOutputNames = this.mappingHandler.getPossibleMappings(sourceArrayDescriptors);
+        // const calcArrayDescriptors = mappingOutputNames.map(v => {
+        //     return {name: v, arrayType: DataArrayTypes.CALC}
+        // });
 
         const allArrayDescriptors = [
             ...sourceArrayDescriptors,
-            ...calcArrayDescriptors
+            // ...calcArrayDescriptors
         ];
 
         return allArrayDescriptors.map(v => {
