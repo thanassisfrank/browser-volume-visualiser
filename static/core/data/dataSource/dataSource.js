@@ -751,6 +751,8 @@ export class TreeUnstructDataSource extends EmptyTransformDataSource {
 export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
     format = DataFormats.BLOCK_UNSTRUCTURED;
 
+    #valuesCache = {};
+
     leafVerts;
     fullToLeafIndexMap;
 
@@ -843,6 +845,8 @@ export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
     }
 
     async getDataArray(desc) {
+        if (this.#valuesCache[desc.name]) return this.#valuesCache[desc.name];
+        
         const dataArray = await this.dataSource.getDataArray(desc);
         if (!dataArray) return;
         // create new buffer to re-write values into
@@ -852,7 +856,8 @@ export class BlockFromUnstructDataSource extends EmptyTransformDataSource {
 
         dataArray.data = blockVals;
 
-        return dataArray;
+        this.#valuesCache[desc.name] = result;
+        return result;
     }
 
     // get multiple mesh blocks
