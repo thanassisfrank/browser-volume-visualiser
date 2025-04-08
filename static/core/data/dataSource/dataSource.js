@@ -281,6 +281,8 @@ export class PartialCGNSDataSource extends EmptyDataSource {
         max: [0, 0, 0]
     };
 
+    #valuesCache = {}
+
     nodeCount;
     leafCount;
 
@@ -466,7 +468,7 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     }
 
     getAvailableDataArrays() {
-        var dataNodes = cgns.getChildrenWithLabel(this.#cornerFlowSolution, "DataArray_t");
+        const dataNodes = cgns.getChildrenWithLabel(this.#cornerFlowSolution, "DataArray_t");
 
         return dataNodes.map(node => {
             return {name: node.attrs.name.value, arrayType: DataArrayTypes.DATA};
@@ -474,18 +476,23 @@ export class PartialCGNSDataSource extends EmptyDataSource {
     }
 
     // returns only the corner value buffer for this data array name
-    async getDataArray(desc) {
+    getDataArray(desc) {
+        if (this.#valuesCache[desc.name]) return this.#valuesCache[desc.name];
+
         const data = this.#cornerFlowSolution.get(desc.name + "/ data")?.value;
         if (!data) return;
         const limits = this.#flowSolutionLimits?.get(desc.name + "/ data")?.value;
         const ranges = this.#flowSolutionRanges?.get(desc.name + "/ data")?.value;
 
-        return {
+        const result = {
             name: desc.name,
             cornerValues: data,
             limits,
             ranges,
         };
+
+        this.#valuesCache[desc.name] = result;
+        return result;
     }
 }
 

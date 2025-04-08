@@ -10,27 +10,32 @@ export class DynamicMesh {
     /** @type {MeshCache} */
     #meshCache;
 
+    #dataSource;
+
     #busy = false;
 
     treeletDepth;
     usesTreelets;
 
-    constructor(blockSizes, leafBlockCount, treeletDepth) {
+    constructor(dataSource, leafBlockCount, treeletDepth) {
+        this.#dataSource = dataSource;
         this.treeletDepth = treeletDepth;
         this.usesTreelets = treeletDepth > 0;
 
-        this.#meshCache = new MeshCache(blockSizes, leafBlockCount, this.treeletDepth);
+        this.#meshCache = new MeshCache(this.#dataSource.meshBlockSizes, leafBlockCount, this.treeletDepth);
     }
     // run when a new data array is selected
     // creates a version of the dynamic mesh value array with the same blocks loaded in the same positions as the
     // dynamic mesh buffers for the mesh geometry
-    // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    createValueArray(getMeshBlockFuncExt, scalarName) {
-        return this.#meshCache.updateValuesBuff(getMeshBlockFuncExt, scalarName);
+    createValueArray(scalarName) {
+        return this.#meshCache.updateValuesBuff(
+            this.#dataSource.getMeshBlocks.bind(this.#dataSource), 
+            scalarName
+        );
     }
 
     // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
-    async update(leafScores, nodeCache, fullNodes, getMeshBlockFuncExt, activeValueNames) {
+    async update(leafScores, nodeCache, activeValueNames) {
         if (this.#busy) return;
         this.#busy = true;
         const meshUpdateSW = new StopWatch();
@@ -40,8 +45,8 @@ export class DynamicMesh {
         await this.#meshCache.updateLoadedBlocks(
             nodeCache, 
             undefined,
-            getMeshBlockFuncExt, 
-            fullNodes, 
+            this.#dataSource.getMeshBlocks.bind(this.#dataSource), 
+            this.#dataSource.tree.nodes, 
             leafScores, 
             activeValueNames, 
             meshUpdateSW

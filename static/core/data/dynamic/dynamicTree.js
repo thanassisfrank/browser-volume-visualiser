@@ -1,17 +1,10 @@
 // dynamicTree.js
 // contains functions to create, update and manage dynamic tree nodes and dynamic unstructured mesh data
 
-import { ResolutionModes } from "../dataConstants.js";
-
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "../cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "../treeNodeValues.js";
-import { VecMath } from "../../VecMath.js";
 import { AssociativeCache, ScoredCacheManager } from "../cache/cache.js";
-import { boxVolume, copyBox } from "../../boxUtils.js";
-import { vec4 } from "../../gl-matrix.js";
 import { downloadObject, frameInfoStore, StopWatch } from "../../utils.js";
-import { DataSrcTypes } from "../../renderEngine/renderEngine.js";
-import { toCSVStr } from "../../utils.js";
 
 
 const NodeStates = {
@@ -29,16 +22,20 @@ export class DynamicTree {
     /** @type {ArrayBuffer} */
     renderNodes;
 
+    #dataSource;
+
     // max number of nodes to attempt to merge/split in one iteration
     #modifyListLength = 20;
     #modifyListLengthFact = 0.005;
 
     #hysteresis;
 
-    constructor(fullNodes, dynamicNodeCount, opts) {
+    constructor(dataSource, dynamicNodeCount, opts) {
+        this.#dataSource = dataSource;
         const { depthFirst=false, hysteresis=true } = opts;
         this.#hysteresis = hysteresis;
-        this.#createDynamicNodeCache(fullNodes, dynamicNodeCount, depthFirst);
+        
+        this.#createDynamicNodeCache(dataSource.tree.nodes, dynamicNodeCount, depthFirst);
     }
 
     // create the buffers used for dynamic data resolution
@@ -124,10 +121,11 @@ export class DynamicTree {
     // creates or modifies the dynamic corner values buffer 
     // agnostic to samples vs poly
     // extends the cache object used for dynamic nodes
-    createMatchedDynamicCornerValues(fullCornerValues, scalarName) {
+    createMatchedDynamicCornerValues(scalarName) {
+        const fullCornerValues = this.#dataSource.getDataArray({name: scalarName})?.cornerValues;
         // return;
         if (!fullCornerValues) {
-            throw Error("Unable to generate dynamic corner values, full corner values does not exist for slot " + scalarName);
+            throw Error("Unable to generate dynamic corner values, full corner values does not exist for scalar " + scalarName);
         }
             
         const buffName = scalarName; 
@@ -206,10 +204,9 @@ export class DynamicTree {
         };
     };
     
-    #updateDynamicNodeCache(getCornerValsFuncExt, activeValueNames, mergeSplit, noCells) {
+    #updateDynamicNodeCache(cornerVals, mergeSplit, noCells) {
         // find the amount of changes we can now make
         const changeCount = Math.min(mergeSplit.merge.length, mergeSplit.split.length);
-    
     
         // merge the leaves with the highest scores with their siblings (delete 2 per change)
         var freePtrs = [];
@@ -247,8 +244,8 @@ export class DynamicTree {
                     "state": NodeStates.SPLIT
                 };
                 
-                for (let valueName of activeValueNames) {
-                    newData[valueName] = readCornerVals(getCornerValsFuncExt(valueName), childNode.thisPtr)
+                for (let name in cornerVals) {
+                    newData[name] = readCornerVals(cornerVals[name], childNode.thisPtr)
                 }
     
                 this.nodeCache.insertNewBlockAt(freePtrs[2*i + j], childNode.thisPtr, newData);
@@ -263,7 +260,7 @@ export class DynamicTree {
 
     // this handles updating the dynamic nodes
     // getCornerValsFuncExt -> dataObj.getFullCornerValues
-    update(leafScores, getCornerValsFuncExt, activeValueNames, dynamicCells) {     
+    update(leafScores, activeValueNames, dynamicCells) {     
         const nodeUpdateSW = new StopWatch();
 
         // update node cache
@@ -273,9 +270,15 @@ export class DynamicTree {
             mergeSplitLists.merge.length, 
             mergeSplitLists.split.length
         );
+
+        const cornerVals = {};
+
+        for (let name of activeValueNames) {
+            cornerVals[name] = this.#dataSource.getDataArray({name}).cornerValues;
+        }
         
         // update the dynamic buffer contents
-        this.#updateDynamicNodeCache(getCornerValsFuncExt, activeValueNames, mergeSplitLists, dynamicCells);  
+        this.#updateDynamicNodeCache(cornerVals, mergeSplitLists, dynamicCells);  
 
         frameInfoStore.add("nodes_modified", nodeModifications);
         frameInfoStore.add("node_update", nodeUpdateSW.stop());

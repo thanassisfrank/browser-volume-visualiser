@@ -21,6 +21,7 @@ import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
 import { NodeScorer } from "./dynamic/nodeScorer.js";
 import { DynamicMesh } from "./dynamic/dynamicMesh.js";
+import { VecMath } from "../VecMath.js";
 
 
 const getAsAbsolute = (x, max) => {
@@ -124,80 +125,14 @@ export const dataManager = {
 
         const newData = new Data(dataSource, resolutionMode, dataOpts);
 
-        
-        // // create dynamic mesh cache information if needs dynamic mesh or is partial cgns
-        // if (resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
-        //     try {
-        //         // get the absolute sizes of node and mesh caches if supplied as percentages
-        //         const absNodeCount = getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount);
-        //         const absMeshCount = getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount);
-
-        //         this.createDynamicMeshCache(
-        //             newData, 
-        //             dataSource.meshBlockSizes, 
-        //             dataSource.leafCount, 
-        //             absMeshCount,
-        //         );
-        //         this.createDynamicTree(newData, absNodeCount, newData.noUpdates);
-        //         newData.resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
-        //         console.log("Created dynamic mesh dataset");
-        //     } catch (e) {
-        //         console.error("Could not create dataset with dynamic cells data:", e)
-        //     }
-        // }
-
-        // // create dynamic tree (nodes)
-        // if (opts.dynamicNodes) newData.resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-
-
-        // // if it is a partial cgns and not dynamic, do an update here to get mesh cache information
-        // await newData.updateDynamicTree({changed: true}, {changed: true}, [], true);
-
         return newData;
     },
-
-    // create the unstructured tree with a varying subset of the nodes
-    // fixed number of dynamic nodes
-    // createDynamicTree: function(dataObj, dynamicNodeCount, depthFirst=false) {
-    //     if (!dataObj.data.treeNodes) throw "Could not create dynamic tree, dataset does not have a tree";
-        
-    //     if (dynamicNodeCount > dataObj.data.treeNodeCount) {
-    //         console.warn("Attempted to create dynamic tree that is too large, clipping to max nodes");
-    //     }
-
-    //     dataObj.dynamicTree.setFullNodes(
-    //         dataObj.data.treeNodes, 
-    //         Math.min(dataObj.data.treeNodeCount, dynamicNodeCount),
-    //         depthFirst
-    //     );
-    // },
-
-    // // create dynamic mesh buffers that contain a varying subset of the leaves cell data
-    // // fixed number of data slots
-    // createDynamicMeshCache: function(dataObj, blockSizes, fullLeafCount, dynamicLeafCount) {
-    //     if (dataObj.dataFormat != DataFormats.BLOCK_UNSTRUCTURED) {
-    //         throw new TypeError("Could not create dynamic cells, dataset not of dataFormat BLOCK_UNSTRUCTURED");
-    //     }
-        
-    //     // the total number of leaves of a binary tree of node count n is n/2
-    //     if (dynamicLeafCount > fullLeafCount) {
-    //         console.warn("Attempted to create dynamic mesh data that is too large, clipping to max");
-    //     }
-
-    //     const meshCache = dataObj.dynamicTree.createDynamicMeshCache(
-    //         blockSizes, 
-    //         Math.min(dynamicLeafCount, fullLeafCount)
-    //     );
-
-    //     const buffers = meshCache.getBuffers();
-    //     dataObj.data.dynamicPositions = buffers.positions;
-    //     dataObj.data.dynamicCellOffsets = buffers.cellOffsets;
-    //     dataObj.data.dynamicCellConnectivity = buffers.cellConnectivity;
-    // }
 }
 
 
 export class Data {
+    // the source of all data
+    dataSource;
     // how the data will be presented to the user
     resolutionMode = ResolutionModes.FULL;    
 
@@ -210,6 +145,8 @@ export class Data {
 
     usesTreelets;
 
+    cornerValType;
+
 
     // the actual data store of the object
     // all entries should be typedarray objects
@@ -217,17 +154,7 @@ export class Data {
         // the data values
         values: [
             // {name: null, data: null, cornerValues: null, limits: [null, null]},
-        ],
-
-        // 1-based indexing compatability
-        zeroBased: true,
-        // spatial acceleration structure
-        treeNodeCount: 0,
-        treeNodes: null,
-        treeCells: null,
-        fullLeafCount: 0,
-
-        leafVerts: null,
+        ]
     };
 
     // mapping from value name -> slot number
@@ -253,41 +180,29 @@ export class Data {
         // for calculation of new data arrays
         this.mappingHandler = new VectorMappingHandler(dataSource);;
 
-        // the dimensions in data space
-        this.size = this.dataSource.size;
         // axis aligned (data space) maximum extent
         this.extentBox = this.dataSource.extentBox;
-
-        if (opts.treeletDepth > 0) {
-            this.usesTreelets = true;
-        }
         
-        if (this.dataSource.tree) {
-            this.data.treeNodes = dataSource.tree.nodes;
-            this.data.treeCells = dataSource.tree.cells;
-            this.data.treeNodeCount = dataSource.tree.nodeCount;
-            
+        if (this.dataSource.tree) {            
             this.cornerValType = dataSource.cornerValType;
+            if (opts.treeletDepth > 0) {
+                this.usesTreelets = true;
+            }
         }
 
         if (this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             // the lengths of the blocks in the mesh buffers if a block mesh is being used
             this.meshBlockSizes = this.dataSource.meshBlockSizes
-
-            if (this.dataSource.constructor == BlockFromUnstructDataSource) {
-                // set the tree nodes to be the version for the block mesh
-                this.data.treeNodes = this.dataSource.blockNodes;
-            }
         }
 
         if (resolutionMode != ResolutionModes.FULL) {
             // create a node scorer
-            this.#nodeScorer = new NodeScorer(this.extentBox);
+            this.#nodeScorer = new NodeScorer(this.dataSource, this.extentBox);
         }
 
         if (this.resolutionMode & ResolutionModes.DYNAMIC_NODES_BIT) {
             this.#dynamicTree = new DynamicTree(
-                dataSource.tree.nodes,
+                this.dataSource,
                 opts.dynamicNodeCount,
                 {
                     hysteresis: opts.nodeHysteresis
@@ -297,7 +212,7 @@ export class Data {
 
         if (this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT) {
             this.#dynamicMesh = new DynamicMesh(
-                this.dataSource.meshBlockSizes, 
+                this.dataSource, 
                 opts.dynamicMeshCount, 
                 opts.treeletDepth
             );
@@ -381,26 +296,13 @@ export class Data {
     }
 
     async updateDynamicTree(camInfo, isoInfo, activeValueSlots) {
-        // getCornerValsFuncExt -> dataObj.getFullCornerValues
-        const getCornerVals = (valueName) => {
-            // perform mapping from value name => slot num
-            return this.data.values?.[this.valueDirectory?.[valueName]]?.cornerValues;
-        }
-        // getCornerValsFuncExt -> dataObj.getFullCornerValues
-        const getRangeVals = (valueName) => {
-            // perform mapping from value name => slot num
-            return this.data.values?.[this.valueDirectory?.[valueName]]?.ranges;
-        }
-
         const activeValueNames = activeValueSlots.map(i => this.data.values[i].name);
 
         // get the scores
         const scores = this.#nodeScorer.getNodeScores(
             this.#dynamicTree.nodeCache, 
-            this.dataSource.tree.nodes,
             camInfo, 
-            isoInfo, 
-            getRangeVals
+            isoInfo
         );
 
         if (this.#dynamicTree) {
@@ -411,7 +313,6 @@ export class Data {
             // getMeshBlockFuncExt -> dataObj.getNodeMeshBlock
             this.#dynamicTree.update(
                 scores,
-                getCornerVals,
                 activeValueNames,
                 this.resolutionMode & ResolutionModes.DYNAMIC_CELLS_BIT
             );
@@ -421,8 +322,6 @@ export class Data {
             this.#dynamicMesh.update(
                 scores,
                 this.#dynamicTree.nodeCache,
-                this.dataSource.tree.nodes,
-                this.getNodeBlockRequestFunc().bind(this), 
                 activeValueNames
             );
         }
@@ -449,7 +348,7 @@ export class Data {
 
     // returns the slot number that was written to
     // if it is already is loaded, return its slot number
-    async loadDataArray(desc, binCount) {
+    async loadDataArray(desc) {
         // check if already loaded
         let loadedIndex = this.valueDirectory[desc.name];
         if (loadedIndex !== undefined) return loadedIndex;
@@ -472,49 +371,15 @@ export class Data {
 
         this.valueDirectory[desc.name] = newSlotNum;
 
-        if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode || this.dataSource.constructor === PartialCGNSDataSource) {
-            // dynamic cells, need to 
-            // create new entry in the dynamic mesh cache object
-            await this.createDynamicBlockValues(newSlotNum);
-            console.log("created dynamic values");
-        } else {
-            // not dynamic cells, need to have the whole scalar data set on hand here
-        }
-        // initialise the dynamic corner values buffer to match dynamic nodes
-        if (ResolutionModes.DYNAMIC_NODES_BIT & this.resolutionMode || this.dataSource.constructor === PartialCGNSDataSource) {
-            this.createDynamicCornerValues(newSlotNum);
-            console.log("created dynamic corners");
-        } else {
-            // not dynamic nodes, need to have the whole corner values buffer on hand here
-        }
+        await this.#dynamicMesh?.createValueArray(desc.name);
+
+        this.#dynamicTree?.createMatchedDynamicCornerValues(desc.name);
 
         return newSlotNum;
     };
 
     setCornerValType(type) {
         this.cornerValType = type;
-    };
-
-    // creates the dynamic corner values buffer from scratch
-    // matches the nodes currently loaded in dynamic tree
-    createDynamicCornerValues(slotNum) {
-        const fullCornerValues = this.getFullCornerValues(slotNum);
-        this.data.values[slotNum].dynamicCornerValues = this.#dynamicTree.createMatchedDynamicCornerValues(
-            fullCornerValues, 
-            this.data.values[slotNum].name
-        );
-    };
-
-    async createDynamicBlockValues(slotNum) {
-        this.data.values[slotNum].dynamicData = await this.#dynamicMesh.createValueArray(
-            this.getNodeBlockRequestFunc().bind(this), 
-            this.data.values[slotNum].name
-        );
-    };
-
-    // returns the byte length of the values array
-    getValuesByteLength(slotNum) {
-        return this.getValues(slotNum).byteLength;
     };
 
     getLimits(slotNum) {
@@ -543,7 +408,7 @@ export class Data {
 
     // for structured formats, this returns the dimensions of the data grid in # data points
     getDataSize() {
-        return this.size ?? [0, 0, 0];
+        return VecMath.vecMinus(this.extentBox.max, this.extentBox.min);
     };
 
     // returns a string which indicates the size of the dataset for the user
@@ -556,11 +421,6 @@ export class Data {
             return this.dataSource.totalCellCount.toLocaleString() + "u";
         }
         return "";
-    };
-
-    setDataSize(size) {
-        this.extentBox.max = size;
-        this.size = size;
     };
 
     getValues(slotNum) {

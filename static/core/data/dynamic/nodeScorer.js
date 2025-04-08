@@ -95,11 +95,14 @@ export class NodeScorer {
     #extentBox;
     #scoresLog = [];
 
-    constructor(extentBox) {
+    #dataSource;
+
+    constructor(dataSource, extentBox) {
+        this.#dataSource = dataSource;
         this.#extentBox = extentBox;
     }
 
-    #getScoreFunc(camInfo, isoInfo, getValFunc) {
+    #getScoreFunc(camInfo, isoInfo) {
         let scoreFunc;
         let nodeRangeBuff;
         // empty cam and isoInfo, return dummy score function
@@ -134,7 +137,7 @@ export class NodeScorer {
             }
         } else {
             // data
-            nodeRangeBuff = getValFunc(isoInfo.source.name);
+            nodeRangeBuff = this.#dataSource.getDataArray({name: isoInfo.source.name})?.ranges;
             if (nodeRangeBuff) {
                 scoreFunc =  function (box, nodeFullPtr) {
                     const isoRange = nodeRangeBuff.slice(2 * nodeFullPtr, 2 * (nodeFullPtr + 1));
@@ -149,13 +152,6 @@ export class NodeScorer {
             }
         }
 
-        // // deal with data-based isovalue
-        // return function (box, nodeFullPtr) {
-        //     const isoRange = getBoxIsoRange(box, nodeFullPtr, isoSurfaceSrc, ranges);
-        //     const isoScore = getBoxIsoScore(isoRange, isoInfo.source.limits, isoInfo.val);
-        //     return calcBoxScoreFrustrum(box, camInfo, isoScore);
-        // }
-
         return scoreFunc.bind(this);
     }
 
@@ -163,7 +159,8 @@ export class NodeScorer {
     // calculate the scores for the current leaf nodes, true leaf or pruned
     // returns a list of leaf node objects containing their score
     // assumes camera coords is in the dataset coordinate space
-    #calcNodeScores(nodeCache, fullNodes, scoreFn) {
+    #calcNodeScores(nodeCache, scoreFn) {
+        const fullNodes = this.#dataSource.tree.nodes;
         const dynamicNodes = nodeCache.getBuffers()["nodes"];
         const nodeCount = Math.floor(dynamicNodes.byteLength/NODE_BYTE_LENGTH);
 
@@ -228,8 +225,10 @@ export class NodeScorer {
         return scores;
     };
 
-    getNodeScores(nodeCache, fullNodes, camInfo, isoInfo, getRangesFuncExt) {
-        const leafScores = this.#calcNodeScores(nodeCache, fullNodes, this.#getScoreFunc(camInfo, isoInfo, getRangesFuncExt));
+    getNodeScores(nodeCache, camInfo, isoInfo) {
+        const scoreFunc = this.#getScoreFunc(camInfo, isoInfo);
+        const leafScores = this.#calcNodeScores(nodeCache, scoreFunc);
+
         this.#logScores(leafScores);
         leafScores.sort((a, b) => a.score - b.score);
 
