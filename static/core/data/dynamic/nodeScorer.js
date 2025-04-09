@@ -229,7 +229,7 @@ export class NodeScorer {
         const scoreFunc = this.#getScoreFunc(camInfo, isoInfo);
         const leafScores = this.#calcNodeScores(nodeCache, scoreFunc);
 
-        this.#logScores(leafScores);
+        // this.#logScores(leafScores);
         leafScores.sort((a, b) => a.score - b.score);
 
         return leafScores;

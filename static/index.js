@@ -1,11 +1,10 @@
 // index.js
 // the main js file for index.html
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore} from "./core/utils.js";
+import {get, getClass, getInputClassAsObj, isVisible, show, hide, downloadCanvas, frameInfoStore} from "./core/utils.js";
 
 import { App } from "./core/app.js";
 
 import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-import { VecMath } from "./core/VecMath.js"
 import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
@@ -124,60 +123,13 @@ async function main() {
         app.createView({dataID, dataOpts, renderMode});
     });
 
-    const mousePos = {
-        x: 0, y: 0
-    };
-    document.body.addEventListener("mousemove", (e) => {
-        mousePos.x = e.clientX; 
-        mousePos.y = e.clientY;
-    });
 
     // shortcuts
     const shortcuts = {
         " ": {
             description: "Print the camera position and threshold val",
             f: function (e) {
-                const view = viewManager.getFirst();
-                if (!view) return;
-                view.camera.printVals();
-                console.log("threshold", view.threshold);
-            }
-        },
-        "c": {
-            description: "Copy frametime samples to clipboard",
-            f: function (e) {
-                frameTimeGraph.copySamples();
-                console.log("Samples copied");
-            }
-        },
-        "d": {
-            description: "Get the current ray length texture from the ray marcher",
-            f: function (e) {
-                renderEngine.rayMarcher.getCenterRayLength()
-                .then(depth => {
-                    console.log(depth);
-                    var currView = Object.values(viewManager.views)[0];
-                    if (!currView) return;
-                    
-                    if (!depth) {
-                        currView.adjustedFocusPoint = null;
-                    } else {
-                        var cam = currView.camera;
-                        currView.adjustedFocusPoint = VecMath.vecAdd(cam.getEyePos(), VecMath.scalMult(depth, cam.getForwardVec()));
-                    }
-                })
-                .catch(e => {
-                    console.warn("Couldn't read ray length tex");
-                    console.error(e);
-                });
-            }
-        },
-        "e": {
-            description: "export scores log",
-            f: (e) => {
-                const view = viewManager.getFirst();
-                const dynamicTree = view.data.dynamicTree;
-                dynamicTree.exportScoreLog();
+                console.log(app.getViewStates());
             }
         },
         "f": {
@@ -189,7 +141,7 @@ async function main() {
         "g": {
             description: "Display GPU memory usage",
             f: function (e) {
-                console.log(renderEngine.getWebGPU().getResourcesString());
+                console.log(app.getGPUResourcesString());
             }
         },
         "h": {
@@ -198,18 +150,6 @@ async function main() {
                 for (let key in shortcuts) {
                     if (shortcuts[key].description) console.log("'" + key + "'\t" + shortcuts[key].description);
                 }
-            }
-        },
-        "j": {
-            description: "Run client jobs",
-            f: function (e) {
-                app.startJobs()
-            }
-        },
-        "l": {
-            description: "Print last frametime sample",
-            f: function (e) {
-                console.log(frameTimeGraph.lastSamples[0]);
             }
         },
         "o": {
@@ -222,50 +162,25 @@ async function main() {
         "p": {
             description: "Toggle dynamic tree updates",
             f: (e) => {
-                const currView = Object.values(viewManager.views)[0];
-                if (currView.updateDynamicTree) {
-                    // turn update off
-                    currView.updateDynamicTree = false;
-                    // stop streaming data to ray marcher
-                    renderEngine.rayMarcher.noDataUpdates = true;
-                } else {
-                    // turn update on
-                    currView.updateDynamicTree = true;
-                    currView.data.dynamicTree.clearScoreLog();
-                    renderEngine.rayMarcher.noDataUpdates = false;
-                }
-                // currView.updateDynamicTree = !currView.updateDynamicTree;
+                app.toggleDynamicDatasetUpdates()
             }
         },
         "r": {
             description: "Move camera to initial position",
             f: function (e) {
-                viewManager.getFirst()?.camera.moveToStart();
+                app.resetCameras();
             }
         },
         "s": {
             description: "Save image on main canvas",
             f: function (e) {
-                downloadCanvas(canvas, "canvas_image.png", "image/png");
+                downloadCanvas(get("c"), "canvas_image.png", "image/png");
             }
         },
         "t": {
             description: "move focus point",
             f: async function (e) {
-                const d = await renderEngine.rayMarcher.getRayLengthAt(mousePos.x, mousePos.y);
-                if (!d) return;
-                const tex = renderEngine.rayMarcher.offsetOptimisationTextureOld;
-                const camCoords = {x: mousePos.x/tex.width * 2 - 1, y: mousePos.y/tex.height * 2 - 1};
-                const camera = Object.values(viewManager.views)[0].camera;
-                const newTarget = camera.getWorldSpaceFromClipAndDist(camCoords.x, camCoords.y, d);
-
-                camera.setTarget(newTarget);
-            }
-        },
-        "u": {
-            description: "Update view",
-            f: function (e) {
-                Object.values(viewManager.views)?.[0].update(0, renderEngine);
+                app.viewFocusToMouse()
             }
         },
         "v": {
@@ -283,24 +198,6 @@ async function main() {
         "Alt": {
             f: function (e) {
                 e.preventDefault();
-            }
-        },
-        "ArrowUp": {
-            description: "Increase ray-marching step size",
-            f: function (e) {
-                var oldStep = renderEngine.rayMarcher.getStepSize();
-                var newStep = oldStep * 2;
-                console.log("inc step size:", newStep);
-                renderEngine.rayMarcher.setStepSize(newStep);
-            }
-        },
-        "ArrowDown": {
-            description: "Decrease ray-marchng step size",
-            f: function (e) {
-                var oldStep = renderEngine.rayMarcher.getStepSize();
-                var newStep = oldStep * 0.5;
-                console.log("dec step size:", newStep);
-                renderEngine.rayMarcher.setStepSize(newStep);
             }
         }
     };

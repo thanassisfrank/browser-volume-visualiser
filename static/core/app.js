@@ -18,6 +18,7 @@ import { JobRunner } from "./benchmark.js";
 export class App {
     #canvas;
 
+    /** @type {View[]} */
     #views = [];
     #renderEngine;
     #jobRunner;
@@ -87,6 +88,47 @@ export class App {
 
     get viewCount() {
         return this.#views.length;
+    }
+
+    getViewStates() {
+        let states = [];
+        for (let view of this.#views) {
+            states.push({
+                camera: view.camera.getVals(),
+                threshold: view.getThreshold()
+            });
+        }
+
+        return states;
+    }
+
+    getGPUResourcesString() {
+        return this.#renderEngine.getWebGPU().getResourcesString();
+    }
+
+    resetCameras() {
+        this.#views.forEach(view => view.camera.moveToStart());
+    }
+
+    toggleDynamicDatasetUpdates() {
+        this.#views.forEach(view => view.updateDynamicTree = !view.updateDynamicTree);
+    }
+
+    viewFocusToMouse() {
+        for (let view of this.#views) {
+            if (!view.focussed) return;
+            // TODO re-implement this
+            // view.targetToMouse();
+            // const d = await renderEngine.rayMarcher.getRayLengthAt(mousePos.x, mousePos.y);
+            // if (!d) return;
+            // const tex = renderEngine.rayMarcher.offsetOptimisationTextureOld;
+            // const camCoords = {x: mousePos.x/tex.width * 2 - 1, y: mousePos.y/tex.height * 2 - 1};
+            // const camera = Object.values(viewManager.views)[0].camera;
+            // const newTarget = camera.getWorldSpaceFromClipAndDist(camCoords.x, camCoords.y, d);
+    
+            // camera.setTarget(newTarget);
+
+        }
     }
 
 

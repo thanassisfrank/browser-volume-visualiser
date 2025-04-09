@@ -43,6 +43,10 @@ class View {
 
     updateDynamicTree = true;
 
+    // indicates if the mouse is over this view
+    // extracted from the frame element
+    focussed = false;
+
     deleted = false;
     // handlers for all of the DOM elements that make up this view's UI
     #elemHandlers = {};
@@ -115,6 +119,8 @@ class View {
             return;
         }
 
+        this.focussed = this.#elemHandlers.frame.isMouseOver();
+
         renderEngine.rayMarcher.setColourScale(this.#elemHandlers.colScale.getValue());
 
         // read the iso surface and surface colour sources
@@ -158,7 +164,7 @@ class View {
         const camCoords = cam.getEyePos();
 
         // need to find the camera position in world space
-        if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree && !this.data.noUpdates) {
+        if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
             this.data.updateDynamicTree(
                 {
                     changed: cameraChanged,
@@ -214,6 +220,10 @@ class View {
     getBox() {
         return this.#elemHandlers.frame.getBox();
     };
+
+    getThreshold() {
+        return this.#elemHandlers.slider.getValue();
+    }
 
     didThresholdChange(id="Default") {
         return this.#elemHandlers.slider.didThresholdChange(id);

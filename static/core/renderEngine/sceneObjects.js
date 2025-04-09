@@ -256,12 +256,14 @@ export class Camera {
         return moveresult;
     };
 
-    printVals() {
+    getVals() {
         const {r, el, az} = VecMath.getSphericalVals(this.eye);
-        console.log("th", el);
-        console.log("phi", az);
-        console.log("dist", r);
-        console.log("eye", this.eye);
-        console.log("target", this.target);
+        return {
+            r,
+            el,
+            az,
+            eye: this.eye,
+            target: this.target
+        }
     };
 }

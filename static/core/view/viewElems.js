@@ -288,6 +288,8 @@ export class FrameElemHandler {
     #elem;
     #camera;
     #shiftFac;
+    #mouseCoords = [0, 0];
+    #mouseIsOver = false;
 
     #listeners = {
         "mousedown": (e) => {
@@ -307,20 +309,19 @@ export class FrameElemHandler {
             }
         },
         "mousemove": (e) => {
+            this.#mouseCoords = [e.clientX, e.clientY];
             let x = e.movementX;
             let y = e.movementY;
             if (e.shiftKey) {
                 x *= this.#shiftFac;
                 y *= this.#shiftFac;
             }
+
             if (e.ctrlKey) {
-                // pan
                 this.#camera.move(x, y, 0, "pan");
             } else if (e.altKey) {
-                // dolly forward/back
                 this.#camera.move(0, 0, y, "dolly");
             } else {
-                // rotate
                 this.#camera.move(x, y, 0, "orbit");
             }
         },
@@ -330,8 +331,10 @@ export class FrameElemHandler {
             }
             this.#camera.endMove();
         },
+        "mouseenter": (e) => this.#mouseIsOver = true,
         "mouseleave": (e) => {
             this.#camera.endMove();
+            this.#mouseIsOver = false
         },
         "wheel": (e) => {
             e.preventDefault();
@@ -353,6 +356,18 @@ export class FrameElemHandler {
 
     getBox() {
         return this.#elem?.getBoundingClientRect();
+    }
+
+    getRelativeMousePos() {
+        const box = this.getBox();
+        return [
+            this.#mouseCoords[0] - box.left, 
+            this.#mouseCoords[1] - box.top
+        ];
+    }
+
+    isMouseOver() {
+        return this.#mouseIsOver;
     }
 
     removeListeners() {
