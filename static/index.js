@@ -2,12 +2,45 @@
 // the main js file for index.html
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore} from "./core/utils.js";
 
-
-import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-
-import { VecMath } from "./core/VecMath.js"
 import { App } from "./core/app.js";
 
+import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
+import { VecMath } from "./core/VecMath.js"
+import { KDTreeSplitTypes } from "./core/data/cellTree.js";
+import { CornerValTypes } from "./core/data/treeNodeValues.js";
+
+
+function setupKDTreeOpts() {
+    const kdTreeOptions = get("kd-tree-type-select");
+    for (let type in KDTreeSplitTypes) {
+        const elem = document.createElement("OPTION");
+        elem.value = KDTreeSplitTypes[type];                
+        elem.innerText = type;
+        kdTreeOptions.appendChild(elem);
+    }
+}
+
+
+function setupDataOpts(dataConfigs) {
+    const dataOptions = get("data-select");
+    for (let id in dataConfigs) {
+        const elem = document.createElement("OPTION");
+        elem.value = id;                
+        elem.innerText = dataConfigs[id].name;
+        dataOptions.appendChild(elem);
+    }
+}
+
+
+function setupCornerOpts() {
+    const cornerValOptions = get("corner-val-type-select");
+    for (let type in CornerValTypes) {
+        var elem = document.createElement("OPTION");
+        elem.value = CornerValTypes[type];                
+        elem.innerText = type;
+        cornerValOptions.appendChild(elem);
+    }
+}
 
 
 // viewOpts : {
@@ -60,34 +93,36 @@ const viewOptsFromInputElems = (dataSelect, opts) => {
     };
 }
 
+
+const renderModeFromOpts = (opts) => {
+    let renderMode = SceneObjectRenderModes.NONE;
+    if (opts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
+    if (opts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+    if (opts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
+    if (opts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+    if (opts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
+
+    return renderMode;
+}
+
+
 // define the main function
 async function main() {
-    const app = new App(1);
+    const app = new App(get("c"), 1);
     await app.init();
-    
-    function createView(opts) {
-        const { renderOpts, dataID, dataOpts } = opts;
-        
-        let renderMode = SceneObjectRenderModes.NONE;
-        if (renderOpts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
-        if (renderOpts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-        if (renderOpts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
-        if (renderOpts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
-        if (renderOpts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
-        
-        return app.createView({dataID, dataOpts, renderMode});
-    }
 
+    // setup the options elements
+    setupKDTreeOpts();
+    setupDataOpts(app.dataConfigs);
+    setupCornerOpts();
     
-    get("create-view-btn").addEventListener("click", async (e) => {
+    get("create-view-btn").addEventListener("click", (e) => {
         const d = get("data-select");
         const optsRaw = getInputClassAsObj("dataset-opt");
-        const viewOpts = viewOptsFromInputElems(d, optsRaw);
-        await createView(viewOpts);
-        hide(get("add-view-container")); 
+        const { renderOpts, dataID, dataOpts } = viewOptsFromInputElems(d, optsRaw);
+        const renderMode = renderModeFromOpts(renderOpts);
+        app.createView({dataID, dataOpts, renderMode});
     });
-
-
 
     const mousePos = {
         x: 0, y: 0
@@ -168,7 +203,7 @@ async function main() {
         "j": {
             description: "Run client jobs",
             f: function (e) {
-                jobRunner.start(performance.now())
+                app.startJobs()
             }
         },
         "l": {
@@ -277,8 +312,14 @@ async function main() {
     console.info("Press 'h' for a list of shortcuts");
 
 
-    var renderLoop = async () => {
-        app.update();
+    const renderLoop = async () => {
+        await app.update();
+
+        if (0 === app.viewCount) {
+            show(get("add-view-container"))
+        } else {
+            hide(get("add-view-container")); 
+        }
         requestAnimationFrame(renderLoop);
     };
     

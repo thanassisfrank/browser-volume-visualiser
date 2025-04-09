@@ -28,6 +28,7 @@ export function createView(id, config, renderEngine) {
 
 class View {
     id;
+    container;
     scene;
     /** @type {Camera} */
     camera;
@@ -42,11 +43,14 @@ class View {
 
     updateDynamicTree = true;
 
+    deleted = false;
     // handlers for all of the DOM elements that make up this view's UI
     #elemHandlers = {};
 
+
     constructor(id, containerElem, camera, data, renderMode, renderEngine) {
         this.id = id;
+        this.container = containerElem;
         this.camera = camera;
         this.data = data;
         this.renderMode = renderMode;
@@ -216,12 +220,13 @@ class View {
     }
 
     delete() {
+        this.deleted = true;
         // remove all of the event listeners
         for (let key in this.#elemHandlers) {
             this.#elemHandlers[key].removeListeners?.();
         }
         // remove dom
-        this.elems.container.remove();
+        this.container.remove();
         // clean up gpu data referenced in renderables
         this.scene.clear();
     };

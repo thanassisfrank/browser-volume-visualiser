@@ -14,6 +14,7 @@ import { CornerValTypes } from "./data/treeNodeValues.js";
 import { VecMath } from "./VecMath.js"
 import { JobRunner } from "./benchmark.js";
 
+
 export class App {
     #canvas;
 
@@ -29,15 +30,13 @@ export class App {
     // options
     #maxViews;
 
-    constructor(maxViews) {
+    constructor(canvas, maxViews) {
+        this.#canvas = canvas;
         this.#maxViews = maxViews;
-
-        this.#canvas = get("c");
         this.#frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
     }
 
     async init() {
-    
         async function setupDataManager() {
             let datasetsJSON;
     
@@ -53,39 +52,23 @@ export class App {
             return datasetsJSON
         }
     
-        async function createJobRunner() {
-            // let jobJSON;
-            // try {
-            //     const res = await fetch("./clientJobs.json")
-            //     jobJSON = await res.json();
-            // } catch (e) {
-            //     console.error("Could not get job file: " + e);
-            //     jobJSON = null;
-            // }
-            // return JobRunner(jobJSON, this.createView, this.deleteView, this.#renderEngine);
-        }
         let datasets;
-        [this.#renderEngine, datasets, this.#jobRunner] = await Promise.all([
+        [this.#renderEngine, datasets] = await Promise.all([
             createRenderEngine(this.#canvas), 
-            setupDataManager(), 
-            createJobRunner()
+            setupDataManager()
         ]);
     
         if (!this.#renderEngine || !datasets) throw Error("Could not initialise program");
+        // created necessary objects
         
-        // successfully created all objects
-
         window.addEventListener("resize", this.#resizeCanvas);
         this.#resizeCanvas();
 
-        // set up the available UI
-        this.#setUpRayMarchOptions();
-        this.#populateDataOptions();
-        this.#populateKDTreeOptions();
-        this.#populateCornerValOptions();
+        this.#setupRayMarchOpts();
     }
 
-    #setUpRayMarchOptions = () => {
+    
+    #setupRayMarchOpts() {
         for (let elem of getClass("ray-march-opt")) {
             elem.checked = this.#renderEngine.rayMarcher.getPassFlag(elem.name);
             elem.addEventListener("mousedown", (e) => {
@@ -96,38 +79,16 @@ export class App {
                 this.#renderEngine.rayMarcher.setPassFlag(elem.name, elem.checked);
             });
         }
-    };
+    }
 
-    #populateDataOptions() {
-        var dataOptions = get("data-select");
-        for (let id in dataManager.configSet) {
-            var elem = document.createElement("OPTION");
-            elem.value = id;                
-            elem.innerText = dataManager.configSet[id].name;
-            dataOptions.appendChild(elem);
-        }
-    };
-    
-    
-    #populateKDTreeOptions() {
-        var kdTreeOptions = get("kd-tree-type-select");
-        for (let type in KDTreeSplitTypes) {
-            var elem = document.createElement("OPTION");
-            elem.value = KDTreeSplitTypes[type];                
-            elem.innerText = type;
-            kdTreeOptions.appendChild(elem);
-        }
-    };
+    get dataConfigs() {
+        return dataManager.configSet;
+    }
 
-    #populateCornerValOptions () {
-        var cornerValOptions = get("corner-val-type-select");
-        for (let type in CornerValTypes) {
-            var elem = document.createElement("OPTION");
-            elem.value = CornerValTypes[type];                
-            elem.innerText = type;
-            cornerValOptions.appendChild(elem);
-        }
-    };
+    get viewCount() {
+        return this.#views.length;
+    }
+
 
     async createView(opts) {
         if (this.#views.length >= this.#maxViews) {
@@ -151,12 +112,15 @@ export class App {
         return view;
     }
 
-    deleteView(view) {
-        const index = this.#views.findIndex(v => v.id == view.id);
-        if (index == -1) return;
+    #removeDeletedViews() {
+        const aliveViews = [];
+        for (let view of this.#views) {
+            if (true === view.deleted) continue;
 
-        view.delete();
-        this.#views.splice(index, 1);
+            aliveViews.push(view);
+        }
+
+        this.#views = aliveViews;
     }
 
     #resizeCanvas() {
@@ -166,15 +130,20 @@ export class App {
         this.#renderEngine.resizeRenderingContext();
     }
 
+    startJobs() {
+        this.#jobRunner.start(performance.now())
+    }
+
     async update() {
         const thisFrameStart = performance.now();
         const dt = thisFrameStart - this.#lastFrameStart;
         this.#lastFrameStart = thisFrameStart;
         
-        this.#jobRunner?.update(thisFrameStart);
-
         // update widgets
-        this.#frameTimeGraph.update(dt);
+        this.#frameTimeGraph?.update(dt);
+
+        // remove any deleted views
+        this.#removeDeletedViews();
         
         // update views
         this.#views.forEach(view => view.update(dt, this.#renderEngine));
