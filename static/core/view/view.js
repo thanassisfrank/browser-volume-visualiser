@@ -1,17 +1,17 @@
 // view.js
 // handles the creation of view objects, their management and deletion
 
-import { get, show, hide, newId, hexStringToRGBArray } from "./core/utils.js";
-import { VecMath } from "./core/VecMath.js";
+import { get, show, hide, newId, hexStringToRGBArray } from "../utils.js";
+import { VecMath } from "../VecMath.js";
 
-import { ResolutionModes } from "./core/data/dataConstants.js";
-import { dataManager, Data } from "./core/data/data.js";
+import { ResolutionModes } from "../data/dataConstants.js";
+import { dataManager, Data } from "../data/data.js";
 
 import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataSrcSelectElemHandler, EnabledGeometryHandler, FrameElemHandler, ThresholdSliderHandler, TransferFunctionHandler } from "./viewElems.js";
 
-import { DataSrcTypes, RenderableTypes } from "./core/renderEngine/renderEngine.js";
-import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
-import { Camera } from "./core/renderEngine/sceneObjects.js";
+import { DataSrcTypes, RenderableTypes } from "../renderEngine/renderEngine.js";
+import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
+import { Camera } from "../renderEngine/sceneObjects.js";
 
 
 
@@ -84,7 +84,6 @@ class View {
     // handlers for all of the DOM elements that make up this view's UI
     #elemHandlers = {};
 
-
     constructor(id, containerElem, camera, data, renderMode, renderEngine) {
         this.id = id;
         this.camera = camera;
@@ -125,14 +124,11 @@ class View {
     #init(renderEngine) {
         // setup camera position
         this.camera.setStartPosition(this.data.getMidPoint(), this.data.getMaxLength(), 0, 0);
-
         this.camera.moveToStart();
 
         // create scene
         this.scene = renderEngine.createScene();
         this.scene.addData(this.data, this.renderMode);
-
-        this.update(0, renderEngine);
     };
 
     async getSrcLimits(desc) {

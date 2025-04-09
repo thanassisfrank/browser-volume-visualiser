@@ -5,7 +5,7 @@ import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDim
 import { DataFormats } from "./core/data/dataConstants.js";
 import { dataManager } from "./core/data/data.js";
 import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
-import { viewManager } from "./view.js";
+import { viewManager } from "./core/view/view.js";
 import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
 import { FrameTimeGraph } from "./widgets.js";
 import { KDTreeSplitTypes } from "./core/data/cellTree.js";
@@ -218,55 +218,6 @@ async function main() {
                 if (!view) return;
                 view.camera.printVals();
                 console.log("threshold", view.threshold);
-            }
-        },
-        "b": {
-            description: "Save generated unstructured tree",
-            f: function (e) {
-                var currView = Object.values(viewManager.views)[0];
-                if (!currView) {
-                    console.warn("no view loaded");
-                    return;
-                }
-
-                if (currView.data.dataFormat != DataFormats.UNSTRUCTURED) {
-                    console.warn("dataset not unstructured");
-                    return;
-                }
-
-                const dataObj = currView.data;
-                var kdTreeTypeStr;
-                for (let type in KDTreeSplitTypes) {
-                    if (KDTreeSplitTypes[type] != dataObj.opts.kdTreeType) continue;
-                    kdTreeTypeStr = type;
-                    break;
-                }
-
-                // download the buffers
-                const filePrefix = [
-                    dataObj.config.path.split("/")[1].split(".")[0],
-                    kdTreeTypeStr,
-                    dataObj.opts.leafCells,
-                    dataObj.opts.maxTreeDepth
-                ].join("_");
-
-                const treeNodesName = filePrefix + "_treeNodes.raw";
-                const treeCellsName = filePrefix + "_treeCells.raw";
-
-                downloadObject(dataObj.data.treeNodes, treeNodesName, "application/octet-stream");
-                downloadObject(dataObj.data.treeCells, treeCellsName, "application/octet-stream");
-
-                // print the required json entry
-                var jsonEntry = {
-                    "kdTreeType": kdTreeTypeStr,
-                    "leafCells": dataObj.opts.leafCells,
-                    "maxTreeDepth": dataObj.opts.maxTreeDepth,
-                    "treeNodeCount": dataObj.data.treeNodeCount,
-                    "nodesPath": "data/" + treeNodesName,
-                    "cellsPath": "data/" + treeCellsName,
-                    "cornerValues": []
-                };
-                console.log(JSON.stringify(jsonEntry, undefined, 4));
             }
         },
         "c": {

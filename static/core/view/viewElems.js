@@ -1,10 +1,10 @@
 // viewElems.js
 // defines a set of classes that handle setup of the various possible elements within a view
 
-import { DataArrayTypes } from "./core/data/dataConstants.js";
-import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
-import { ColourScales, DataSrcUses } from "./core/renderEngine/webGPU/rayMarching/webGPURayMarching.js";
-import { get, hexStringToRGBArray, setupCanvasDims } from "./core/utils.js";
+import { DataArrayTypes } from "../data/dataConstants.js";
+import { DataSrcTypes } from "../renderEngine/renderEngine.js";
+import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
+import { get, hexStringToRGBArray, setupCanvasDims } from "../utils.js";
 
 
 // close btn
