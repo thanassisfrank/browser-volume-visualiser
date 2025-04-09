@@ -15,55 +15,16 @@ import { Camera } from "../renderEngine/sceneObjects.js";
 
 
 
-export var viewManager = {
-    
-    maxViews: 1,
-    // an object to hold all views that have been created
-    views: {},
+export function createView(id, config, renderEngine) {    
+    const container = get("view-container-template").content.cloneNode(true).children[0];
+    container.id = id;
 
-    getFirst: function() {
-        return Object.values(this.views)[0];
-    },
+    const newView = new View(id, container, config.camera, config.data, config.renderMode, renderEngine);
+    get("view-container-container").appendChild(container);
+    show(container);
+    return newView;
+}
 
-    moreViewsAllowed: function() {
-        return Object.keys(this.views).length < this.maxViews;
-    },
-
-    newContainer: function(id) {
-        // clone the proto node
-        const viewContainer = get("view-container-template").content.cloneNode(true).children[0];
-        viewContainer.id = id;
-
-        return viewContainer;
-    },
-
-    createView: async function(config, renderEngine) {    
-        //check to see if there is already the max amount of views
-        if (!this.moreViewsAllowed()) {
-            console.log("sorry, max views reached");
-            return false;
-        }
-        
-        const id = newId(this.views);
-        const container = this.newContainer(id);
-
-        const newView = new View(id, container, config.camera, config.data, config.renderMode, renderEngine);
-        this.appendDOM(container);
-        this.views[id] = newView;
-        return newView;
-    },
-
-    appendDOM: function(container) {
-        get("view-container-container").appendChild(container);
-        show(container);
-    },
-
-    update: function(dt, renderEngine, cameraFollowPath) {
-        for (let key in this.views) {
-            this.views[key].update(dt, renderEngine, cameraFollowPath);
-        }
-    }
-};
 
 class View {
     id;

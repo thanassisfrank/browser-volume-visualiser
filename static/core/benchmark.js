@@ -1,7 +1,7 @@
 // benchmark.js
-import { downloadCanvas, frameInfoStore, pause } from "./core/utils.js";
-import { CornerValTypes } from "./core/data/treeNodeValues.js";
-import { VecMath } from "./core/VecMath.js";
+import { downloadCanvas, frameInfoStore, pause } from "./utils.js";
+import { CornerValTypes } from "./data/treeNodeValues.js";
+import { VecMath } from "./VecMath.js";
 
 
 let globalRender;

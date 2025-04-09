@@ -2,64 +2,12 @@
 // the main js file for index.html
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore} from "./core/utils.js";
 
-import { DataFormats } from "./core/data/dataConstants.js";
-import { dataManager } from "./core/data/data.js";
-import { createRenderEngine } from "./core/renderEngine/renderEngine.js";
-import { viewManager } from "./core/view/view.js";
+
 import { Camera, SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
-import { FrameTimeGraph } from "./widgets.js";
-import { KDTreeSplitTypes } from "./core/data/cellTree.js";
-import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
 import { VecMath } from "./core/VecMath.js"
-import { JobRunner } from "./benchmark.js";
+import { App } from "./core/app.js";
 
-
-const setUpRayMarchOptions = (rayMarcher) => {
-    for (let elem of getClass("ray-march-opt")) {
-        elem.checked = rayMarcher.getPassFlag(elem.name);
-        elem.addEventListener("mousedown", (e) => {
-            e.stopPropagation();
-            return false;
-        });
-        elem.addEventListener("click", (e) => {
-            rayMarcher.setPassFlag(elem.name, elem.checked);
-        });
-    }
-};
-
-
-const populateDataOptions = (dataManager) => {
-    var dataOptions = get("data-select");
-    for (let id in dataManager.configSet) {
-        var elem = document.createElement("OPTION");
-        elem.value = id;                
-        elem.innerText = dataManager.configSet[id].name;
-        dataOptions.appendChild(elem);
-    }
-};
-
-
-const populateKDTreeOptions = () => {
-    var kdTreeOptions = get("kd-tree-type-select");
-    for (let type in KDTreeSplitTypes) {
-        var elem = document.createElement("OPTION");
-        elem.value = KDTreeSplitTypes[type];                
-        elem.innerText = type;
-        kdTreeOptions.appendChild(elem);
-    }
-};
-
-
-const populateCornerValOptions = () => {
-    var cornerValOptions = get("corner-val-type-select");
-    for (let type in CornerValTypes) {
-        var elem = document.createElement("OPTION");
-        elem.value = CornerValTypes[type];                
-        elem.innerText = type;
-        cornerValOptions.appendChild(elem);
-    }
-};
 
 
 // viewOpts : {
@@ -114,77 +62,20 @@ const viewOptsFromInputElems = (dataSelect, opts) => {
 
 // define the main function
 async function main() {
-    const canvas = get("c");
+    const app = new App(1);
+    await app.init();
     
-    const frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
-
-    async function setupDataManager() {
-        let datasetsJSON;
-
-        try {
-            const res = await fetch("./data/datasets.json");
-            datasetsJSON = await res.json();
-            dataManager.setConfigSet(datasetsJSON);
-            populateDataOptions(dataManager);
-            populateKDTreeOptions();
-            populateCornerValOptions();
-        } catch (e) {
-            console.error("Could not get datasets: " + reason);
-            datasetsJSON = null;
-        }
+    function createView(opts) {
+        const { renderOpts, dataID, dataOpts } = opts;
         
-        return datasetsJSON
-    }
-
-    async function getJobFile() {
-        let jobJSON;
-        try {
-            const res = await fetch("./clientJobs.json")
-            jobJSON = await res.json();
-        } catch (e) {
-            console.error("Could not get job file: " + e);
-            jobJSON = null;
-        }
-
-        return jobJSON;
-    }
-
-    
-    const [renderEngine, allDatasets, jobs] = await Promise.all([
-        createRenderEngine(canvas), 
-        setupDataManager(), 
-        getJobFile()
-    ]);
-
-    if (!renderEngine || !allDatasets) {
-        console.error("Could not initialise program");
-        return;
-    }
-
-    setUpRayMarchOptions(renderEngine.rayMarcher);
-    
-    // set the max views
-    viewManager.maxViews = 1;
-    
-    async function createView(opts) {
-        var newData = await dataManager.getDataObj(opts.dataID, opts.dataOpts);
-
-        var renderMode = SceneObjectRenderModes.NONE;
-        if (opts.renderOpts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
-        if (opts.renderOpts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-        if (opts.renderOpts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
-        if (opts.renderOpts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
-        if (opts.renderOpts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
+        let renderMode = SceneObjectRenderModes.NONE;
+        if (renderOpts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
+        if (renderOpts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
+        if (renderOpts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
+        if (renderOpts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
+        if (renderOpts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
         
-        return await viewManager.createView({
-            camera: new Camera(canvas.width/canvas.height),
-            data: newData,
-            renderMode: renderMode
-        }, renderEngine);
-    }
-
-    async function deleteView(view) {
-        viewManager.deleteView(view, renderEngine);
+        return app.createView({dataID, dataOpts, renderMode});
     }
 
     
@@ -192,14 +83,11 @@ async function main() {
         const d = get("data-select");
         const optsRaw = getInputClassAsObj("dataset-opt");
         const viewOpts = viewOptsFromInputElems(d, optsRaw);
-        createView(viewOpts);
+        await createView(viewOpts);
         hide(get("add-view-container")); 
     });
 
 
-
-    // create job runner object
-    const jobRunner = new JobRunner(jobs, createView, deleteView, renderEngine);
 
     const mousePos = {
         x: 0, y: 0
@@ -388,44 +276,9 @@ async function main() {
 
     console.info("Press 'h' for a list of shortcuts");
 
-    var resize = () => {
-        var canvasDims = setupCanvasDims(canvas);
-        // change camera aspect ratio
-        viewManager.getFirst()?.camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
-        renderEngine.resizeRenderingContext();
-    }
-    resize();
 
-    window.addEventListener("resize", resize);
-
-    var lastFrameStart = performance.now();
-    var renderLoop = async (timeGap) => {
-        
-        var thisFrameStart = performance.now();
-        const dt = thisFrameStart - lastFrameStart;
-        lastFrameStart = thisFrameStart;
-        
-        jobRunner.update(thisFrameStart);
-
-        // update widgets
-        frameTimeGraph.update(dt);
-        
-        // update the scene
-        viewManager.update(dt, renderEngine);
-        
-        // render the scenes
-        // includes doing marching cubes/ray marching if required by object
-        var viewList = Object.values(viewManager.views);
-        if (viewList.length == 0) {
-            renderEngine.clearScreen();
-        } else {
-            for (let view of viewList) {
-                // await renderEngine.renderView(view);
-                renderEngine.renderView(view);
-            }
-        }
-        frameInfoStore.nextFrame();
-        // next frame
+    var renderLoop = async () => {
+        app.update();
         requestAnimationFrame(renderLoop);
     };
     
