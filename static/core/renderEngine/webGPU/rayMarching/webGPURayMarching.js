@@ -106,6 +106,8 @@ export class WebGPURayMarchingEngine {
     }
 
     async setupEngine() {
+        const t0 = performance.now();
+        
         // make bind group layouts
         const unstructRayMarchBindGroupLayouts = [
             this.#webGPU.createBindGroupLayout([
@@ -113,7 +115,7 @@ export class WebGPURayMarchingEngine {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
-            ], "Compute ray-march constants"),
+            ], "Unstruct ray-march constants"),
             this.#webGPU.createBindGroupLayout([
                 {
                     visibility: GPUShaderStage.COMPUTE,
@@ -135,7 +137,7 @@ export class WebGPURayMarchingEngine {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
-            ], "Compute ray march geometry"),
+            ], "Unstruct ray march geometry"),
             this.#webGPU.createBindGroupLayout([
                 {
                     visibility: GPUShaderStage.COMPUTE,
@@ -153,7 +155,7 @@ export class WebGPURayMarchingEngine {
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
-            ], "Compute ray-march data"),
+            ], "Unstruct ray-march data"),
             this.#webGPU.createBindGroupLayout([
                 {
                     visibility: GPUShaderStage.COMPUTE,
@@ -195,10 +197,77 @@ export class WebGPURayMarchingEngine {
                         viewDimension: "2d"
                     }
                 }
-            ], "Compute ray-march images")
+            ], "Unstruct ray-march images")
         ];
 
-        const t0 = performance.now();
+        const structRayMarchBindGroupLayouts = [
+            this.#webGPU.createBindGroupLayout([
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: "read-only-storage" }
+                },
+            ], "Struct ray-march constants"),
+            this.#webGPU.createBindGroupLayout([
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "unfilterable-float",
+                        viewDimension: "3d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "unfilterable-float",
+                        viewDimension: "3d",
+                        multiSampled: "false"
+                    }
+                }
+            ], "Struct ray-march data"),
+            this.#webGPU.createBindGroupLayout([
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "depth",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "unfilterable-float",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        access: "write-only",
+                        format: "rg32float",
+                        viewDimension: "2d"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: {
+                        sampleType: "float",
+                        viewDimension: "2d",
+                        multiSampled: "false"
+                    }
+                },
+                {
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        access: "write-only",
+                        format: "bgra8unorm",
+                        viewDimension: "2d"
+                    }
+                }
+            ], "Struct ray-march images")
+        ];
 
         // register the lib file
         const rayMarchLib = await this.#webGPU.fetchShaderText("core/renderEngine/webGPU/rayMarching/shaders/rayMarchUtils.wgsl");
@@ -217,11 +286,27 @@ export class WebGPURayMarchingEngine {
                 { timing: true },
                 "unstruct ray march pass"
             );
+        };
+
+        const createStructPass = async () => {
+            const shaderStr = await this.#webGPU.fetchShaderText("core/renderEngine/webGPU/rayMarching/shaders/structRayMarch.wgsl");
+            const shader = this.#webGPU.createShader(
+                shaderStr, 
+                { WGSizeX: this.#WGSize.x, WGSizeY: this.#WGSize.y, WGVol: this.#WGSize.x * this.#WGSize.y }
+            );
+            
+            return this.#webGPU.createComputePass(
+                structRayMarchBindGroupLayouts,
+                shader,
+                { timing: true },
+                "struct ray march pass"
+            );
         }
 
-        const passes = await Promise.all([createUnstructPass()]);
+        const passes = await Promise.all([createUnstructPass(), createStructPass()]);
 
         this.#passes.unstruct = passes[0];
+        this.#passes.struct = passes[1];
 
         this.#webGPU.log(performance.now() - t0, "ms for ray pipeline creation");
     }

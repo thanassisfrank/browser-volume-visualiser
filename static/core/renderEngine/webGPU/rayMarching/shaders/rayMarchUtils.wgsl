@@ -26,6 +26,12 @@ struct RayMarchPassInfo {
     @size(4)  @align(16) cellsPtrType : u32,
 };
 
+struct CombinedPassInfo {
+    @size(208) globalInfo : GlobalUniform,
+    @size(160) objectInfo : ObjectInfo,
+    passInfo : RayMarchPassInfo,
+};
+
 struct MeshBlockSizes {
     positions: u32,
     cellOffsets: u32,
@@ -636,3 +642,82 @@ fn shadeRayMarchResult(rayMarchResult : RayMarchResult, passFlags : RayMarchPass
 }
 
 
+// sets the pixel the the supplied colour
+fn setPixel(coords : vec2<u32>, col : vec4<f32>) {
+    var outCol = vec4<f32>(vec3<f32>(1-col.a), 0) + vec4<f32>(col.a*col.rgb, col.a);
+    textureStore(outputImage, coords, outCol);
+}
+
+// calculates the correct pixel colour using the over operation with the previous image
+// adds this correct colour to the output image
+fn drawPixel(coords : vec2<u32>, newCol : vec4<f32>) {
+    var oldCol : vec4<f32> = textureLoad(inputImage, coords, 0);
+    var outCol : vec4<f32> = over(newCol, oldCol);
+    // var outCol : vec4<f32> = vec4<f32>(newCol.a, newCol.a, newCol.a, 1);
+    textureStore(outputImage, coords, outCol);
+}
+
+
+// takes camera and x
+fn getRay(x : u32, y : u32, camera : Camera) -> Ray {
+    // get the forward vector
+    var fwd = normalize(cross(camera.upDirection, camera.rightDirection));
+    // get the x and y as proportions of the image Size
+    // 0 is centre, +1 is right and bottom edge
+    var imageDims = textureDimensions(outputImage);
+    var xProp : f32 = 2*(f32(x) + 0.5)/f32(imageDims.x) - 1;
+    var yProp : f32 = 2*(f32(y) + 0.5)/f32(imageDims.y) - 1;
+
+    // calculate the ray direction
+    var ray : Ray;
+    var aspect = camera.fovx / camera.fovy;
+    var unormRay = fwd 
+        + xProp*tan(camera.fovy/2)*aspect*normalize(camera.rightDirection) 
+        - yProp*tan(camera.fovy/2)*normalize(camera.upDirection);
+    ray.direction = normalize(unormRay);
+    ray.tip = camera.position;
+    ray.length = 0.0;
+    return ray;
+}
+
+
+fn getPrevOptimisationSample(x : u32, y : u32) -> OptimisationSample {
+    var texel = textureLoad(offsetOptimisationTextureOld, vec2<u32>(x, y), 0);
+    return OptimisationSample(texel[0], texel[1]);
+}
+
+
+fn storeOptimisationSample(coords : vec2<u32>, sample : OptimisationSample) {
+    textureStore(offsetOptimisationTextureNew, coords, vec4<f32>(sample.offset, sample.depth, 0, 0));
+}
+
+
+// generate a new random f32 value [0, 1]
+fn getRandF32(seed : u32) -> f32 {
+    var randU32 = randomU32(globalInfo.time ^ seed);
+    return f32(randU32)/exp2(32);
+}
+
+// https://learnopengl.com/Advanced-OpenGL/Depth-testing
+fn getWorldSpaceSceneDepth(x : u32, y : u32) -> f32 {
+    var ndc : f32 =  textureLoad(sceneDepthTexture, vec2<u32>(x, y), 0);
+    // var ndc = depth * 2.0 - 1.0;
+    // TODO: read near/far planes from projection matrix
+    var near : f32 = globalInfo.camera.pMat[3][2]/(globalInfo.camera.pMat[2][2] + globalInfo.camera.pMat[2][3]);
+    var far : f32 = globalInfo.camera.pMat[3][2]/(globalInfo.camera.pMat[2][2] - globalInfo.camera.pMat[2][3]);
+    // var far : f32 = 2000;
+    return (2.0 * near * far) / (far + near - ndc * (far - near));
+}
+
+fn getWorldSpaceSceneDistance(x : u32, y : u32) -> f32 {
+    var d : f32 = getWorldSpaceSceneDepth(x, y);
+
+    var imageDims = textureDimensions(outputImage);
+    var xProp : f32 = 2*(f32(x) + 0.5)/f32(imageDims.x) - 1;
+    var yProp : f32 = 2*(f32(y) + 0.5)/f32(imageDims.y) - 1;
+
+    var th = globalInfo.camera.fovx/2 * xProp;
+    var phi = globalInfo.camera.fovy/2 * yProp;
+
+    return d/(cos(th) * cos(phi));
+}
