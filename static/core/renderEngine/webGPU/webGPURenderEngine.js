@@ -46,6 +46,11 @@ export class WebGPURenderEngine {
         return this.webGPU;
     }
 
+    #getCanvasStyleDims() {
+        const { width, height } = getComputedStyle(this.canvas);
+        return [Math.floor(parseFloat(width)), Math.floor(parseFloat(height))];
+    }
+
     async setup() {
         // begin setting up modules
         const rayMarcherSetup = this.rayMarcher.setupEngine();
@@ -53,7 +58,8 @@ export class WebGPURenderEngine {
         // setup the canvas for drawing to
         this.ctx = this.canvas.getContext("webgpu");
 
-        this.resizeRenderingContext();
+        
+        this.resizeRenderingContext(...this.#getCanvasStyleDims());
 
         await Promise.all([
             this.webGPU.waitForDone(), 
@@ -96,7 +102,7 @@ export class WebGPURenderEngine {
     }
 
     #beginFrame(cameraMoved, thresholdChanged) {
-        this.rayMarcher.beginFrame(this.ctx, this.canvasResized, cameraMoved, thresholdChanged);
+        this.rayMarcher.beginFrame(this.ctx, this.canvas, cameraMoved, thresholdChanged);
     }
 
     #endFrame() {
@@ -105,9 +111,16 @@ export class WebGPURenderEngine {
 
     // clears the screen and creates the empty depth texture
     async #getClearedRenderAttachments() {
-        // provide details of load and store part of pass
-        // here there is one color output that will be cleared on load
-
+        // check if the canvas is the same size as the render textures
+        const canvasDims = this.#getCanvasStyleDims();
+        if (
+            canvasDims[0] != this.#renderColorTexture.width ||
+            canvasDims[1] != this.#renderColorTexture.height 
+        ) {
+            // resize
+            this.resizeRenderingContext(...canvasDims);
+        }
+        // clear the render attachments
         const renderPassDescriptor = {
             colorAttachments: [{
                 clearValue: this.#clearColor,
@@ -123,7 +136,7 @@ export class WebGPURenderEngine {
             }
         };
 
-        var commandEncoder = await this.webGPU.createCommandEncoder();
+        const commandEncoder = await this.webGPU.createCommandEncoder();
 
         const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
 
@@ -138,46 +151,40 @@ export class WebGPURenderEngine {
     }
 
     async clearScreen() {
-        var clearedAttachments = await this.#getClearedRenderAttachments();
+        const clearedAttachments = await this.#getClearedRenderAttachments();
 
         this.webGPU.copyTextureToTexture(clearedAttachments.color, this.ctx.getCurrentTexture());
     }
     // renders a view object, datasets
     // for now, all share a canvas
     async renderView(view) {
-
         // create the render attachments (color and depth textures) that will be used to create the final view
         // these are initialised to a cleared state
-        // the colour attachment is from the output canvas
-        var outputRenderAttachments = await this.#getClearedRenderAttachments();
-
-        var box = view.getBox();
-
-        var scene = view.scene;
+        const outputRenderAttachments = await this.#getClearedRenderAttachments();
+        const box = view.getBox();
+        const { scene, camera } = view;
 
         // first check if there is a camera in the scene
-        var camera = view.camera;
         if (!camera) {
             console.warn("no camera in scene");
             return;
         }
         this.#beginFrame(camera.didThisMove(), view.didThresholdChange());
-        this.canvasResized = false;
 
         // get the renderables from the scene
-        var renderables = scene.getRenderables();
+        const renderables = scene.getRenderables();
         // this.#renderableManager.sortRenderables(renderables, camera);
 
 
         for (let renderable of renderables) {
-            var outputColourAttachment = {
+            const outputColourAttachment = {
                 clearValue: this.#clearColor,
                 loadOp: "load",
                 storeOp: "store",
                 texture: outputRenderAttachments.color,
                 view: outputRenderAttachments.color.createView()
             };
-            var outputDepthAttachment = {
+            const outputDepthAttachment = {
                 depthClearValue: 1.0,
                 depthLoadOp: "load",
                 depthStoreOp: "store",
@@ -202,12 +209,14 @@ export class WebGPURenderEngine {
         await this.webGPU.waitForDone();
         this.webGPU.copyTextureToTexture(outputRenderAttachments.color, this.ctx.getCurrentTexture());
 
-        // await this.webGPU.waitForDone();
-        // end the frame
         this.#endFrame();
     }
 
-    resizeRenderingContext() {
+    resizeRenderingContext(width, height) {
+        console.log(width, height)
+        this.canvas.width = width;
+        this.canvas.height = height;
+
         this.ctx.configure({
             device: this.webGPU.getDevice(),
             format: "bgra8unorm",
@@ -218,10 +227,8 @@ export class WebGPURenderEngine {
         this.webGPU.deleteTexture(this.#renderDepthTexture);
         this.webGPU.deleteTexture(this.#renderColorTexture);
 
-        const renderTextures = this.#createRenderTextures(this.canvas.width, this.canvas.height);
+        const renderTextures = this.#createRenderTextures(width, height);
         this.#renderDepthTexture = renderTextures.depth;
         this.#renderColorTexture = renderTextures.color;
-
-        this.canvasResized = true;
     }
 }

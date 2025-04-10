@@ -290,6 +290,7 @@ export class FrameElemHandler {
     #shiftFac;
     #mouseCoords = [0, 0];
     #mouseIsOver = false;
+    #frameResized = false;
 
     #listeners = {
         "mousedown": (e) => {
@@ -341,6 +342,10 @@ export class FrameElemHandler {
             this.#camera.startMove(0, 0, 0, "orbit");
             this.#camera.move(0, 0, e.deltaY, "orbit");
             this.#camera.endMove();
+        },
+        "resize": (e) => {
+            console.log("resized")
+            this.#frameResized = true;
         }
     }
 
@@ -368,6 +373,14 @@ export class FrameElemHandler {
 
     isMouseOver() {
         return this.#mouseIsOver;
+    }
+
+    isFrameResized() {
+        if (this.#frameResized) {
+            this.#frameResized = false;
+            return true
+        }
+        return false;
     }
 
     removeListeners() {

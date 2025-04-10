@@ -80,7 +80,7 @@ export class Camera {
         "default": true,
     }
 
-    constructor(aspect) {
+    constructor(aspect=1) {
         this.setAspectRatio(aspect);
     }
 

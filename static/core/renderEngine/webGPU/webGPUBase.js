@@ -570,7 +570,7 @@ export class WebGPUBase {
         await this.waitForDone();
     };
 
-    #textureExtentsEqual(tex1, tex2) {
+    textureExtentsEqual(tex1, tex2) {
         if (!tex1 || !tex2) return false;
         return tex1.width === tex2.width && tex1.height === tex2.height && tex1.depthOrArrayLayers === tex2.depthOrArrayLayers;
     }
@@ -590,7 +590,7 @@ export class WebGPUBase {
         };
 
 
-        if (!this.#textureExtentsEqual(texture, newSize)) {
+        if (!this.textureExtentsEqual(texture, newSize)) {
             this.deleteTexture(texture);
 
             resultTexture = this.makeTexture({

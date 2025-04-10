@@ -61,9 +61,6 @@ export class App {
     
         if (!this.#renderEngine || !datasets) throw Error("Could not initialise program");
         // created necessary objects
-        
-        window.addEventListener("resize", this.#resizeCanvas);
-        this.#resizeCanvas();
 
         this.#setupRayMarchOpts();
     }
@@ -142,7 +139,7 @@ export class App {
         const view = createView(
             id,
             {
-                camera: new Camera(this.#canvas.width/this.#canvas.height),
+                camera: new Camera(),
                 data: await dataManager.getDataObj(opts.dataID, opts.dataOpts),
                 renderMode: opts.renderMode
             },
@@ -165,13 +162,6 @@ export class App {
         this.#views = aliveViews;
     }
 
-    #resizeCanvas() {
-        const canvasDims = setupCanvasDims(this.#canvas);
-        // change camera aspect ratio
-        this.#views[0]?.camera.setAspectRatio(canvasDims[0]/canvasDims[1]);
-        this.#renderEngine.resizeRenderingContext();
-    }
-
     startJobs() {
         this.#jobRunner.start(performance.now())
     }
@@ -180,7 +170,7 @@ export class App {
         const thisFrameStart = performance.now();
         const dt = thisFrameStart - this.#lastFrameStart;
         this.#lastFrameStart = thisFrameStart;
-        
+
         // update widgets
         this.#frameTimeGraph?.update(dt);
 

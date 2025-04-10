@@ -91,7 +91,7 @@ class View {
     }
 
     #init(renderEngine) {
-        // setup camera position
+        // setup camera 
         this.camera.setStartPosition(this.data.getMidPoint(), this.data.getMaxLength(), 0, 0);
         this.camera.moveToStart();
 
@@ -120,6 +120,8 @@ class View {
         }
 
         this.focussed = this.#elemHandlers.frame.isMouseOver();
+        const frameBox = this.getBox();
+        this.camera.setAspectRatio(frameBox.width/frameBox.height);
 
         renderEngine.rayMarcher.setColourScale(this.#elemHandlers.colScale.getValue());
 

@@ -729,54 +729,58 @@ export class WebGPURayMarchingEngine {
         }
     }
 
-    beginFrame(ctx, resized, cameraMoved, thresholdChanged) {
+    beginFrame(ctx, canvas, cameraMoved, thresholdChanged) {
         if (cameraMoved || thresholdChanged) {
             this.globalPassInfo.framesSinceMove = 0;
         }
         // check if the size of the canvas is the same as what is was previously
-        if (resized) {
-            this.#webGPU.deleteTexture(this.#offsetOptimisationTextureOld);
-            // create texture for offset optimisation
-            this.#offsetOptimisationTextureOld = this.#webGPU.makeTexture({
-                label: "optimisation texture current best",
-                size: {
-                    width: ctx.canvas.width,
-                    height: ctx.canvas.height,
-                    depthOrArrayLayers: 1
-                },
-                dimension: "2d",
-                format: "rg32float",
-                usage: this.#webGPU.textureUsage.TB_CD_CS
-            });
+        if (
+            this.#offsetOptimisationTextureOld && 
+            canvas.width == this.#offsetOptimisationTextureOld.width &&
+            canvas.height == this.#offsetOptimisationTextureOld.height
+        ) return;
 
-            this.#webGPU.deleteTexture(this.#offsetOptimisationTextureNew);
-            // create texture for offset optimisation
-            this.#offsetOptimisationTextureNew = this.#webGPU.makeTexture({
-                label: "optimisation texture new best",
-                size: {
-                    width: ctx.canvas.width,
-                    height: ctx.canvas.height,
-                    depthOrArrayLayers: 1
-                },
-                dimension: "2d",
-                format: "rg32float",
-                usage: this.#webGPU.textureUsage.SB_CS
-            });
+        this.#webGPU.deleteTexture(this.#offsetOptimisationTextureOld);
+        // create texture for offset optimisation
+        this.#offsetOptimisationTextureOld = this.#webGPU.makeTexture({
+            label: "optimisation texture current best",
+            size: {
+                width: ctx.canvas.width,
+                height: ctx.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "rg32float",
+            usage: this.#webGPU.textureUsage.TB_CD_CS
+        });
 
-            this.#webGPU.deleteTexture(this.#colorCopyDstTexture);
+        this.#webGPU.deleteTexture(this.#offsetOptimisationTextureNew);
+        // create texture for offset optimisation
+        this.#offsetOptimisationTextureNew = this.#webGPU.makeTexture({
+            label: "optimisation texture new best",
+            size: {
+                width: ctx.canvas.width,
+                height: ctx.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "rg32float",
+            usage: this.#webGPU.textureUsage.SB_CS
+        });
 
-            this.#colorCopyDstTexture = this.#webGPU.makeTexture({
-                label: "colour copy destination",
-                size: {
-                    width: ctx.canvas.width,
-                    height: ctx.canvas.height,
-                    depthOrArrayLayers: 1
-                },
-                dimension: "2d",
-                format: "bgra8unorm",
-                usage: this.#webGPU.textureUsage.TB_CD_CS
-            });
-        }
+        this.#webGPU.deleteTexture(this.#colorCopyDstTexture);
+
+        this.#colorCopyDstTexture = this.#webGPU.makeTexture({
+            label: "colour copy destination",
+            size: {
+                width: ctx.canvas.width,
+                height: ctx.canvas.height,
+                depthOrArrayLayers: 1
+            },
+            dimension: "2d",
+            format: "bgra8unorm",
+            usage: this.#webGPU.textureUsage.TB_CD_CS
+        });
     }
 
     endFrame(ctx) {
