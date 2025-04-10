@@ -111,11 +111,11 @@ export function Renderable(type = RenderableTypes.EMPTY, renderMode = Renderable
 }
 
 
-export async function createRenderEngine(canvas) {
+export async function createRenderEngine(canvas, verbose=false) {
     if (!navigator.gpu) throw Error("WebGPU not supported");
 
     // use webGPU
-    var webGPUBase = new WebGPUBase(false);
+    var webGPUBase = new WebGPUBase(verbose);
     await webGPUBase.setupWebGPU();
     const renderEngine = new WebGPURenderEngine(webGPUBase, canvas);
     await renderEngine.setup();

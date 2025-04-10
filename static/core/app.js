@@ -30,10 +30,13 @@ export class App {
 
     // options
     #maxViews;
+    #verbose;
 
-    constructor(canvas, maxViews=1, frametimeCanvas=null) {
+    constructor(canvas, opts) {
+        const {maxViews=1, frametimeCanvas=null, verbose=false} = opts;
         this.#canvas = canvas;
         this.#maxViews = maxViews;
+        this.#verbose = verbose;
 
         if (frametimeCanvas) {
             this.#frameTimeGraph = new FrameTimeGraph(frametimeCanvas, 100);
@@ -58,7 +61,7 @@ export class App {
     
         let datasets;
         [this.#renderEngine, datasets] = await Promise.all([
-            createRenderEngine(this.#canvas), 
+            createRenderEngine(this.#canvas, this.#verbose), 
             setupDataManager()
         ]);
     

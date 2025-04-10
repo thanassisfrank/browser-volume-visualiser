@@ -117,7 +117,6 @@ export const dataManager = {
         }
 
         await dataSource.init();
-        console.log(dataSource);
         return dataSource;
     },
 

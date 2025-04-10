@@ -213,7 +213,6 @@ export class WebGPURenderEngine {
     }
 
     resizeRenderingContext(width, height) {
-        console.log(width, height)
         this.canvas.width = width;
         this.canvas.height = height;
 
