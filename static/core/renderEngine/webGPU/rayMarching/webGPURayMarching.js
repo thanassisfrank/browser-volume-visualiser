@@ -373,6 +373,7 @@ export class WebGPURayMarchingEngine {
     }
 
     setColourScale(colourScale) {
+        if (colourScale === undefined) return;
         this.globalPassInfo.colourScale = colourScale;
     }
 
@@ -572,17 +573,37 @@ export class WebGPURayMarchingEngine {
     }
 
     #updateUnstructuredDataRenderable(renderable, updates) {
-        const { nodeData, valuesData, cornerValsData, meshData, treeletCellsData, blockSizes } = updates;
+        const { 
+            clippedDataBox, 
+            threshold, 
+            volumeTransferFunction,
+            nodeData, 
+            valuesData, 
+            cornerValsData, 
+            meshData, 
+            treeletCellsData, 
+            blockSizes,
+            isoSurfaceSrc,
+            surfaceColSrc
+        } = updates;
         const { passData, renderData } = renderable;
         
-        passData.clippedDataBox = copyBox(updates.clippedDataBox);
-        if (passData.threshold != updates.threshold) this.globalPassInfo.framesSinceMove = 0;
-        passData.threshold = updates.threshold;
-        passData.volumeTransferFunction = {
-            colour: [...updates.volumeTransferFunction.colour],
-            opacity: [...updates.volumeTransferFunction.opacity]
-        };
-        Object.assign(passData.blockSizes, blockSizes);
+        if (clippedDataBox) {
+            passData.clippedDataBox = copyBox(clippedDataBox);
+        }
+        if (threshold !== undefined) {
+            if (passData.threshold != threshold) this.globalPassInfo.framesSinceMove = 0;
+            passData.threshold = threshold;
+        }
+        if (volumeTransferFunction) {
+            passData.volumeTransferFunction = {
+                colour: [...volumeTransferFunction.colour],
+                opacity: [...volumeTransferFunction.opacity]
+            };
+        }
+        if (blockSizes) {
+            Object.assign(passData.blockSizes, blockSizes);
+        }
 
         if (valuesData) {
             // update the corner values buffer(s)
@@ -608,19 +629,19 @@ export class WebGPURayMarchingEngine {
             }
         }
 
-        if (updates.isoSurfaceSrc || updates.surfaceColSrc) {
+        if (isoSurfaceSrc || surfaceColSrc) {
             // update the iso surface source info
-            passData.isoSurfaceSrcUint = this.#getDataSrcUint(updates.isoSurfaceSrc, 0);
-            passData.surfaceColSrcUint = this.#getDataSrcUint(updates.surfaceColSrc, 1);
+            passData.isoSurfaceSrcUint = this.#getDataSrcUint(isoSurfaceSrc, 0);
+            passData.surfaceColSrcUint = this.#getDataSrcUint(surfaceColSrc, 1);
     
             
-            if (passData.values[0].name !== updates.isoSurfaceSrc.name || passData.values[1].name !== updates.surfaceColSrc.name) {
+            if (passData.values[0].name !== isoSurfaceSrc.name || passData.values[1].name !== surfaceColSrc.name) {
                 // recreate bindgroup 2 from the compute pass
-                let isoBuffer = renderData.buffers["values " + updates.isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
-                let isoCornBuffer = renderData.buffers["corner vals " + updates.isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
+                let isoBuffer = renderData.buffers["values " + isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
+                let isoCornBuffer = renderData.buffers["corner vals " + isoSurfaceSrc.name] ?? renderData.buffers.placeholder;
                 
-                let colBuffer = renderData.buffers["values " + updates.surfaceColSrc.name] ?? renderData.buffers.placeholder;
-                let colCornBuffer = renderData.buffers["corner vals " + updates.surfaceColSrc.name] ?? renderData.buffers.placeholder;
+                let colBuffer = renderData.buffers["values " + surfaceColSrc.name] ?? renderData.buffers.placeholder;
+                let colCornBuffer = renderData.buffers["corner vals " + surfaceColSrc.name] ?? renderData.buffers.placeholder;
     
                 renderData.bindGroups.compute2 = this.#webGPU.generateBG(
                     this.#passes.unstruct.bindGroupLayouts[2],
@@ -630,8 +651,8 @@ export class WebGPURayMarchingEngine {
             }
     
             // update the information about each value buffer
-            passData.values[0] = { name: updates.isoSurfaceSrc.name, limits: updates.isoSurfaceSrc.limits };
-            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits };
+            passData.values[0] = { name: isoSurfaceSrc.name, limits: isoSurfaceSrc.limits };
+            passData.values[1] = { name: surfaceColSrc.name, limits: surfaceColSrc.limits };
         }
 
         // write updated mesh data to the GPU
@@ -673,16 +694,30 @@ export class WebGPURayMarchingEngine {
     }
 
     #updateStructuredDataRenderable(renderable, updates) {
-        const { valuesData } = updates;
+        const { 
+            clippedDataBox, 
+            threshold, 
+            volumeTransferFunction, 
+            valuesData,
+            isoSurfaceSrc,
+            surfaceColSrc
+        } = updates;
+
         const { passData, renderData } = renderable;
         
-        passData.clippedDataBox = copyBox(updates.clippedDataBox);
-        if (passData.threshold != updates.threshold) this.globalPassInfo.framesSinceMove = 0;
-        passData.threshold = updates.threshold;
-        passData.volumeTransferFunction = {
-            colour: [...updates.volumeTransferFunction.colour],
-            opacity: [...updates.volumeTransferFunction.opacity]
-        };
+        if (clippedDataBox) {
+            passData.clippedDataBox = copyBox(clippedDataBox);
+        }
+        if (threshold !== undefined) {
+            if (passData.threshold != threshold) this.globalPassInfo.framesSinceMove = 0;
+            passData.threshold = threshold;
+        }
+        if (volumeTransferFunction) {
+            passData.volumeTransferFunction = {
+                colour: [...volumeTransferFunction.colour],
+                opacity: [...volumeTransferFunction.opacity]
+            };
+        }
 
         if (valuesData) {
             for (let name in valuesData) {
@@ -696,17 +731,17 @@ export class WebGPURayMarchingEngine {
             }
         }
 
-        if (updates.isoSurfaceSrc || updates.surfaceColSrc) {
+        if (isoSurfaceSrc || surfaceColSrc) {
             // update the iso surface source info
-            passData.isoSurfaceSrcUint = this.#getDataSrcUint(updates.isoSurfaceSrc, 0);
-            passData.surfaceColSrcUint = this.#getDataSrcUint(updates.surfaceColSrc, 1);
+            passData.isoSurfaceSrcUint = this.#getDataSrcUint(isoSurfaceSrc, 0);
+            passData.surfaceColSrcUint = this.#getDataSrcUint(surfaceColSrc, 1);
     
             
-            if (passData.values[0].name !== updates.isoSurfaceSrc.name || passData.values[1].name !== updates.surfaceColSrc.name) {
+            if (passData.values[0].name !== isoSurfaceSrc.name || passData.values[1].name !== surfaceColSrc.name) {
                 // recreate bindgroup 2 from the compute pass
-                const isoTex = renderData.textures[updates.isoSurfaceSrc.name] ?? renderData.textures.placeholder;
+                const isoTex = renderData.textures[isoSurfaceSrc.name] ?? renderData.textures.placeholder;
                 
-                const colTex = renderData.textures[updates.surfaceColSrc.name] ?? renderData.textures.placeholder;
+                const colTex = renderData.textures[surfaceColSrc.name] ?? renderData.textures.placeholder;
     
                 renderData.bindGroups.compute1 = this.#webGPU.generateBG(
                     this.#passes.struct.bindGroupLayouts[1],
@@ -716,8 +751,8 @@ export class WebGPURayMarchingEngine {
             }
     
             // update the information about each value buffer
-            passData.values[0] = { name: updates.isoSurfaceSrc.name, limits: updates.isoSurfaceSrc.limits };
-            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits }
+            passData.values[0] = { name: isoSurfaceSrc.name, limits: isoSurfaceSrc.limits };
+            passData.values[1] = { name: surfaceColSrc.name, limits: surfaceColSrc.limits };
         }
     }
 

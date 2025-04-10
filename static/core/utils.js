@@ -62,6 +62,14 @@ export var getInputClassAsObj = (className) => {
     return out;
 }
 
+export const DOMRectEqual = (rect1, rect2) => {
+    if (rect1 === undefined || rect2 === undefined) return false;
+    return rect1.x === rect2.x && 
+           rect1.y === rect2.y &&
+           rect1.width === rect2.width &&
+           rect1.height === rect2.height;
+};
+
 export const sin30 = Math.sin(Math.PI/6);
 export const cos30 = Math.cos(Math.PI/6);
 

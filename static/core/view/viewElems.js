@@ -53,6 +53,7 @@ export class CloseBtnHandler {
 export class DataSrcSelectElemHandler {
     #elem;
     #dataSrcUse;
+    #sources;
 
     #changed = true;
 
@@ -68,7 +69,7 @@ export class DataSrcSelectElemHandler {
             this.#elem = container.querySelector(".view-surface-col-src-select");
         }
 
-        const sources = [
+        this.#sources = [
             {name: "None", type: DataSrcTypes.NONE},
             {name: "x", type: DataSrcTypes.AXIS},
             {name: "y", type: DataSrcTypes.AXIS},
@@ -76,10 +77,12 @@ export class DataSrcSelectElemHandler {
             ...dataArrays
         ];
 
-        this.#init(sources)
+        this.#init()
     }
 
-    #init(sources) {
+    #init() {
+        if (!this.#elem) return;
+
         const axisGroup = document.createElement("optgroup");
         axisGroup.label = "Axis";
 
@@ -90,7 +93,7 @@ export class DataSrcSelectElemHandler {
         calcGroup.label = "Calc";
 
         // setup the elem
-        for (let srcDesc of sources) {
+        for (let srcDesc of this.#sources) {
             const optElem = document.createElement("OPTION");
             optElem.dataset.type = srcDesc.type;  
             optElem.dataset.arrayType = srcDesc.arrayType;
@@ -133,6 +136,8 @@ export class DataSrcSelectElemHandler {
     }
 
     getSrc() {
+        if (!this.#elem) return this.#sources[0];
+
         const selected = this.#elem.options[this.#elem.selectedIndex];
         return {
             name: selected.dataset.name,
@@ -142,6 +147,8 @@ export class DataSrcSelectElemHandler {
     }
 
     removeListeners() {
+        if (!this.#elem) return;
+
         for (let type in this.#listeners) {
             this.#elem.removeEventListener(type, this.#listeners[type]);
         }
@@ -193,17 +200,27 @@ export class ClipElemHandler {
         }
     }
 
+    #getElemVal(elem, placeholder, rev=false) {
+        if (!elem) return placeholder;
+
+        if (!rev) {
+            return parseFloat(elem.value);
+        } else {
+            return -parseFloat(elem.value);
+        }
+    }
+
     getClipBox() {
         return {
             min: [
-                parseFloat(this.#elems.min[0].value) ?? this.#fullBox.min[0],
-                parseFloat(this.#elems.min[1].value) ?? this.#fullBox.min[1],
-                parseFloat(this.#elems.min[2].value) ?? this.#fullBox.min[2],
+                this.#getElemVal(this.#elems.min[0], this.#fullBox.min[0]),
+                this.#getElemVal(this.#elems.min[1], this.#fullBox.min[1]),
+                this.#getElemVal(this.#elems.min[2], this.#fullBox.min[2]),
             ],
             max: [
-                -parseFloat(this.#elems.max[0].value) ?? this.#fullBox.max[0],
-                -parseFloat(this.#elems.max[1].value) ?? this.#fullBox.max[1],
-                -parseFloat(this.#elems.max[2].value) ?? this.#fullBox.max[2],
+                this.#getElemVal(this.#elems.max[0], this.#fullBox.max[0], true),
+                this.#getElemVal(this.#elems.max[1], this.#fullBox.max[1], true),
+                this.#getElemVal(this.#elems.max[2], this.#fullBox.max[2], true),
             ],
         }
     }
@@ -215,8 +232,6 @@ export class ClipElemHandler {
 export class ThresholdSliderHandler {
     #elem;
     #readoutElem;
-
-    #thresholdTrackers = {};
 
     #listeners = {
         "mousedown": (e) => {
@@ -257,21 +272,13 @@ export class ThresholdSliderHandler {
     setValue(val) {
         if (this.#elem) this.#elem.value = val;;
         if (this.#readoutElem) this.#readoutElem.innerText = val.toPrecision(3);
-
-        for (let id in this.#thresholdTrackers) {
-            this.#thresholdTrackers[id] = true;
-        }
     }
 
     getValue() {
+        if (!this.#elem) return;
+
         return parseFloat(this.#elem.value);
     }
-
-    didThresholdChange(id = "default") {
-        const changed = this.#thresholdTrackers[id] ?? true;
-        this.#thresholdTrackers[id] = false;
-        return changed;
-    };
 
     removeListeners() {
         if (!this.#elem) return;
@@ -354,6 +361,12 @@ export class FrameElemHandler {
         this.#camera = camera;
         this.#shiftFac = shiftFac;
 
+        this.#init();
+    }
+    
+    #init() {
+        if (!this.#elem) return;
+
         for (let type in this.#listeners) {
             this.#elem.addEventListener(type, this.#listeners[type]);
         }
@@ -384,6 +397,8 @@ export class FrameElemHandler {
     }
 
     removeListeners() {
+        if (!this.#elem) return;
+
         for (let type in this.#listeners) {
             this.#elem.removeEventListener(type, this.#listeners[type]);
         }
@@ -402,6 +417,7 @@ export class TransferFunctionHandler {
     }
     
     getTransferFunction() {
+        if (0 == this.#colElems.length && 0 == this.#opElems.length) return;
         return {
             colour: this.#colElems.map(elem => hexStringToRGBArray(elem.value)),
             opacity: this.#opElems.map(elem => parseFloat(elem.value))
@@ -427,6 +443,7 @@ export class EnabledGeometryHandler {
     }
 
     init() {
+        if (!this.#elem) return;
         // initialise the geometry enable checkboxes
         
         for (let meshName in this.#data.geometry) {
@@ -442,7 +459,7 @@ export class EnabledGeometryHandler {
     }
 
     getEnabledGeometry() {
-        return {};
+        return;
     }
 
     removeEventListeners() {}
@@ -470,7 +487,7 @@ export class ColScaleHandler {
     }
 
     getValue() {
-        return this.#elem.value;
+        return this.#elem?.value;
     }
 
     removeListeners() {}
@@ -492,6 +509,8 @@ export class AxesWidget {
 
     // initialise the canvas
     init () {
+        if (!this.canvas) return;
+
         this.ctx = this.canvas.getContext("2d");
         this.vectorLength = Math.min(this.canvas.width, this.canvas.height) / 2;
         this.midPoint = [this.canvas.width / 2, this.canvas.height / 2];
@@ -500,6 +519,7 @@ export class AxesWidget {
     // update the axes display, expects viewMat is gl-matrix formatted
     update (viewMat) {
         if (!this.canvas) return;
+
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         for (let i = 0; i < 3; i++) {
             // extract basis vector directions
@@ -514,5 +534,16 @@ export class AxesWidget {
             );
             this.ctx.stroke();
         }
+    }
+}
+
+export class DataInfoWidget {
+    constructor(container, data) {
+        const dataName = container.querySelector(".view-dataset-name");
+        const dataSize = container.querySelector(".view-dataset-size");
+
+        // populate dataset info
+        if (dataName) dataName.innerText = data.getName();
+        if (dataSize) dataSize.innerText = data.getDataSizeString();
     }
 }

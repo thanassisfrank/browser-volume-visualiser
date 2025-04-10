@@ -1,13 +1,13 @@
 // view.js
 // handles the creation of view objects, their management and deletion
 
-import { get, show, hide, newId, hexStringToRGBArray } from "../utils.js";
+import { get, show, hide, newId, hexStringToRGBArray, DOMRectEqual } from "../utils.js";
 import { VecMath } from "../VecMath.js";
 
 import { ResolutionModes } from "../data/dataConstants.js";
 import { dataManager, Data } from "../data/data.js";
 
-import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataSrcSelectElemHandler, EnabledGeometryHandler, FrameElemHandler, ThresholdSliderHandler, TransferFunctionHandler } from "./viewElems.js";
+import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataInfoWidget, DataSrcSelectElemHandler, EnabledGeometryHandler, FrameElemHandler, ThresholdSliderHandler, TransferFunctionHandler } from "./viewElems.js";
 
 import { DataSrcTypes, RenderableTypes } from "../renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
@@ -48,8 +48,17 @@ class View {
     focussed = false;
 
     deleted = false;
-    // handlers for all of the DOM elements that make up this view's UI
-    #elemHandlers = {};
+
+    // handlers for output DOM elements (widgets)
+    #outElems = {};
+
+    // inputs =======================================
+    #currInputs = {};
+    // a place for programmatic inputs to be written
+    #inExternal = {};
+    // handlers for all of the input DOM elements
+    #inElems = {};
+    
 
 
     constructor(id, containerElem, camera, data, renderMode, renderEngine) {
@@ -60,37 +69,7 @@ class View {
         this.renderMode = renderMode;
 
         this.#createDOM(containerElem);
-        this.#init(renderEngine);
-    }
-
-    #createDOM(container) {
-        // look through the DOM to find the functional elements
-        const dataName      = container.querySelector(".view-dataset-name");
-        const dataSize      = container.querySelector(".view-dataset-size");
-        // const densityGraph  = container.querySelector(".view-value-density");
-
-        // populate dataset info
-        if (dataName) dataName.innerText = this.data.getName();
-        if (dataSize) dataSize.innerText = this.data.getDataSizeString();
-
-
-        const dataArrays = this.data.getAvailableDataArrays();
-
-        this.#elemHandlers = {
-            isoSurfaceSrc   : new DataSrcSelectElemHandler(container, dataArrays, DataSrcUses.ISO_SURFACE),
-            surfaceColSrc   : new DataSrcSelectElemHandler(container, dataArrays, DataSrcUses.SURFACE_COL),
-            frame           : new FrameElemHandler(container, this.camera, 0.5),
-            close           : new CloseBtnHandler(container),
-            slider          : new ThresholdSliderHandler(container, "210px"),
-            colScale        : new ColScaleHandler(container),
-            clip            : new ClipElemHandler(container, this.data.extentBox),
-            axesWidget      : new AxesWidget(container),
-            enabledGeometry : new EnabledGeometryHandler(container, this.data),
-            transferFunction: new TransferFunctionHandler(container)
-        }
-    }
-
-    #init(renderEngine) {
+        
         // setup camera 
         this.camera.setStartPosition(this.data.getMidPoint(), this.data.getMaxLength(), 0, 0);
         this.camera.moveToStart();
@@ -98,7 +77,31 @@ class View {
         // create scene
         this.scene = renderEngine.createScene();
         this.scene.addData(this.data, this.renderMode);
-    };
+    }
+
+    #createDOM(container) {
+        // create the input handlers
+        const dataArrays = this.data.getAvailableDataArrays();
+
+        this.#inElems = {
+            isoSurfaceSrc   : new DataSrcSelectElemHandler(container, dataArrays, DataSrcUses.ISO_SURFACE),
+            surfaceColSrc   : new DataSrcSelectElemHandler(container, dataArrays, DataSrcUses.SURFACE_COL),
+            frame           : new FrameElemHandler(container, this.camera, 0.5),
+            close           : new CloseBtnHandler(container),
+            slider          : new ThresholdSliderHandler(container, "210px"),
+            colScale        : new ColScaleHandler(container),
+            clip            : new ClipElemHandler(container, this.data.extentBox),
+            enabledGeometry : new EnabledGeometryHandler(container, this.data),
+            transferFunction: new TransferFunctionHandler(container)
+        };
+
+        // create output handlers
+        this.#outElems = {
+            axes    : new AxesWidget(container),
+            dataInfo: new DataInfoWidget(container, this.data),
+        };
+    }
+
 
     async getSrcLimits(desc) {
         if (DataSrcTypes.AXIS == desc.type) {
@@ -112,40 +115,71 @@ class View {
         }
     }
 
+    // queries all of the input element handlers for current state
+    #getElementInputs() {
+        return {
+            closed: this.#inElems.close.pressed,
+            mouseOn: this.#inElems.frame.isMouseOver(),
+            box: this.#inElems.frame.getBox(),
+            colScale: this.#inElems.colScale.getValue(),
+            isoSrc: this.#inElems.isoSurfaceSrc.getSrc(),
+            colSrc: this.#inElems.surfaceColSrc.getSrc(),
+            threshold: this.#inElems.slider.getValue(),
+            enabledGeometry: this.#inElems.enabledGeometry.getEnabledGeometry(),
+            clippedBox: this.#inElems.clip.getClipBox(),
+            transferFunction: this.#inElems.transferFunction.getTransferFunction()
+        }
+    }
+
+    // returns the current input state as well as what has changed
+    #getInputs() {
+        const elemIn = this.#getElementInputs();
+
+        // combine inputs with preference given to external inputs
+        const inputs = {...elemIn, ...this.#inExternal};
+        
+        // track important changes
+        const changed = {
+            box: DOMRectEqual(inputs.box, this.#currInputs.box),
+            isoSrc: inputs.isoSrc?.name !== this.#currInputs.isoSrc?.name,
+            colSrc: inputs.colSrc?.name !== this.#currInputs.colSrc?.name,
+            threshold: inputs.threshold !== this.#currInputs.threshold
+        };
+
+        this.#currInputs = inputs;
+
+        return {inputs, changed};
+    }
+
     async update(dt, renderEngine) {
+        // get the inputs from the input elements
+        const { inputs, changed } = this.#getInputs();
+
         // check if this should close
-        if (this.#elemHandlers.close.pressed) {
+        if (inputs.closed) {
             this.delete();
             return;
         }
 
-        this.focussed = this.#elemHandlers.frame.isMouseOver();
-        const frameBox = this.getBox();
-        this.camera.setAspectRatio(frameBox.width/frameBox.height);
-
-        renderEngine.rayMarcher.setColourScale(this.#elemHandlers.colScale.getValue());
-
-        // read the iso surface and surface colour sources
-        let isoSrc = this.#elemHandlers.isoSurfaceSrc.getSrc();
-        isoSrc.limits = await this.getSrcLimits(isoSrc);
-        let colSrc = this.#elemHandlers.surfaceColSrc.getSrc();
-        colSrc.limits = await this.getSrcLimits(colSrc);
-
-        const isoChanged = this.#elemHandlers.isoSurfaceSrc.getChanged();
-        const colChanged = this.#elemHandlers.surfaceColSrc.getChanged();
-
-        if (isoChanged) {
-            this.#elemHandlers.slider.setLimits(isoSrc.limits);
-            if (isoSrc.name == "Pressure") {
-                this.#elemHandlers.slider.setValue(101353.322975);
-            }
+        this.focussed = inputs.mouseOn;
+        if (changed.box) {
+            this.camera.setAspectRatio(inputs.box.width/inputs.box.height);
         }
 
-        this.#elemHandlers.axesWidget.update(this.camera.viewMat);
+        renderEngine.rayMarcher.setColourScale(inputs.colScale);
+
+        
+        const isoLimits = await this.getSrcLimits(inputs.isoSrc);
+        const colLimits = await this.getSrcLimits(inputs.isoSrc);
+        let fullIsoSrc = {name: inputs.isoSrc.name, type: inputs.isoSrc.type, limits: isoLimits};
+        let fullColSrc = {name: inputs.colSrc.name, type: inputs.colSrc.type, limits: colLimits};
+        
+        if (changed.isoSrc) this.#inElems.slider.setLimits(isoLimits);
+        this.#outElems.axes.update(this.camera.viewMat);
 
         const activeValueNames = [];
-        if (isoSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(isoSrc.name);
-        if (colSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(colSrc.name);
+        if (inputs.isoSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(inputs.isoSrc.name);
+        if (inputs.colSrc.type == DataSrcTypes.ARRAY) activeValueNames.push(inputs.colSrc.name);
 
         // calculate the estimated actual focus point every 100ms
         const cam = this.camera;
@@ -168,7 +202,7 @@ class View {
         const cameraChanged = cam.didThisMove("dynamic nodes") || focusMoveDist > 1;
         const camCoords = cam.getEyePos();
 
-        // need to find the camera position in world space
+        // update the dataset if it is dynamic
         if (this.data.resolutionMode != ResolutionModes.FULL && this.updateDynamicTree) {
             this.data.updateDynamicTree(
                 {
@@ -179,9 +213,9 @@ class View {
                     mat: cam.cameraMat
                 },
                 {
-                    changed: this.#elemHandlers.slider.didThresholdChange("dynamic nodes"),
-                    source: isoSrc,
-                    value: this.#elemHandlers.slider.getValue()
+                    changed: changed.threshold,
+                    source: fullIsoSrc,
+                    value: inputs.threshold
                 },
                 activeValueNames
             );
@@ -189,11 +223,11 @@ class View {
 
         // object which holds all the updates for the render engine
         const updates = {
-            threshold: this.#elemHandlers.slider.getValue(),
-            isoSurfaceSrc: isoSrc,
-            surfaceColSrc: colSrc,
-            clippedDataBox: this.#elemHandlers.clip.getClipBox(),
-            volumeTransferFunction: this.#elemHandlers.transferFunction.getTransferFunction(),
+            threshold: inputs.threshold,
+            isoSurfaceSrc: fullIsoSrc,
+            surfaceColSrc: fullColSrc,
+            clippedDataBox: inputs.clippedBox,
+            volumeTransferFunction: inputs.transferFunction,
 
             nodeData: this.data.getNodeBuffer(),
             meshData: this.data.getMesh(),
@@ -202,16 +236,16 @@ class View {
             treeletCellsData: this.data.getTreeCells(),
             blockSizes: this.data.getBufferBlockSizes(),
 
-            enabledGeometry: this.#elemHandlers.enabledGeometry.getEnabledGeometry(),
+            enabledGeometry: inputs.enabledGeometry,
         };
 
-        if (isoSrc.type == DataSrcTypes.ARRAY && (isoChanged || this.data.resolutionMode != ResolutionModes.FULL)) {
-            updates.valuesData[isoSrc.name] = await this.data.getValues(isoSrc.name);
-            updates.cornerValsData[isoSrc.name] = this.data.getCornerValues(isoSrc.name);
+        if (fullIsoSrc.type == DataSrcTypes.ARRAY && (changed.isoSrc || this.data.resolutionMode != ResolutionModes.FULL)) {
+            updates.valuesData[fullIsoSrc.name] = await this.data.getValues(fullIsoSrc.name);
+            updates.cornerValsData[fullIsoSrc.name] = this.data.getCornerValues(fullIsoSrc.name);
         }
-        if (colSrc.type == DataSrcTypes.ARRAY && (colChanged || this.data.resolutionMode != ResolutionModes.FULL)) {
-            updates.valuesData[colSrc.name] = await this.data.getValues(colSrc.name);
-            updates.cornerValsData[colSrc.name] = this.data.getCornerValues(colSrc.name);
+        if (fullColSrc.type == DataSrcTypes.ARRAY && (changed.colSrc || this.data.resolutionMode != ResolutionModes.FULL)) {
+            updates.valuesData[fullColSrc.name] = await this.data.getValues(fullColSrc.name);
+            updates.cornerValsData[fullColSrc.name] = this.data.getCornerValues(fullColSrc.name);
         }
 
         // update the data renderable
@@ -221,23 +255,25 @@ class View {
         }
     };
 
+    // can be used externally to set an input value
+    // useful values are those also supplied by input elements
+    setInput(name, value) {
+        this.#inExternal[name] = value;
+    }
+
     getBox() {
-        return this.#elemHandlers.frame.getBox();
+        return this.#inElems.frame.getBox();
     };
 
     getThreshold() {
-        return this.#elemHandlers.slider.getValue();
-    }
-
-    didThresholdChange(id="Default") {
-        return this.#elemHandlers.slider.didThresholdChange(id);
+        return this.#inElems.slider.getValue();
     }
 
     delete() {
         this.deleted = true;
         // remove all of the event listeners
-        for (let key in this.#elemHandlers) {
-            this.#elemHandlers[key].removeListeners?.();
+        for (let key in this.#inElems) {
+            this.#inElems[key].removeListeners?.();
         }
         // remove dom
         this.container.remove();
