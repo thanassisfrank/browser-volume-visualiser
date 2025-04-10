@@ -43,23 +43,50 @@ const getAsAbsolute = (x, max) => {
 };
 
 
-// object in charge of creating, transforming and deleting data objects
-export const dataManager = {
-    // keep the config set too
-    configSet: {},
+// class in charge of creating, transforming and deleting data objects
+export class DataManager {
+    // the set of configurations, normally from datasets.json
+    #configSet;
 
-    setConfigSet: function(configSet) {
-        this.configSet = configSet;
+    constructor(configSet) {
+        this.#configSet = configSet;
         for (let id in configSet) {
-            this.configSet[id].id = id;
+            this.#configSet[id].id = id;
         }
-    },
+    }
 
-    getDataObj: async function(configId, opts) {
-        return await this.createData(this.configSet[configId], opts);
-    },
+    getConfigs() {
+        return this.#configSet;
+    }
 
-    getDataSource: async function(config, opts) {
+    async createData (configID, opts={}) {
+        const config = this.#configSet[configID];
+        const dataSource = await this.#getDataSource(config, opts);
+
+        const {
+            dynamicNodes = false,
+            dynamicMesh = false,
+            dynamicNodeCount = 0,
+            dynamicMeshBlockCount = 0,
+            nodeHysteresis = true,
+            treeletDepth = 4,
+        } = opts;
+        
+        let resolutionMode = ResolutionModes.FULL;
+        if (dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
+        if (dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+
+        const dataOpts = {
+            dynamicNodeCount: getAsAbsolute(dynamicNodeCount, dataSource.tree?.nodeCount),
+            dynamicMeshCount: getAsAbsolute(dynamicMeshBlockCount, dataSource?.leafCount),
+            nodeHysteresis,
+            treeletDepth,
+        };
+
+        return new Data(dataSource, resolutionMode, dataOpts);
+    }
+
+    async #getDataSource(config, opts) {
         // create the data source object
         let dataSource;
         switch (config.type) {
@@ -118,33 +145,7 @@ export const dataManager = {
 
         await dataSource.init();
         return dataSource;
-    },
-
-    createData: async function(config, opts={}) {
-        const dataSource = await this.getDataSource(config, opts);
-
-        const {
-            dynamicNodes = false,
-            dynamicMesh = false,
-            dynamicNodeCount = 0,
-            dynamicMeshBlockCount = 0,
-            nodeHysteresis = true,
-            treeletDepth = 4,
-        } = opts;
-        
-        let resolutionMode = ResolutionModes.FULL;
-        if (dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-        if (dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
-
-        const dataOpts = {
-            dynamicNodeCount: getAsAbsolute(dynamicNodeCount, dataSource.tree?.nodeCount),
-            dynamicMeshCount: getAsAbsolute(dynamicMeshBlockCount, dataSource?.leafCount),
-            nodeHysteresis,
-            treeletDepth,
-        };
-
-        return new Data(dataSource, resolutionMode, dataOpts);
-    },
+    }    
 }
 
 

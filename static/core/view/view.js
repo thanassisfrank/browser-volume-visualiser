@@ -5,7 +5,7 @@ import { get, show, hide, newId, hexStringToRGBArray, DOMRectEqual } from "../ut
 import { VecMath } from "../VecMath.js";
 
 import { ResolutionModes } from "../data/dataConstants.js";
-import { dataManager, Data } from "../data/data.js";
+import { Data } from "../data/data.js";
 
 import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataInfoWidget, DataSrcSelectElemHandler, EnabledGeometryHandler, FrameElemHandler, ThresholdSliderHandler, TransferFunctionHandler } from "./viewElems.js";
 

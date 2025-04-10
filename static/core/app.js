@@ -3,7 +3,7 @@
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore, newId} from "./utils.js";
 
 import { DataFormats } from "./data/dataConstants.js";
-import { dataManager } from "./data/data.js";
+import { DataManager } from "./data/data.js";
 import { createRenderEngine } from "./renderEngine/renderEngine.js";
 import { createView } from "./view/view.js";
 import { Camera, SceneObjectRenderModes } from "./renderEngine/sceneObjects.js";
@@ -21,6 +21,8 @@ export class App {
     /** @type {View[]} */
     #views = [];
     #renderEngine;
+    /** @type {DataManager} */
+    #dataManager;
     #jobRunner;
 
     #frameTimeGraph;
@@ -32,7 +34,7 @@ export class App {
     #maxViews;
     #verbose;
 
-    constructor(canvas, opts) {
+    constructor(canvas, opts={}) {
         const {maxViews=1, frametimeCanvas=null, verbose=false} = opts;
         this.#canvas = canvas;
         this.#maxViews = maxViews;
@@ -44,28 +46,21 @@ export class App {
     }
 
     async init() {
-        async function setupDataManager() {
-            let datasetsJSON;
-    
+        async function createDataManager() {
             try {
                 const res = await fetch("./data/datasets.json");
-                datasetsJSON = await res.json();
-                dataManager.setConfigSet(datasetsJSON);
+                return new DataManager(await res.json());
             } catch (e) {
                 console.error("Could not get datasets: " + reason);
-                datasetsJSON = null;
             }
-            
-            return datasetsJSON
         }
     
-        let datasets;
-        [this.#renderEngine, datasets] = await Promise.all([
+        [this.#renderEngine, this.#dataManager] = await Promise.all([
             createRenderEngine(this.#canvas, this.#verbose), 
-            setupDataManager()
+            createDataManager()
         ]);
     
-        if (!this.#renderEngine || !datasets) throw Error("Could not initialise program");
+        if (!this.#renderEngine || !this.#dataManager) throw Error("Could not initialise program");
         // created necessary objects
 
         this.#setupRayMarchOpts();
@@ -86,7 +81,7 @@ export class App {
     }
 
     get dataConfigs() {
-        return dataManager.configSet;
+        return this.#dataManager.getConfigs();
     }
 
     get viewCount() {
@@ -146,7 +141,7 @@ export class App {
             id,
             {
                 camera: new Camera(),
-                data: await dataManager.getDataObj(opts.dataID, opts.dataOpts),
+                data: await this.#dataManager.createData(opts.dataID, opts.dataOpts),
                 renderMode: opts.renderMode
             },
             this.#renderEngine
