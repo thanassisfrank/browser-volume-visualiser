@@ -71,7 +71,7 @@ fn sampleDataTexture(x : f32, y : f32, z : f32, dataSrc : u32) -> f32 {
     let yf : f32 = y - floor(y);
     let yc : f32 = ceil(y) - y;
     let zf : f32 = z - floor(z);
-    let zc : f32 = ceil(y) - y;
+    let zc : f32 = ceil(z) - z;
 
     return vals[0] * xc * yc * zc + 
            vals[1] * xf * yc * zc + 

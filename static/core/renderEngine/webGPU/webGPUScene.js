@@ -111,18 +111,13 @@ export class WebGPUScene {
     // updates the internal states of a renderable
     // updates is an object that can hold arbitrary data
     updateRenderable(renderable, updates) {
-        // see what type this renderable is
-        // see what render mode this renderable has
-
-        if (renderable.type & RenderableTypes.MESH) {
-            // turn visibility on/off
-        }
-
-        if (renderable.type & RenderableTypes.UNSTRUCTURED_DATA) {
-            if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
-                // update renderable using the ray marcher
-                this.#rayMarcher.updateUnstructuredDataRenderable(renderable, updates);
-            }
+        // sort into the different modules by its render mode
+        if (
+            renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME || 
+            renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME
+        ) {
+            // update renderable using the ray marcher
+            this.#rayMarcher.updateRenderable(renderable, updates);
         }
     }
 

@@ -83,8 +83,6 @@ export class WebGPURayMarchingEngine {
         colourScale: ColourScales.B_W
     };
 
-    noDataUpdates = false;
-
     // private ==============================
     /** @type {WebGPUBase} */
     #webGPU;
@@ -107,7 +105,7 @@ export class WebGPURayMarchingEngine {
 
     async setupEngine() {
         const t0 = performance.now();
-        
+
         // make bind group layouts
         const unstructRayMarchBindGroupLayouts = [
             this.#webGPU.createBindGroupLayout([
@@ -456,9 +454,6 @@ export class WebGPURayMarchingEngine {
             "data cell offsets"
         );
 
-        buffers.consts = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "face mesh consts");
-        buffers.objectInfo = this.#webGPU.makeBuffer(256, this.#webGPU.bufferUsage.S_CD_CS, "object info buffer s");
-
         buffers.combinedPassInfo = this.#webGPU.makeBuffer(1024, this.#webGPU.bufferUsage.S_CD_CS, "combined ray march pass info");
 
 
@@ -488,11 +483,70 @@ export class WebGPURayMarchingEngine {
         return renderable;
     }
 
+    async #createStructDataRenderable(dataObj) {
+        const renderable = new Renderable(RenderableTypes.DATA, RenderableRenderModes.DATA_RAY_VOLUME);
+        const { passData, renderData } = renderable;
+
+        passData.clippedDataBox = copyBox(dataObj.extentBox);
+
+        passData.volumeTransferFunction = {
+            colour: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            opacity: [0, 0, 0, 0]
+        };
+
+        // information about the data being sent
+        passData.isoSurfaceSrc = { type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE };
+        passData.surfaceColSrc = { type: DataSrcTypes.NONE, name: "", limits: [0, 1], uint: DataSrcUints.NONE };;
+
+        passData.dMatInv = dataObj.getdMatInv();
+        passData.dataTexSize = dataObj.getDataSize();
+
+        // what buffer is in each slot
+        passData.values = [
+            { name: "None", limits: [0, 1] },
+            { name: "None", limits: [0, 1] },
+        ];
+        renderable.serialisedMaterials = this.#webGPU.serialiseMaterial(this.material);
+
+        // buffers and other data 
+        let { buffers, textures } = renderData;
+        textures.placeholder = this.#webGPU.makeTexture({
+            label: "placeholder values",
+                size: {
+                    width: 1,
+                    height: 1,
+                    depthOrArrayLayers: 1
+                },
+                dimension: "3d",
+                format: "r32float",
+                usage: this.#webGPU.textureUsage.TB_CD_CS
+        });
+
+        buffers.combinedPassInfo = this.#webGPU.makeBuffer(1024, this.#webGPU.bufferUsage.S_CD_CS, "combined ray march pass info");
+
+
+        renderData.bindGroups.compute0 = this.#webGPU.generateBG(
+            this.#passes.struct.bindGroupLayouts[0],
+            [buffers.combinedPassInfo],
+            "compute 0"
+        );
+
+        renderData.bindGroups.compute1 = this.#webGPU.generateBG(
+            this.#passes.struct.bindGroupLayouts[1],
+            [textures.placeholder.createView(), textures.placeholder.createView()],
+            "empty compute 1"
+        );
+
+        return renderable;
+    }
+
     // create the data renderable for ray marching
     async createRenderable(dataObj) {
         // create the renderable for the data
         if (dataObj.dataFormat == DataFormats.UNSTRUCTURED || dataObj.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             return await this.#createUnstructuredDataRenderable(dataObj);
+        } else if (dataObj.dataFormat == DataFormats.STRUCTURED) {
+            return await this.#createStructDataRenderable(dataObj);
         } else {
             throw "Unsupported dataset dataFormat '" + dataObj.dataFormat + "'";
         }
@@ -517,7 +571,7 @@ export class WebGPURayMarchingEngine {
         return null;
     }
 
-    async updateUnstructuredDataRenderable(renderable, updates) {
+    #updateUnstructuredDataRenderable(renderable, updates) {
         const { nodeData, valuesData, cornerValsData, meshData, treeletCellsData, blockSizes } = updates;
         const { passData, renderData } = renderable;
         
@@ -576,7 +630,7 @@ export class WebGPURayMarchingEngine {
     
             // update the information about each value buffer
             passData.values[0] = { name: updates.isoSurfaceSrc.name, limits: updates.isoSurfaceSrc.limits };
-            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits }
+            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits };
         }
 
         // write updated mesh data to the GPU
@@ -617,6 +671,64 @@ export class WebGPURayMarchingEngine {
         }
     }
 
+    #updateStructuredDataRenderable(renderable, updates) {
+        const { valuesData } = updates;
+        const { passData, renderData } = renderable;
+        
+        passData.clippedDataBox = copyBox(updates.clippedDataBox);
+        passData.threshold = updates.threshold;
+        passData.volumeTransferFunction = {
+            colour: [...updates.volumeTransferFunction.colour],
+            opacity: [...updates.volumeTransferFunction.opacity]
+        };
+
+        if (valuesData) {
+            for (let name in valuesData) {
+                renderData.textures[name] = this.#webGPU.writeOrCreateNewTexture(
+                    renderData.textures[name],
+                    valuesData[name], 
+                    passData.dataTexSize,
+                    this.#webGPU.textureUsage.TB_CD_CS, 
+                    `values: ${name}`
+                ).texture;
+            }
+        }
+
+        if (updates.isoSurfaceSrc || updates.surfaceColSrc) {
+            // update the iso surface source info
+            passData.isoSurfaceSrcUint = this.#getDataSrcUint(updates.isoSurfaceSrc, 0);
+            passData.surfaceColSrcUint = this.#getDataSrcUint(updates.surfaceColSrc, 1);
+    
+            
+            if (passData.values[0].name !== updates.isoSurfaceSrc.name || passData.values[1].name !== updates.surfaceColSrc.name) {
+                // recreate bindgroup 2 from the compute pass
+                const isoTex = renderData.textures[updates.isoSurfaceSrc.name] ?? renderData.textures.placeholder;
+                
+                const colTex = renderData.textures[updates.surfaceColSrc.name] ?? renderData.textures.placeholder;
+    
+                renderData.bindGroups.compute1 = this.#webGPU.generateBG(
+                    this.#passes.struct.bindGroupLayouts[1],
+                    [isoTex.createView(), colTex.createView()],
+                    "filled compute 1"
+                );
+            }
+    
+            // update the information about each value buffer
+            passData.values[0] = { name: updates.isoSurfaceSrc.name, limits: updates.isoSurfaceSrc.limits };
+            passData.values[1] = { name: updates.surfaceColSrc.name, limits: updates.surfaceColSrc.limits }
+        }
+    }
+
+    updateRenderable(renderable, updates) {
+        if (renderable.type & RenderableTypes.UNSTRUCTURED_DATA) {
+            this.#updateUnstructuredDataRenderable(renderable, updates);
+        } else if (renderable.type & RenderableTypes.DATA) {
+            this.#updateStructuredDataRenderable(renderable, updates);
+        } else {
+            throw Error("Could not update renderable");
+        }
+    }
+
     beginFrame(ctx, resized, cameraMoved, thresholdChanged) {
         if (cameraMoved || thresholdChanged) {
             this.globalPassInfo.framesSinceMove = 0;
@@ -634,7 +746,7 @@ export class WebGPURayMarchingEngine {
                 },
                 dimension: "2d",
                 format: "rg32float",
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
+                usage: this.#webGPU.textureUsage.TB_CD_CS
             });
 
             this.#webGPU.deleteTexture(this.#offsetOptimisationTextureNew);
@@ -648,7 +760,7 @@ export class WebGPURayMarchingEngine {
                 },
                 dimension: "2d",
                 format: "rg32float",
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
+                usage: this.#webGPU.textureUsage.SB_CS
             });
 
             this.#webGPU.deleteTexture(this.#colorCopyDstTexture);
@@ -662,7 +774,7 @@ export class WebGPURayMarchingEngine {
                 },
                 dimension: "2d",
                 format: "bgra8unorm",
-                usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING
+                usage: this.#webGPU.textureUsage.TB_CD_CS
             });
         }
     }
@@ -681,12 +793,75 @@ export class WebGPURayMarchingEngine {
         );
     }
 
+    #createPassInfoDataArrays(camera, renderable, seed) {
+        const { passData } = renderable;
+        return [
+            // global info
+            camera.serialise(),
+            new Uint32Array([
+                seed,
+                0, 0, 0
+            ]),
+
+            // object info
+            new Float32Array(renderable.transform),
+            renderable.serialisedMaterials,
+
+            // pass info
+            new Uint32Array([
+                this.getPassFlagsUint(),
+                this.globalPassInfo.framesSinceMove,
+            ]),
+            new Float32Array([
+                passData.threshold,
+                passData.values[0].limits[0],
+                passData.values[0].limits[1],
+                passData.values[1].limits[0],
+                passData.values[1].limits[1],
+                0,
+                ...passData.clippedDataBox.min, 0,
+                ...passData.clippedDataBox.max, 0,
+                0, 0, 0, 0,
+                this.#calculateStepSize(),
+                this.globalPassInfo.maxRayLength,
+                0, 0,
+                ...passData.dMatInv,
+            ]),
+            new Uint32Array([
+                passData.isoSurfaceSrcUint,
+                passData.surfaceColSrcUint,
+                this.globalPassInfo.colourScale,
+                passData.cornerValType,
+            ]),
+            new Float32Array([
+                ...passData.volumeTransferFunction.colour[0],
+                passData.volumeTransferFunction.opacity[0],
+                ...passData.volumeTransferFunction.colour[1],
+                passData.volumeTransferFunction.opacity[1],
+                ...passData.volumeTransferFunction.colour[2],
+                passData.volumeTransferFunction.opacity[2],
+                ...passData.volumeTransferFunction.colour[3],
+                passData.volumeTransferFunction.opacity[3],
+            ]),
+            new Uint32Array([
+                passData.blockSizes?.positions,
+                passData.blockSizes?.cellOffsets,
+                passData.blockSizes?.cellConnectivity,
+                passData.blockSizes?.valuesA,
+                passData.blockSizes?.valuesB,
+                passData.blockSizes?.treeletCells,
+                0, 0,
+                passData.cellsPtrType,
+            ]),
+        ]
+    }
+
     // this is run for every face of the bounding box
     async marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
         const thisFrameNum = frameInfoStore.getFrameNum();
         const commandEncoder = await this.#webGPU.createCommandEncoder();
 
-        const { renderData, passData } = renderable;
+        const { renderData } = renderable;
 
         // make a copy of the current colour frame buffer
         this.#webGPU.encodeCopyTextureToTexture(commandEncoder, outputColourAttachment.texture, this.#colorCopyDstTexture);
@@ -722,71 +897,65 @@ export class WebGPURayMarchingEngine {
         // global info buffer for compute
         this.#webGPU.writeDataToBuffer(
             renderData.buffers.combinedPassInfo,
-            [
-                // global info
-                camera.serialise(),
-                new Uint32Array([
-                    performance.now(),
-                    0, 0, 0
-                ]),
-
-                // object info
-                new Float32Array(renderable.transform),
-                renderable.serialisedMaterials,
-
-                // pass info
-                new Uint32Array([
-                    this.getPassFlagsUint(),
-                    this.globalPassInfo.framesSinceMove,
-                ]),
-                new Float32Array([
-                    passData.threshold,
-                    passData.values[0].limits[0],
-                    passData.values[0].limits[1],
-                    passData.values[1].limits[0],
-                    passData.values[1].limits[1],
-                    0,
-                    ...passData.clippedDataBox.min, 0,
-                    ...passData.clippedDataBox.max, 0,
-                    0, 0, 0, 0,
-                    this.#calculateStepSize(),
-                    this.globalPassInfo.maxRayLength,
-                    0, 0,
-                    ...passData.dMatInv,
-                ]),
-                new Uint32Array([
-                    passData.isoSurfaceSrcUint,
-                    passData.surfaceColSrcUint,
-                    this.globalPassInfo.colourScale,
-                    passData.cornerValType,
-                ]),
-                new Float32Array([
-                    ...passData.volumeTransferFunction.colour[0],
-                    passData.volumeTransferFunction.opacity[0],
-                    ...passData.volumeTransferFunction.colour[1],
-                    passData.volumeTransferFunction.opacity[1],
-                    ...passData.volumeTransferFunction.colour[2],
-                    passData.volumeTransferFunction.opacity[2],
-                    ...passData.volumeTransferFunction.colour[3],
-                    passData.volumeTransferFunction.opacity[3],
-                ]),
-                new Uint32Array([
-                    passData.blockSizes.positions,
-                    passData.blockSizes.cellOffsets,
-                    passData.blockSizes.cellConnectivity,
-                    passData.blockSizes.valuesA,
-                    passData.blockSizes.valuesB,
-                    passData.blockSizes.treeletCells,
-                    0, 0,
-                    passData.cellsPtrType,
-                ]),
-            ]
+            this.#createPassInfoDataArrays(camera, renderable, performance.now())
         );
 
         this.#webGPU.submitCommandEncoder(commandEncoder);
 
         // map timing information
         const timing = await this.#webGPU.getPassTimingInfo(this.#passes.unstruct);
+        if (timing?.duration !== undefined) {
+            const durMS = timing.duration / 10 ** 6;
+            frameInfoStore.addAt(thisFrameNum, "gpu", durMS);
+        }
+    }
+
+    async marchStructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, ctx) {
+        const thisFrameNum = frameInfoStore.getFrameNum();
+        const commandEncoder = await this.#webGPU.createCommandEncoder();
+
+        const { renderData } = renderable;
+
+        // make a copy of the current colour frame buffer
+        this.#webGPU.encodeCopyTextureToTexture(commandEncoder, outputColourAttachment.texture, this.#colorCopyDstTexture);
+
+        // do a full ray march pass
+        const workGroups = [
+            Math.ceil(ctx.canvas.width / this.#WGSize.x),
+            Math.ceil(ctx.canvas.height / this.#WGSize.y)
+        ];
+
+        const passOptions = {
+            bindGroups: {
+                0: renderData.bindGroups.compute0,
+                1: renderData.bindGroups.compute1,
+                2: this.#webGPU.generateBG(
+                    this.#passes.struct.bindGroupLayouts[2],
+                    [
+                        outputDepthAttachment.view,
+                        this.#offsetOptimisationTextureOld.createView(),
+                        this.#offsetOptimisationTextureNew.createView(),
+                        this.#colorCopyDstTexture.createView(),
+                        outputColourAttachment.view
+                    ]
+                ),
+            },
+            workGroups
+        };
+
+        // encode the render pass
+        this.#webGPU.encodeGPUPass(commandEncoder, this.#passes.struct, passOptions);
+
+        // global info buffer for compute
+        this.#webGPU.writeDataToBuffer(
+            renderData.buffers.combinedPassInfo,
+            this.#createPassInfoDataArrays(camera, renderable, performance.now())
+        );
+
+        this.#webGPU.submitCommandEncoder(commandEncoder);
+
+        // map timing information
+        const timing = await this.#webGPU.getPassTimingInfo(this.#passes.struct);
         if (timing?.duration !== undefined) {
             const durMS = timing.duration / 10 ** 6;
             frameInfoStore.addAt(thisFrameNum, "gpu", durMS);

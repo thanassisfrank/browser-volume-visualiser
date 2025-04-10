@@ -8,6 +8,7 @@ import { WebGPUScene } from "./webGPUScene.js";
 // extension modules for more complex rendering operations
 import { WebGPURayMarchingEngine } from "./rayMarching/webGPURayMarching.js";
 import { WebGPUMeshRenderer } from "./meshRender/webGPUMeshRender.js";
+import { WebGPUBase } from "./webGPUBase.js";
 
 // the main rendering object that handles interacting with the GPU
 // when drawing, takes a scene object (view) as input and draws it
@@ -16,6 +17,7 @@ import { WebGPUMeshRenderer } from "./meshRender/webGPUMeshRender.js";
 // when drawing, takes a scene object (view) as input and draws it
 // inhertis from the empty render engine base class
 export class WebGPURenderEngine {
+    /** @type {WebGPUBase} */
     webGPU;
     rayMarcher;
     meshRenderer;
@@ -75,7 +77,7 @@ export class WebGPURenderEngine {
             },
             dimension: "2d",
             format: "depth32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            usage: this.webGPU.textureUsage.RA_TB
         });
 
         const colorTexture = this.webGPU.makeTexture({
@@ -87,11 +89,7 @@ export class WebGPURenderEngine {
             },
             dimension: "2d",
             format: "bgra8unorm",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT |
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.STORAGE_BINDING |
-                GPUTextureUsage.COPY_SRC |
-                GPUTextureUsage.COPY_DST
+            usage: this.webGPU.textureUsage.RA_TB_SB_CD_CS
         });
 
         return { depth: depthTexture, color: colorTexture };
@@ -190,17 +188,13 @@ export class WebGPURenderEngine {
 
             if (renderable.type == RenderableTypes.MESH) {
                 // we got a mesh, render it
-                if (renderable.renderMode & RenderableRenderModes.DATA_RAY_VOLUME) {
-                    this.rayMarcher.march(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.canvas);
-                } else if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
-                    // nothing here
-                } else {
-                    this.meshRenderer.render(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
-                }
+                this.meshRenderer.render(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
             } else if (renderable.type == RenderableTypes.UNSTRUCTURED_DATA) {
                 if (renderable.renderMode & RenderableRenderModes.UNSTRUCTURED_DATA_RAY_VOLUME) {
                     this.rayMarcher.marchUnstructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
                 }
+            } else if (renderable.type == RenderableTypes.DATA) {
+                this.rayMarcher.marchStructured(renderable, camera, outputColourAttachment, outputDepthAttachment, box, this.ctx);
             }
         }
 
@@ -218,7 +212,7 @@ export class WebGPURenderEngine {
             device: this.webGPU.getDevice(),
             format: "bgra8unorm",
             alphaMode: "opaque",
-            usage: GPUTextureUsage.COPY_DST
+            usage: this.webGPU.textureUsage.CD
         });
 
         this.webGPU.deleteTexture(this.#renderDepthTexture);

@@ -67,6 +67,15 @@ export class WebGPUBase {
         CD_CS: GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     }
 
+    // convenience combined texture usages
+    textureUsage = {
+        RA_TB_SB_CD_CS: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+        TB_CD_CS: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC, 
+        RA_TB: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        SB_CS: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC,
+        CD: GPUTextureUsage.COPY_DST,
+    }
+
     // private ===================
     #adapter;
     #device;
@@ -561,34 +570,42 @@ export class WebGPUBase {
         await this.waitForDone();
     };
 
+    #textureExtentsEqual(tex1, tex2) {
+        if (!tex1 || !tex2) return false;
+        return tex1.width === tex2.width && tex1.height === tex2.height && tex1.depthOrArrayLayers === tex2.depthOrArrayLayers;
+    }
+
+    sizeToTexExtent(size) {
+        return {width: size[0], height: size[1], depthOrArrayLayers: size[2]};
+    }
+
     writeOrCreateNewTexture(texture, data, dimensions, usage, label = "") {
         let created = false;
         let resultTexture = texture;
 
-        const textureSize = {
+        const newSize = {
             width: dimensions[0],
             height: dimensions[1],
             depthOrArrayLayers: dimensions[2]
         };
 
-        if (texture.width != textureSize.width ||
-            texture.height != textureSize.height ||
-            texture.depthOrArrayLayers != textureSize.depthOrArrayLayers) {
+
+        if (!this.#textureExtentsEqual(texture, newSize)) {
             this.deleteTexture(texture);
 
             resultTexture = this.makeTexture({
                 label: label,
-                size: textureSize,
+                size: newSize,
                 dimension: "3d",
                 format: "r32float",
                 usage: usage
             });
             created = true;
         } else {
-            this.log("write" + valuesBufferName);
+            this.log("write " + label);
         }
 
-        this.fillTexture(resultTexture, textureSize, 4, Float32Array.from(data).buffer);
+        this.fillTexture(resultTexture, newSize, 4, Float32Array.from(data).buffer);
         return {
             created: created,
             texture: resultTexture
