@@ -117,8 +117,8 @@ export const dataManager = {
         if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
         const dataOpts = {
-            dynamicNodeCount: getAsAbsolute(opts.dynamicNodeCount, dataSource.tree.nodeCount),
-            dynamicMeshCount: getAsAbsolute(opts.dynamicMeshBlockCount, dataSource.leafCount),
+            dynamicNodeCount: getAsAbsolute(opts.dynamicNodeCount, dataSource.tree?.nodeCount),
+            dynamicMeshCount: getAsAbsolute(opts.dynamicMeshBlockCount, dataSource?.leafCount),
             nodeHysteresis: opts.nodeHysteresis,
             treeletDepth: opts.treeletDepth,
         };
@@ -238,14 +238,14 @@ export class Data {
         }
         
         // full unstructured tree
-        return this.data.treeNodes;
+        return this.dataSource.tree?.nodes;
     }
 
     getTreeCells() {
         if (this.#dynamicMesh) return this.#dynamicMesh.getTreeCells();
 
         // just dynamic nodes or full resolution
-        return this.data.treeCells;
+        return this.dataSource.tree?.cells;
     }
 
     async updateDynamicTree(camInfo, isoInfo, activeValueNames) {
@@ -302,7 +302,7 @@ export class Data {
     async loadDataArray(desc) {
         const { name } = desc;
  
-        const { limits } = this.dataSource.getDataArray(desc);
+        const { limits } = await this.dataSource.getDataArray(desc);
 
         if (!limits) return;
 
@@ -319,6 +319,12 @@ export class Data {
     getLimits(name) {
         return this.dataSource.getDataArray({name}).limits;
     };
+
+    // returns the extent of the values in datapoints
+    // only useful for structured data
+    getDataSize() {
+        return this.dataSource.size;
+    }
 
     getMidPoint() {
         const { min, max } = this.extentBox;
@@ -352,11 +358,11 @@ export class Data {
         return "";
     };
 
-    getValues(name) {
+    async getValues(name) {
         if (ResolutionModes.DYNAMIC_CELLS_BIT & this.resolutionMode) {
             return this.#dynamicMesh.getBuffers()[name];
         } else {
-            this.dataSource.getDataArray({name}).values;
+            return (await this.dataSource.getDataArray({name})).values;
         }
     };
 

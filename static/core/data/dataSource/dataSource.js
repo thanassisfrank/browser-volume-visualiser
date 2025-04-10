@@ -82,6 +82,9 @@ export class FunctionDataSource extends EmptyDataSource {
 
 export class RawDataSource extends EmptyDataSource {
     format = DataFormats.STRUCTURED;
+
+    #valuesCache = {};
+
     constructor(name, path, dataType, limits, size, cellSize) {
         super();
         this.name = name;
@@ -104,15 +107,19 @@ export class RawDataSource extends EmptyDataSource {
     }
 
     async getDataArray(desc) {
+        if (this.#valuesCache[desc.name]) return this.#valuesCache[desc.name];
+
         if (desc.name != DEFAULT_ARRAY_NAME) return;
         const responseBuffer = await fetch(this.path).then(resp => resp.arrayBuffer());
 
-        // load data
-        return {
+        const result = {
             name: DEFAULT_ARRAY_NAME,
-            data: new DATA_TYPES[this.dataType](responseBuffer),
+            values: new DATA_TYPES[this.dataType](responseBuffer),
             limits: this.limits,
         };
+
+        this.#valuesCache[desc.name] = result;
+        return result;
     }
 }
 
@@ -562,7 +569,7 @@ export class DownsampleStructDataSource extends EmptyTransformDataSource {
 
         return {
             name: fullData.name,
-            data: downSampData,
+            values: downSampData,
             limits: fullData.limits,
         };
     }

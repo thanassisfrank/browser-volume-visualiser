@@ -129,7 +129,10 @@ class View {
         let colSrc = this.#elemHandlers.surfaceColSrc.getSrc();
         colSrc.limits = await this.getSrcLimits(colSrc);
 
-        if (this.#elemHandlers.isoSurfaceSrc.getChanged()) {
+        const isoChanged = this.#elemHandlers.isoSurfaceSrc.getChanged();
+        const colChanged = this.#elemHandlers.surfaceColSrc.getChanged();
+
+        if (isoChanged) {
             this.#elemHandlers.slider.setLimits(isoSrc.limits);
             if (isoSrc.name == "Pressure") {
                 this.#elemHandlers.slider.setValue(101353.322975);
@@ -200,18 +203,17 @@ class View {
             enabledGeometry: this.#elemHandlers.enabledGeometry.getEnabledGeometry(),
         };
 
-        
-        if (isoSrc.type == DataSrcTypes.ARRAY) {
-            updates.valuesData[isoSrc.name] = this.data.getValues(isoSrc.name);
+        if (isoSrc.type == DataSrcTypes.ARRAY && (isoChanged || this.data.resolutionMode != ResolutionModes.FULL)) {
+            updates.valuesData[isoSrc.name] = await this.data.getValues(isoSrc.name);
             updates.cornerValsData[isoSrc.name] = this.data.getCornerValues(isoSrc.name);
         }
-        if (colSrc.type == DataSrcTypes.ARRAY) {
-            updates.valuesData[colSrc.name] = this.data.getValues(colSrc.name);
+        if (colSrc.type == DataSrcTypes.ARRAY && (colChanged || this.data.resolutionMode != ResolutionModes.FULL)) {
+            updates.valuesData[colSrc.name] = await this.data.getValues(colSrc.name);
             updates.cornerValsData[colSrc.name] = this.data.getCornerValues(colSrc.name);
         }
 
         // update the data renderable
-        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA);
+        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA | RenderableTypes.DATA);
         if (dataRenderables.length > 0) {
             this.scene.updateRenderable(dataRenderables[0], updates);
         }
