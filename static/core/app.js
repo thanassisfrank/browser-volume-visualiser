@@ -31,10 +31,13 @@ export class App {
     // options
     #maxViews;
 
-    constructor(canvas, maxViews) {
+    constructor(canvas, maxViews, frametimeCanvas=null) {
         this.#canvas = canvas;
         this.#maxViews = maxViews;
-        this.#frameTimeGraph = new FrameTimeGraph(get("frame-time-graph"), 100);
+
+        if (frametimeCanvas) {
+            this.#frameTimeGraph = new FrameTimeGraph(frametimeCanvas, 100);
+        }
     }
 
     async init() {

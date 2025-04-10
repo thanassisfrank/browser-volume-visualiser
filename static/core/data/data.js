@@ -22,6 +22,8 @@ import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { NodeScorer } from "./dynamic/nodeScorer.js";
 import { DynamicMesh } from "./dynamic/dynamicMesh.js";
 import { boxSize } from "../boxUtils.js";
+import { KDTreeSplitTypes } from "./cellTree.js";
+import { CornerValTypes } from "./treeNodeValues.js";
 
 
 const getAsAbsolute = (x, max) => {
@@ -74,13 +76,23 @@ export const dataManager = {
                 dataSource = new PartialCGNSDataSource(config.name, config.path, config.meshPath)
         }
 
+        const {
+            downSample = 1,
+            forceUnstruct = false,
+            kdTreeType = KDTreeSplitTypes.NODE_MEDIAN,
+            maxTreeDepth = 40,
+            leafCells = 1024,
+            cornerValType = CornerValTypes.SAMPLE,
+            dynamicMesh = false
+        } = opts;
+
         // add downsampling transform if required
-        if (opts.downSample > 1 && dataSource.format == DataFormats.STRUCTURED) {
-            dataSource = new DownsampleStructDataSource(dataSource, opts.downSample);
+        if (downSample > 1 && dataSource.format == DataFormats.STRUCTURED) {
+            dataSource = new DownsampleStructDataSource(dataSource, downSample);
         }
 
         // convert struct -> unstruct if needed
-        if (opts.forceUnstruct) {
+        if (forceUnstruct) {
             if (dataSource.format == DataFormats.STRUCTURED) {
                 dataSource = new UnstructFromStructDataSource(dataSource);
             } else {
@@ -93,14 +105,14 @@ export const dataManager = {
             dataSource = new TreeUnstructDataSource(
                 dataSource, 
                 config.availableUnstructuredTrees,
-                opts.kdTreeType, 
-                opts.maxTreeDepth, 
-                opts.leafCells,
-                opts.cornerValType
+                kdTreeType, 
+                maxTreeDepth, 
+                leafCells,
+                cornerValType
             );
         }
 
-        if (opts.dynamicMesh && dataSource.format == DataFormats.UNSTRUCTURED) {
+        if (dynamicMesh && dataSource.format == DataFormats.UNSTRUCTURED) {
             dataSource = new BlockFromUnstructDataSource(dataSource);
         }
 
@@ -109,18 +121,27 @@ export const dataManager = {
         return dataSource;
     },
 
-    createData: async function(config, opts) {
+    createData: async function(config, opts={}) {
         const dataSource = await this.getDataSource(config, opts);
+
+        const {
+            dynamicNodes = false,
+            dynamicMesh = false,
+            dynamicNodeCount = 0,
+            dynamicMeshBlockCount = 0,
+            nodeHysteresis = true,
+            treeletDepth = 4,
+        } = opts;
         
         let resolutionMode = ResolutionModes.FULL;
-        if (opts.dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
-        if (opts.dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
+        if (dynamicNodes) resolutionMode |= ResolutionModes.DYNAMIC_NODES_BIT;
+        if (dynamicMesh) resolutionMode |= ResolutionModes.DYNAMIC_CELLS_BIT;
 
         const dataOpts = {
-            dynamicNodeCount: getAsAbsolute(opts.dynamicNodeCount, dataSource.tree?.nodeCount),
-            dynamicMeshCount: getAsAbsolute(opts.dynamicMeshBlockCount, dataSource?.leafCount),
-            nodeHysteresis: opts.nodeHysteresis,
-            treeletDepth: opts.treeletDepth,
+            dynamicNodeCount: getAsAbsolute(dynamicNodeCount, dataSource.tree?.nodeCount),
+            dynamicMeshCount: getAsAbsolute(dynamicMeshBlockCount, dataSource?.leafCount),
+            nodeHysteresis,
+            treeletDepth,
         };
 
         return new Data(dataSource, resolutionMode, dataOpts);
