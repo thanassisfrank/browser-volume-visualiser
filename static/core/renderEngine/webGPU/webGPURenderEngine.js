@@ -101,8 +101,8 @@ export class WebGPURenderEngine {
         return { depth: depthTexture, color: colorTexture };
     }
 
-    #beginFrame(cameraMoved, thresholdChanged) {
-        this.rayMarcher.beginFrame(this.ctx, this.canvas, cameraMoved, thresholdChanged);
+    #beginFrame(cameraMoved) {
+        this.rayMarcher.beginFrame(this.ctx, this.canvas, cameraMoved);
     }
 
     #endFrame() {
@@ -169,7 +169,7 @@ export class WebGPURenderEngine {
             console.warn("no camera in scene");
             return;
         }
-        this.#beginFrame(camera.didThisMove(), view.didThresholdChange());
+        this.#beginFrame(camera.didThisMove());
 
         // get the renderables from the scene
         const renderables = scene.getRenderables();

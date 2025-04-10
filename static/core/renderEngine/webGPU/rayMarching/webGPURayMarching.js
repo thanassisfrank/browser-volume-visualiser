@@ -576,6 +576,7 @@ export class WebGPURayMarchingEngine {
         const { passData, renderData } = renderable;
         
         passData.clippedDataBox = copyBox(updates.clippedDataBox);
+        if (passData.threshold != updates.threshold) this.globalPassInfo.framesSinceMove = 0;
         passData.threshold = updates.threshold;
         passData.volumeTransferFunction = {
             colour: [...updates.volumeTransferFunction.colour],
@@ -676,6 +677,7 @@ export class WebGPURayMarchingEngine {
         const { passData, renderData } = renderable;
         
         passData.clippedDataBox = copyBox(updates.clippedDataBox);
+        if (passData.threshold != updates.threshold) this.globalPassInfo.framesSinceMove = 0;
         passData.threshold = updates.threshold;
         passData.volumeTransferFunction = {
             colour: [...updates.volumeTransferFunction.colour],
@@ -729,8 +731,8 @@ export class WebGPURayMarchingEngine {
         }
     }
 
-    beginFrame(ctx, canvas, cameraMoved, thresholdChanged) {
-        if (cameraMoved || thresholdChanged) {
+    beginFrame(ctx, canvas, cameraMoved) {
+        if (cameraMoved) {
             this.globalPassInfo.framesSinceMove = 0;
         }
         // check if the size of the canvas is the same as what is was previously
