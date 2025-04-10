@@ -181,13 +181,18 @@ export class App {
         this.#removeDeletedViews();
         
         // update views
-        this.#views.forEach(view => view.update(dt, this.#renderEngine));
+        for (let view of this.#views) {
+            await view.update(dt, this.#renderEngine);
+        }
         
         // render views
         if (this.#views.length == 0) {
            this.#renderEngine.clearScreen();
         }
-        this.#views.forEach(view => this.#renderEngine.renderView(view));
+
+        for (let view of this.#views) {
+            await this.#renderEngine.renderView(view)
+        }
         
         frameInfoStore.nextFrame();
     }
