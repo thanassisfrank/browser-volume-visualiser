@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple vol vis</title>
+        <link rel="icon" type="image/png" href="icon.png">
+        <style>
+            * {
+                font-family:monospace;
+            }
+            body {
+                padding: 0px;
+                margin: 0px;
+            }
+            #c{
+                position: absolute;
+                margin: 0px;
+                width: 100%;
+                height: 100%;
+                z-index: -1;
+            }
+            .view-container {
+                margin: 0px;
+                position: absolute;
+                width: 100%;
+                height: 100%;
+            }
+            .view-frame {
+                position: absolute;
+                width: calc(100%);
+                height: calc(100%);
+            }
+        </style>
+    </head>
+    <body>
+        <!-- The main canvas onto which all views are drawn -->
+        <canvas id="c"></canvas>
+
+        <!-- 
+        The container into which views will be pushed
+        In this page, this covers the screen 
+        -->
+        <div id="view-container-container"></div>
+
+        <!-- The view-container template that will be cloned for each view-->
+        <template id="view-container-template">
+            <div class="view-container">
+                <!-- The threshold slider, automatically managed by the view -->
+                <input type="range" class="view-threshold" style="width: 30%">
+                <!-- 
+                The frame into which this view will be rendered 
+                Is also where the user interacts with the camera
+                -->
+                <div class="view-frame"></div>
+            </div>
+        </template>
+
+        <script type="module">
+            import { App } from "./core/app.js";
+            import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
+            import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
+
+            // Create the app and initialise
+            // Pass in the canvas element onto which to draw views
+            const app = new App(document.querySelector("#c"));
+            await app.init();
+
+            // Create a view within the app
+            const view = await app.createView({
+                // The id of the dataset to use, matches the keys in datasets.json
+                dataID: "engine", 
+                // How to render the scene
+                renderMode: SceneObjectRenderModes.BOUNDING_WIREFRAME | SceneObjectRenderModes.DATA_RAY_VOLUME
+            });
+
+            // Inputs to each view can be changed via linked UI elements or like below
+            // This can be called at any time and will take effect at next app update
+            view.setInput(
+                // This is the input name to set
+                "isoSrc", 
+                // This is the value to set, data sources take a name and type
+                {
+                    // The data source name, structured datasets have one set of values called "Default"
+                    name: "Default",
+                    // The type of data source, can also be an axis for cut plane rendering
+                    type: DataSrcTypes.ARRAY
+                }
+            );
+
+
+            const loop = async () => {
+                // Update the app, updates internal state and renders the views
+                await app.update();
+                requestAnimationFrame(loop);
+            };
+            
+            loop();
+        </script>
+    </body>
+</html>

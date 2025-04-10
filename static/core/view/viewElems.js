@@ -239,16 +239,15 @@ export class ThresholdSliderHandler {
         }
     }
 
-    constructor(container, width="210px") {
+    constructor(container) {
         this.#elem = container.querySelector(".view-threshold");
         this.#readoutElem = container.querySelector(".view-threshold-value");
 
-        this.#setupElem(width);
+        this.#setupElem();
     }
 
     #setupElem(width) {
         if (!this.#elem) return;
-        this.#elem.style.width = width;
 
         for (let type in this.#listeners) {
             this.#elem.addEventListener(type, this.#listeners[type]);

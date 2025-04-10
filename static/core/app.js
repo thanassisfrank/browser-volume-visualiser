@@ -31,7 +31,7 @@ export class App {
     // options
     #maxViews;
 
-    constructor(canvas, maxViews, frametimeCanvas=null) {
+    constructor(canvas, maxViews=1, frametimeCanvas=null) {
         this.#canvas = canvas;
         this.#maxViews = maxViews;
 
