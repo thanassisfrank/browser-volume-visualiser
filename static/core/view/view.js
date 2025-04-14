@@ -170,7 +170,7 @@ class View {
 
         
         const isoLimits = await this.getSrcLimits(inputs.isoSrc);
-        const colLimits = await this.getSrcLimits(inputs.isoSrc);
+        const colLimits = await this.getSrcLimits(inputs.colSrc);
         let fullIsoSrc = {name: inputs.isoSrc.name, type: inputs.isoSrc.type, limits: isoLimits};
         let fullColSrc = {name: inputs.colSrc.name, type: inputs.colSrc.type, limits: colLimits};
         
@@ -250,7 +250,7 @@ class View {
 
         // update the data renderable
         const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA | RenderableTypes.DATA);
-        if (dataRenderables.length > 0) {
+        if (dataRenderables.length > 0 && this.updateDynamicTree) {
             this.scene.updateRenderable(dataRenderables[0], updates);
         }
     };
