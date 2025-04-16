@@ -1,21 +1,17 @@
 // app.js
 // provides a single, unified class to handle the program
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, setupCanvasDims, downloadObject, downloadCanvas, frameInfoStore, newId} from "./utils.js";
+import {getClass, frameInfoStore} from "./utils.js";
 
-import { DataFormats } from "./data/dataConstants.js";
 import { DataManager } from "./data/data.js";
 import { createRenderEngine } from "./renderEngine/renderEngine.js";
-import { createView } from "./view/view.js";
-import { Camera, SceneObjectRenderModes } from "./renderEngine/sceneObjects.js";
+import { createView, View } from "./view/view.js";
+import { Camera } from "./renderEngine/sceneObjects.js";
 import { FrameTimeGraph } from "./widgets.js";
-import { KDTreeSplitTypes } from "./data/cellTree.js";
-import { CornerValTypes } from "./data/treeNodeValues.js";
-
-import { VecMath } from "./VecMath.js"
-import { JobRunner } from "./benchmark.js";
 
 
+/** Class representing the application */
 export class App {
+    /** @type {HTMLCanvasElement} */
     #canvas;
 
     /** @type {View[]} */
@@ -23,17 +19,23 @@ export class App {
     #renderEngine;
     /** @type {DataManager} */
     #dataManager;
-    #jobRunner;
-
+    /** @type {FrameTimeGraph} */
     #frameTimeGraph;
-
+    /** @type {Number} */
     #lastFrameStart = 0;
 
 
-    // options
+    // Options
+    /** @type {Number} */
     #maxViews;
+    /** @type {Boolean} */
     #verbose;
 
+    /**
+     * Creates an App
+     * @param {HTMLCanvasElement} canvas The canvas used for drawing
+     * @param {*} opts Options object for setting other features
+     */
     constructor(canvas, opts={}) {
         const {maxViews=1, frametimeCanvas=null, verbose=false} = opts;
         this.#canvas = canvas;
@@ -45,6 +47,10 @@ export class App {
         }
     }
 
+    /**
+     * Initialises the app including creating necessary objects. 
+     * @throws Will throw if initialisation could not be completed
+     */
     async init() {
         async function createDataManager() {
             try {
@@ -66,7 +72,9 @@ export class App {
         this.#setupRayMarchOpts();
     }
 
-    
+    /**
+     * Sets up any checkboxes on the page with class `ray-march-opt` to affect ray marcher 
+     */
     #setupRayMarchOpts() {
         for (let elem of getClass("ray-march-opt")) {
             elem.checked = this.#renderEngine.rayMarcher.getPassFlag(elem.name);
@@ -79,39 +87,63 @@ export class App {
             });
         }
     }
-
+    
+    /**
+     * Retrieves the datasets currently available to load
+     */
     get dataConfigs() {
         return this.#dataManager.getConfigs();
     }
 
+    /**
+     * Retrieves the current number of views
+     */
     get viewCount() {
         return this.#views.length;
     }
 
+    /**
+     * Gets the camera and threshold states of all views
+     * @returns The current camera position and threshold value for all views
+     */
     getViewStates() {
         let states = [];
         for (let view of this.#views) {
             states.push({
                 camera: view.camera.getVals(),
-                threshold: view.getThreshold()
+                threshold: view.getInput("threshold")
             });
         }
 
         return states;
     }
 
+    /**
+     * Gets a representation of the resource use on the GPU as a printable string
+     * @returns {String} Resource info string pretty-formatted
+     */
     getGPUResourcesString() {
         return this.#renderEngine.getWebGPU().getResourcesString();
     }
 
+    /**
+     * Moves the camera for each view back to its starting point
+     */
     resetCameras() {
         this.#views.forEach(view => view.camera.moveToStart());
     }
 
+    /**
+     * Toggles the updating of dynamic datasets for all views
+     */
     toggleDynamicDatasetUpdates() {
         this.#views.forEach(view => view.updateDynamicTree = !view.updateDynamicTree);
     }
 
+    /**
+     * Moves the camera target of the currently focussed view to the mouse position
+     * @todo Implement functionality
+     */
     viewFocusToMouse() {
         for (let view of this.#views) {
             if (!view.focussed) return;
@@ -129,10 +161,14 @@ export class App {
         }
     }
 
-
+    /**
+     * Creates and returns a new view object, tracking it internally
+     * @param {*} opts Options for the new view object
+     * @returns {View} The new view object
+     */
     async createView(opts) {
         if (this.#views.length >= this.#maxViews) {
-            throw Error("Unable to create view, max vount reached");
+            throw Error("Unable to create view, max view count reached");
         }
 
         const id = Math.round(Math.random()*1024);
@@ -152,10 +188,13 @@ export class App {
         return view;
     }
 
+    /**
+     * Removes the views marked internally as deleted from the record
+     */
     #removeDeletedViews() {
         const aliveViews = [];
         for (let view of this.#views) {
-            if (true === view.deleted) continue;
+            if (view.deleted) continue;
 
             aliveViews.push(view);
         }
@@ -163,10 +202,9 @@ export class App {
         this.#views = aliveViews;
     }
 
-    startJobs() {
-        this.#jobRunner.start(performance.now())
-    }
-
+    /**
+     * Updates and renders all of the current views
+     */
     async update() {
         const thisFrameStart = performance.now();
         const dt = thisFrameStart - this.#lastFrameStart;

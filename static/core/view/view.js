@@ -14,7 +14,13 @@ import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/we
 import { Camera } from "../renderEngine/sceneObjects.js";
 
 
-
+/**
+ * Creates and returns a new view object, attaching its container element to the DOM
+ * @param {Number} id 
+ * @param {*} config 
+ * @param {*} renderEngine 
+ * @returns {View} The newly created view object
+ */
 export function createView(id, config, renderEngine) {    
     const container = get("view-container-template").content.cloneNode(true).children[0];
     container.id = id;
@@ -26,8 +32,10 @@ export function createView(id, config, renderEngine) {
 }
 
 
-class View {
+export class View {
+    /** @type {Number} */
     id;
+    /** @type {HTMLElement} */
     container;
     scene;
     /** @type {Camera} */
@@ -35,18 +43,23 @@ class View {
     /** @type {Data} */
     data;
 
-    // an estimate of where the viewer is actually focusing
+    /**  @type {Number[]} An estimate of where the viewer is focussing */
     adjustedFocusPoint;
+    /** @type {Number} */
     timeSinceFocusAdjusted = 0;
 
+    /** @type {Number} */
     renderMode;
 
+    /** @type {Boolean} */
     updateDynamicTree = true;
 
     // indicates if the mouse is over this view
     // extracted from the frame element
+    /** @type {Boolean} */
     focussed = false;
 
+    /** @type {Boolean} */
     deleted = false;
 
     // handlers for output DOM elements (widgets)
@@ -60,7 +73,15 @@ class View {
     #inElems = {};
     
 
-
+    /**
+     * Create a View
+     * @param {Number} id The unique ID of this view
+     * @param {HTMLElement} containerElem The HTML element for this view
+     * @param {Camera} camera The camera object
+     * @param {Data} data The object handling access to the dataset
+     * @param {Number} renderMode How the data object should be rendered
+     * @param {*} renderEngine The render engine for creating the internal scene
+     */
     constructor(id, containerElem, camera, data, renderMode, renderEngine) {
         this.id = id;
         this.container = containerElem;
@@ -79,6 +100,10 @@ class View {
         this.scene.addData(this.data, this.renderMode);
     }
 
+    /**
+     * Creates the input and output handlers which hook into elements that are part of the view container element.
+     * @param {HTMLElement} container 
+     */
     #createDOM(container) {
         // create the input handlers
         const dataArrays = this.data.getAvailableDataArrays();
@@ -115,7 +140,10 @@ class View {
         }
     }
 
-    // queries all of the input element handlers for current state
+    /**
+     * Queries all of the input element handlers for current state
+     * @returns The current state of the input elements
+     */
     #getElementInputs() {
         return {
             closed: this.#inElems.close.pressed,
@@ -131,7 +159,10 @@ class View {
         }
     }
 
-    // returns the current input state as well as what has changed
+    /**
+     * Finds the current input from input elements and programmatic inputs
+     * @returns The current input state and what has changed since last update
+     */
     #getInputs() {
         const elemIn = this.#getElementInputs();
 
@@ -151,6 +182,12 @@ class View {
         return {inputs, changed};
     }
 
+    /**
+     * Updates internal state given inputs, updates dynamic data objects and updates renderable state.
+     * @param {Number} dt The number of ms since this was last called
+     * @param {*} renderEngine The render engine for updating the renderables in the scene
+     * @returns 
+     */
     async update(dt, renderEngine) {
         // get the inputs from the input elements
         const { inputs, changed } = this.#getInputs();
@@ -255,20 +292,34 @@ class View {
         }
     };
 
-    // can be used externally to set an input value
-    // useful values are those also supplied by input elements
+    /**
+     * Can be used to set an input value programmatically
+     * @param {String} name 
+     * @param {*} value 
+     */
     setInput(name, value) {
         this.#inExternal[name] = value;
     }
 
+    /**
+     * Retrieves the box of this view's frame element
+     * @returns {DOMRect} The box of the frame element to draw into
+     */
     getBox() {
         return this.#inElems.frame.getBox();
     };
 
-    getThreshold() {
-        return this.#inElems.slider.getValue();
+    /**
+     * Gets the current value of the specified input
+     * @returns The input value
+     */
+    getInput(name) {
+        return this.#currInputs[name];
     }
 
+    /**
+     * Cleans up this view's owned objects ready for deletion
+     */
     delete() {
         this.deleted = true;
         // remove all of the event listeners
