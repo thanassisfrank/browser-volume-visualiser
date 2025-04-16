@@ -107,7 +107,7 @@ const renderModeFromOpts = (opts) => {
 
 // define the main function
 async function main() {
-    const app = new App(get("c"), 1, get("frame-time-graph"));
+    const app = new App(get("c"), {frametimeCanvas: get("frame-time-graph")});
     await app.init();
 
     // setup the options elements
