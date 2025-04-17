@@ -81,7 +81,7 @@
 
 
     {
-	    "ignore": true,
+	    "ignore": false,
 	    "desc": "cache sizes test yf17",
         "data": "yf17_1024", 
         "nodes": ["10%", "30%", "50%", "70%", "90%"], 

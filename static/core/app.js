@@ -1,6 +1,6 @@
 // app.js
 // provides a single, unified class to handle the program
-import {getClass, frameInfoStore} from "./utils.js";
+import {getClass, frameInfoStore, downloadCanvas} from "./utils.js";
 
 import { DataManager } from "./data/data.js";
 import { createRenderEngine } from "./renderEngine/renderEngine.js";
@@ -83,7 +83,7 @@ export class App {
                 return false;
             });
             elem.addEventListener("click", (e) => {
-                this.#renderEngine.rayMarcher.setPassFlag(elem.name, elem.checked);
+                this.setRenderFlag(elem.name, elem.checked);
             });
         }
     }
@@ -119,11 +119,32 @@ export class App {
     }
 
     /**
+     * Sets the value of a flag within the render engine
+     * @param {String} name The flag identifier
+     * @param {Boolean} val The flag value
+     */
+    setRenderFlag(name, val) {
+        this.#renderEngine.rayMarcher.setPassFlag(name, val);
+    }
+
+    /**
      * Gets a representation of the resource use on the GPU as a printable string
      * @returns {String} Resource info string pretty-formatted
      */
     getGPUResourcesString() {
         return this.#renderEngine.getWebGPU().getResourcesString();
+    }
+
+    /**
+     * Download the canvas as a PNG
+     * @param {String} filename Filename for saved image
+     */
+    saveCanvasImagePNG(filename) {
+        let fullFilename = filename;
+        if (!fullFilename.endsWith(".png")) {
+            fullFilename += ".png";
+        }
+        downloadCanvas(this.#canvas, fullFilename, "image/png")
     }
 
     /**
@@ -163,6 +184,7 @@ export class App {
 
     /**
      * Creates and returns a new view object, tracking it internally
+     * @async
      * @param {*} opts Options for the new view object
      * @returns {View} The new view object
      */

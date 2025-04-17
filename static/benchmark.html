@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Benchmarker</title>
+        <link rel="icon" type="image/png" href="icon.png">
+        <style>
+            * {
+                font-family:monospace;
+            }
+            body {
+                padding: 0px;
+                margin: 0px;
+            }
+            #c{
+                position: absolute;
+                margin: 0px;
+                width: 100%;
+                height: 100%;
+                z-index: -1;
+            }
+            .view-container {
+                margin: 0px;
+                position: absolute;
+                width: 100%;
+                height: 100%;
+            }
+            .view-frame {
+                position: absolute;
+                width: calc(100%);
+                height: calc(100%);
+            }
+        </style>
+    </head>
+    <body>
+        <!-- The main canvas onto which all views are drawn -->
+        <canvas id="c"></canvas>
+
+        <!-- 
+        The container into which views will be pushed
+        In this page, this covers the screen 
+        -->
+        <div id="view-container-container"></div>
+
+        <!-- The view-container template that will be cloned for each view-->
+        <template id="view-container-template">
+            <div class="view-container">
+                <!-- 
+                The frame into which this view will be rendered 
+                Is also where the user interacts with the camera
+                -->
+                <div class="view-frame"></div>
+            </div>
+        </template>
+
+        <script type="module">
+            import { App } from "./core/app.js";
+            import { JobRunner } from "./core/benchmark.js";
+
+            // Create the app and initialise
+            // Pass in the canvas element onto which to draw views
+            const app = new App(document.querySelector("#c"));
+            await app.init();
+
+            // Fetch the json declaring the tests to run
+            const jobResp = await fetch("clientJobs.json");
+            const jobs = await jobResp.json();
+
+            // Create the object that handles running client tests
+            const jobRunner = new JobRunner(jobs, app);
+
+            // Begin the tests
+            jobRunner.start(performance.now());
+
+            // Create a keyboard shortcut for view monitoring
+            document.body.addEventListener("keydown", (e) => {
+                if (" " !== e.key) return;
+                console.log(app.getViewStates());
+            });
+
+            const loop = async () => {
+                // Update the job runner
+                await jobRunner.update(performance.now());
+                // Update the app and render views
+                await app.update();
+                requestAnimationFrame(loop);
+            };
+            
+            loop();
+        </script>
+    </body>
+</html>

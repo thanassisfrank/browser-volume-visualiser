@@ -1,10 +1,11 @@
 // benchmark.js
 import { downloadCanvas, frameInfoStore, pause } from "./utils.js";
+import { App } from "./app.js";
 import { CornerValTypes } from "./data/treeNodeValues.js";
 import { VecMath } from "./VecMath.js";
+import { View } from "./view/view.js";
+import { SceneObjectRenderModes } from "./renderEngine/sceneObjects.js";
 
-
-let globalRender;
 
 
 const BENCHMARKS = {};
@@ -17,12 +18,13 @@ BENCHMARKS["test"] = {
             100, 
             100
         ];
+        
         view.camera.setEyePos(cameraPos);
     }
 };
 
 BENCHMARKS["points"] = {
-    duration: 10000, // benchmark suration in ms
+    duration: 10000, // benchmark duration in ms
     screenshots: [ // timestamps to take screenshots in ms since start
         1000,
         4500
@@ -100,7 +102,7 @@ BENCHMARKS["pointsMag"] = {
 }
 
 BENCHMARKS["pointsMagSlow"] = {
-    duration: 40000, // benchmark suration in ms
+    duration: 40000, // benchmark duration in ms
     screenshots: [ // timestamps to take screenshots in ms since start
         1000,
         4500
@@ -123,23 +125,15 @@ BENCHMARKS["pointsMagSlow"] = {
 BENCHMARKS["magPicTeaser"] = {
     duration: 125_000,
     screenshots: [118_000, 119_000, 123_000],
-    setState: (t, view) => {
+    setState: (t, view, app) => {
         if (t < 1000) {
-            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", false);
+            app.setRenderFlag("showSurfNodeDepth", false);
             view.camera.setEyePos([270, -35, 327]);
             view.camera.setTarget([236, 42, 273]);
         }
 
-
-        if (t < 116_000) {
-            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
-        }
-
         if (t > 118_500) {
-            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
-            globalRender.rayMarcher.noDataUpdates = true
-        } else {
-            globalRender.rayMarcher.noDataUpdates = false
+            app.setRenderFlag("showSurfNodeDepth", true);
         }
 
         // move to far
@@ -153,14 +147,13 @@ BENCHMARKS["magPicTeaser"] = {
 BENCHMARKS["yf17Pic"] = {
     duration: 10_000,
     screenshots: [9_000],
-    setState: (t, view) => {
+    setState: (t, view, app) => {
         // move to the screenshot place
-        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
+        app.setRenderFlag("showSurfNodeDepth", true);
         if (t < 1_000) {
             view.camera.setEyePos([-77, 113, 81]);
             view.camera.setTarget([-13, 38, 15]);
         } else if (t < 5_000) {
-            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
         }
     }
 }
@@ -168,14 +161,13 @@ BENCHMARKS["yf17Pic"] = {
 BENCHMARKS["turbPic"] = {
     duration: 20_000,
     screenshots: [19_000],
-    setState: (t, view) => {
+    setState: (t, view, app) => {
         // move to the screenshot place
-        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
+        app.setRenderFlag("showSurfNodeDepth", true);
         if (t < 1_000) {
             view.camera.setEyePos([174, 249, 168]);
             view.camera.setTarget([118, 190, 123]);
         } else if (t < 15_000) {
-            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
         }
     }
 }
@@ -183,20 +175,18 @@ BENCHMARKS["turbPic"] = {
 BENCHMARKS["magPic"] = {
     duration: 103_000,
     screenshots: [98_000, 101_000],
-    setState: (t, view) => {
+    setState: (t, view, app) => {
         // move to the screenshot place
-        globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", false);
+        app.setRenderFlag("showSurfNodeDepth", false);
         if (t < 1_000) {
             // view.camera.setEyePos([320, 194, 313]);
             // view.camera.setTarget([297, 197, 289]);
             view.camera.setEyePos([336, 206, 420]);
             view.camera.setTarget([247, 208, 233]);
-        } else if (t < 95_000) {
-            globalRender.rayMarcher.globalPassInfo.framesSinceMove = 0;
-        } 
+        }
 
         if (t > 98_500) {
-            globalRender.rayMarcher.setPassFlag("showSurfNodeDepth", true);
+            app.setRenderFlag("showSurfNodeDepth", true);
         }
 
     }
@@ -206,8 +196,10 @@ BENCHMARKS["magPic"] = {
 // When started, takes control of the view, setting its state
 export class Benchmarker {
     #frametimeStore;
+    /** @type {App} */
+    #app;
+    /** @type {View} */
     #view;
-    #canvas;
     #startTime;
     #currBenchmark;
     #screenShotQueue;
@@ -215,10 +207,10 @@ export class Benchmarker {
     #name;
     #noImages;
 
-    constructor(frametimeStore, view, canvas, name="") {
+    constructor(frametimeStore, app, view, name="") {
         this.#frametimeStore = frametimeStore;
+        this.#app = app;
         this.#view = view;
-        this.#canvas = canvas;
         this.#name = name;
     }
     
@@ -246,12 +238,12 @@ export class Benchmarker {
         }
         if (!this.#noImages && this.#screenShotQueue.length > 0 && benchTime > this.#screenShotQueue[0]) {
             // take a screenshot
-            downloadCanvas(this.#canvas, `${this.#name}_t${this.#screenShotQueue[0]}.png`, "image/png")
+            this.#app.saveCanvasImagePNG(`${this.#name}_t${this.#screenShotQueue[0]}.png`);
             this.#screenShotQueue.shift();
         }
 
         // set view state according to benchmark
-        this.#currBenchmark.setState(benchTime, this.#view)
+        this.#currBenchmark.setState(benchTime, this.#view, this.#app);
     }
 
     end() {
@@ -267,7 +259,7 @@ function viewOptsFromJob(job) {
     return {
         dataID: job.data,
         dataOpts: {
-            dynamicNodes: job.dynamicNodes ?? false,
+            dynamicNodes: job.dynamicNodes ?? true,
             dynamicMesh: job.dynamicMesh ?? true,
             dynamicNodeCount: job.nodes ?? 1000,
             dynamicMeshBlockCount: job.meshes ?? 100,
@@ -277,10 +269,7 @@ function viewOptsFromJob(job) {
             nodeItersPerFrame: job.nodeIters ?? 1,
             nodeHysteresis: job.nodeHyst ?? true
         },
-        renderOpts: {
-            DATA_RAY_VOLUME: true,
-            BOUNDING_WIREFRAME: false,
-        }
+        renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
     };
 }
 
@@ -292,32 +281,27 @@ export class JobRunner {
 
     #startTime = 0;
 
+    /** @type {View} The view that is current being manipulated */
     #currView;
+    /** @type {Benchmarker} */
     #currBenchmarker;
 
-    #createViewFn;
-    #deleteViewFn;
-
-    #renderEngine;
+    /** @type {App} The app object that is being controlled */
+    #app;
 
     #pauseMS;
 
     #advancing = false;
     #started = false;
 
-    constructor(jobs, createViewFn, deleteViewFn, renderEngine, pauseMS=3000) {
-        this.#createViewFn = createViewFn;
-        this.#deleteViewFn = deleteViewFn;
-
-        this.#renderEngine = renderEngine;
-        //TEMP:
-        globalRender = renderEngine;
+    constructor(jobs, app, opts={}) {
+        const {pauseMS=3000, verbose=false} = opts;
+        this.#app = app;
 
         this.#pauseMS = pauseMS;
 
         // expand all of the jobs into individual tasks
         this.#jobQueue = this.#expandJobs(jobs);
-        console.log(this.#jobQueue);
     }
 
     #expandJobs(jobs) {
@@ -349,13 +333,14 @@ export class JobRunner {
     }
 
     // begins execution of jobs from beginning
+    /**
+     * Begins execution of the jobs
+     * @param {Number} t The current time in ms
+     */
     start(t) {
         console.log("***JOBS STARTED***")
         this.#startTime = t;
         this.#currJobIndex = -1;
-
-        // set render engine parameters
-        this.#renderEngine.rayMarcher.setStepSize(2);
 
         this.#started = true;
     }
@@ -375,50 +360,42 @@ export class JobRunner {
 
         const jobName = jobNameParts.join("_");
 
-
-
         // create view
-        this.#renderEngine.rayMarcher.noDataUpdates = false;
-        this.#currView = await this.#createViewFn(viewOpts);
-        // this.#currView.camera.setEyePos(this.#currView.data.getMidPoint());
+        this.#currView = await this.#app.createView(viewOpts);
 
         await pause(this.#pauseMS);
-        this.#renderEngine.rayMarcher.noDataUpdates = true;
         
         // set the iso data array
-        await this.#currView.updateIsoSurfaceSrc({
+        this.#currView.setInput("isoSrc", {
             name: job.isoSrc ?? "Default",
             type: "array",
             arrayType: "data"
         });
         // set the iso-value
-        this.#currView.updateThreshold(job.isoVal ?? 0);
+        this.#currView.setInput("threshold", job.isoVal);
 
         // set global render options
-        this.#renderEngine.rayMarcher.setPassFlag("contCornerVals", job.contCorn ?? false);
-        this.#renderEngine.rayMarcher.setPassFlag("backStep", job.backStep ?? true);
+        this.#app.setRenderFlag("contCornerVals", job.contCorn ?? false);
+        this.#app.setRenderFlag("backStep", job.backStep ?? true);
         // initialise camera to centre
         
         // run benchmark
         this.#currBenchmarker = new Benchmarker(
             frameInfoStore, 
+            this.#app,
             this.#currView, 
-            this.#renderEngine.canvas, 
             jobName
         );
 
         // pause to allow system to settle
-        this.#renderEngine.rayMarcher.noDataUpdates = false;
         await pause(this.#pauseMS);
-        this.#renderEngine.rayMarcher.noDataUpdates = job.noGPUUpdates ?? false;
-        this.#renderEngine.rayMarcher.globalPassInfo.framesSinceMove = 0;
         this.#currBenchmarker.start(performance.now(), BENCHMARKS[benchmarkID], job.noImages);
     }
 
     async #advanceJob() {
         if (this.#currView !== undefined) {
             // advancing from another job, end old one
-            this.#deleteViewFn(this.#currView);
+            this.#currView.delete();
             this.#currView = undefined;
             await pause(this.#pauseMS);
         }
@@ -437,6 +414,10 @@ export class JobRunner {
         await this.#startJob(newJob)
     }
 
+    /**
+     * Updates the internal state
+     * @param {Number} t The current time in ms
+     */
     async update(t) {
         if (!this.#started) return;
         if (this.#currBenchmarker) {
