@@ -9,7 +9,7 @@ Simple usage:
 $ python generate_block_mesh.py {file-path}
 ```
 
-## tool arguments
+## Tool arguments
 
 ### `file-path`
 

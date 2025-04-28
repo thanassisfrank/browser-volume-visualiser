@@ -14,11 +14,9 @@ The simplest example file consisting of a single view programmatically created.
 
 A full featured program built using the library showcasing the majority of available features on a single view.
 
-## `core`
+## Sub-directories
 
-The directory containing the 
+* [`core/`](core/README.md) The implementation of the client code
 
-## `data`
-
-The directory containing the datasets used in the example files
+* [`data/`](data/README.md) Where the datasets and JSON dataset information file live
 

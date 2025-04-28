@@ -4,13 +4,18 @@ This project is a web-based visualisation tool, leveraging the power of the WebG
 
 ## Quick Start
 
-If you would like to run the program, download the repository and run the web server with the following command. *(python and the numpy library required)*
+If you would like to run the program, download the repository and run the web server with the following command. *(python 3 with numpy, h5py and aiohttp libraries required)*
 
 ```console
 $ python app.py
 ```
-
-To access the program's web interface navigate to `http://localhost:8080/index.html`. 
+Everything within the `static/` folder will then be available at `http://localhost:8080/` by default.
 
 *The Chrome web browser is recommended as this is where the majority of testing has been carried out*
 
+
+## Project structure
+
+* [`ingest/`](ingest/README.md) python scripts for converting datasets into the split mesh-tree files for dynamic loading
+
+* [`static/`](static/README.md) all of the client code and dataset files
