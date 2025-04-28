@@ -9,28 +9,37 @@ These are the simplest types of dataset supported and consist of an array of bin
 1. **Add the file to `static/data/`**
 2. **Add an entry in `static/data/datasets.json`**
 
-    Create an entry which matches the format of the following where the `{snippet}` blocks are replaced with the correct values for the dataset.
+    Create an entry which matches the format of the following where each entry is replaced with the correct values for the dataset.
 
-    ```json
-    "{unique identifier}": {
-        "name": "{dataset name}",
-        "path": "data/{file name}",
-        "type": "raw",
+    ```json5
+    // unique identifier
+    "magnetic": {
+        // display name
+		"name": "Magnetic",
+        // path to file relative to static/
+		"path": "data/magnetic_reconnection_512x512x512_float32.raw",
+		// number of data points in each dimension
         "size": {
-            "x": {num points x},
-            "y": {num points y},
-            "z": {num points z}
-        },
-        "cellSize": {
-            "x": {point spacing x},
-            "y": {point spacing y},
-            "z": {point spacing z}
-        },
-        "limits": [
-            {min value},
-            {max value}
-        ],
-    }
+			"x": 512,
+			"y": 512,
+			"z": 512
+		},
+        // size of the cells 
+		"cellSize": {
+			"x": 1,
+			"y": 1,
+			"z": 1
+		},
+        // the lowest and highest value within the dataset
+		"limits": [
+			0,
+			24.195253
+		],
+        // datatype of scalar values
+        // for allowed strings see DATA_TYPES in static/core/utils.js
+		"dataType": "float32",
+		"type": "raw"
+	}
     ```
 
 ## Unstructured CGNS files
@@ -40,14 +49,17 @@ The client support loading static CGNS files which contain an unstructured mesh.
 1. **Add the file to `static/data/`**
 2. **Add an entry in `static/data/datasets.json`**
 
-    Create an entry which matches the format of the following where the `{snippet}` blocks are replaced with the correct values for the dataset.
+    Create an entry which matches the format of the following where each entry is replaced with the correct values for the dataset.
 
-    ```json
-    "{unique identifier}": {
-		"name": "{dataset name}",
-		"path": "data/{file name}",
+    ```json5
+    // unique identifier
+    "yf17_hdf5": {
+        // display name
+		"name": "YF17",
+        // path to file relative to static/
+		"path": "data/yf17_hdf5.cgns",
 		"type": "cgns"
-	}
+	},
     ```
 
 
@@ -62,13 +74,17 @@ If your CGNS file is large then you'll want to take advantage of the dynamic loa
 2. **Add the output files to `static/data/`**
 3. **Add an entry in `static/data/datasets.json`**
 
-    Create an entry which matches the format of the following where the `{snippets}` are replaced with the correct values for the dataset.
+    Create an entry which matches the format of the following where each entry is replaced with the correct values for the dataset.
 
-    ```json
-    "{unique identifier}": {
-		"name": "{dataset name}",
-		"path": "data/{partial file name}",
-        "meshPath": "data/{block mesh file name}",
+    ```json5
+    // unique identifier
+    "yf17_1024": {
+		// dataset display name
+        "name": "YF17p 1024",
+        // path to the full tree file relative to static/
+		"path": "data/local/yf17_1024/_partial.cgns",
+        // path to the mesh file relative to static/
+		"meshPath": "data/local/yf17_1024/_block_mesh.cgns", 
 		"type": "cgns-partial"
 	}
     ```
