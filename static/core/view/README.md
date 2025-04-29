@@ -24,7 +24,7 @@ Provides utility classes for the `View` objects that handle any input/output ele
 
 * **Volume transfer function** Gets colour and opacity points from elements with classes `view-vol-col` and `view-vol-op` respectively.
 
-* **Embedded mesh rendering** TODO
+* **Embedded geometry rendering** Creates checkboxes with labels for each available piece of geometry within the dataset inside of an element with class `view-geometry-enable-container`.
 
 * **Colour scale selector** Fills a select element with class `view-surface-col-scale-select` with options for setting the colour scale.
 
