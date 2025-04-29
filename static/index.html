@@ -191,8 +191,6 @@
                             <canvas class="view-axes-widget" width="30" height="30"></canvas>
 
                         </div>
-                        <!-- <canvas class="view-density-graph view-node-scores" style="width:200px;height:20px"></canvas> -->
-                        <!-- <br> -->
                         <details>
                             <summary>Data source</summary>
                             <select class="view-iso-surface-src-select"></select><label>Iso-surface src</label>
@@ -217,14 +215,7 @@
                             <summary>Surface config</summary>
                             <select class="view-surface-col-scale-select"></select><label>Colour scale</label>
                             <br>
-                            <input type="checkbox"><label>Colour iso-surface</label>
-                            <br>
-                            <input type="checkbox"><label>Colour bounding box</label>
-                            <br>
-                            <input type="checkbox"><label>Colour geometry</label>
                             <div style="text-align: center;">
-                                <canvas class="view-density-graph view-value-density" style="width:200px;height:20px"></canvas>
-                                <br>
                                 <input type="range" class="view-threshold", style="width: 210px">
                             </span>
                             <p class="view-info">Iso-value: <span class="view-threshold-value"></span></p>
@@ -234,33 +225,28 @@
                             <label>Volume transfer function</label><br>
                             <table>
                                 <tr>
-                                    <td><input type="color" class="view-vol-col" data-transfer-index="0"></td>
-                                    <td><input type="color" class="view-vol-col" data-transfer-index="1"></td>
-                                    <td><input type="color" class="view-vol-col" data-transfer-index="2"></td>
-                                    <td><input type="color" class="view-vol-col" data-transfer-index="3"></td>
+                                    <td><input type="color" class="view-vol-col"></td>
+                                    <td><input type="color" class="view-vol-col"></td>
+                                    <td><input type="color" class="view-vol-col"></td>
+                                    <td><input type="color" class="view-vol-col"></td>
                                 </tr>
                                 <tr>
-                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="0"></td>
-                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="1"></td>
-                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="2"></td>
-                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op" data-transfer-index="3"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op"></td>
+                                    <td><input type="number" min="0" max="100" step="1" value="0" style="width:5ch" class="view-vol-op"></td>
                                 </tr>
                             </table>
                         </details>
                         <details class="view-geometry-enable-container">
                             <summary>Geometry</summary>
                         </details>
-                        <!-- Temporarily removed to prevent system lockup with large datasets -->
                         <label class="view-close view-info clickable">Close</label>
                     </div>
                 </div>
             </div>
         </template>
-
-        <template id="geometry-enable-template">
-            <input type="checkbox" class="view-enable-geometry" data-geometry-name=""><label></label><br>
-        </template>
-
+        
         <script type="module" src="index.js"></script>
     </body>
 </html>
