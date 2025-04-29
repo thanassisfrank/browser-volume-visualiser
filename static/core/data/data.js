@@ -372,7 +372,7 @@ export class Data {
         if (this.dataFormat == DataFormats.STRUCTURED) {
             return boxSize(this.extentBox).join("x");
         } else if (this.dataFormat == DataFormats.UNSTRUCTURED) {
-            return this.data.cellOffsets.length.toLocaleString() + "u";
+            return this.dataSource.mesh.cellOffsets?.length.toLocaleString() + "u";
         } else if (this.dataFormat == DataFormats.BLOCK_UNSTRUCTURED) {
             return this.dataSource.totalCellCount.toLocaleString() + "u";
         }
@@ -407,4 +407,8 @@ export class Data {
         mat4.invert(dMatInv, this.dataTransformMat);
         return dMatInv;
     };
+
+    getGeometry() {
+        return this.dataSource.geometry;
+    }
 }

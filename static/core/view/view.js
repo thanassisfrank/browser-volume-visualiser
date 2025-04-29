@@ -116,7 +116,7 @@ export class View {
             slider          : new ThresholdSliderHandler(container, "210px"),
             colScale        : new ColScaleHandler(container),
             clip            : new ClipElemHandler(container, this.data.extentBox),
-            enabledGeometry : new EnabledGeometryHandler(container, this.data),
+            enabledGeometry : new EnabledGeometryHandler(container, this.data.getGeometry()),
             transferFunction: new TransferFunctionHandler(container)
         };
 

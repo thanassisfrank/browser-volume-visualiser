@@ -429,14 +429,12 @@ export class TransferFunctionHandler {
 // geom enable
 export class EnabledGeometryHandler {
     #elem;
-    #enableTemplate;
-    #data;
+    #checkboxes = {};
+    #geometry;
 
-    constructor (container, data) {
+    constructor (container, geometry) {
         this.#elem = container.querySelector(".view-geometry-enable-container");
-        this.#enableTemplate = get("geometry-enable-template");
-
-        this.#data = data;
+        this.#geometry = geometry;
 
         this.init();
     }
@@ -444,21 +442,32 @@ export class EnabledGeometryHandler {
     init() {
         if (!this.#elem) return;
         // initialise the geometry enable checkboxes
-        
-        for (let meshName in this.#data.geometry) {
-            const docFrag = this.#enableTemplate.content.cloneNode(true);
 
-            docFrag.querySelector("label").innerText = meshName;
-            const checkbox = docFrag.querySelector(".view-enable-geometry");
+        for (let meshName in this.#geometry) {
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
             checkbox.dataset.geometryName = meshName;
-            checkbox.checked = this.#data.geometry[meshName].showByDefault;
+            checkbox.checked = this.#geometry[meshName].showByDefault;
 
-            this.#elem.appendChild(docFrag);
+            this.#checkboxes[meshName] = checkbox;
+            this.#elem.appendChild(checkbox);
+
+            const label = document.createElement("label");
+            label.innerText = meshName;
+            this.#elem.appendChild(label);
+
+            this.#elem.appendChild(document.createElement("br"));
         }
     }
 
     getEnabledGeometry() {
-        return;
+        let enabled = {};
+
+        for (let geometryName in this.#checkboxes) {
+            enabled[geometryName] = this.#checkboxes[geometryName].checked;
+        }
+
+        return enabled;
     }
 
     removeEventListeners() {}
