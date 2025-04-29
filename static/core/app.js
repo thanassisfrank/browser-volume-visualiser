@@ -10,6 +10,8 @@ import { FrameTimeGraph } from "./widgets.js";
 
 // expose view render modes from here
 export { RenderModes } from "./view/view.js";
+// expose data source types from here
+export { DataSrcTypes } from "./renderEngine/renderEngine.js";
 
 
 /** Class representing the application */
