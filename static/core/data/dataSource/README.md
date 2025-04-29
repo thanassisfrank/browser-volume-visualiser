@@ -1,0 +1,1 @@
+Handles generating/fetching the data associated with datasets. `DataSource` objects are composed when creating a new `Data` object to perform any necessary transformations such as down-sampling or conversion from structured to unstructured.

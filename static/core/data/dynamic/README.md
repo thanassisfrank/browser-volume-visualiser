@@ -1,0 +1,1 @@
+Handles updating and managing the dynamic tree and mesh on the client including which mesh blocks to request next from the server.
