@@ -5,8 +5,11 @@ import {getClass, frameInfoStore, downloadCanvas} from "./utils.js";
 import { DataManager } from "./data/data.js";
 import { createRenderEngine } from "./renderEngine/renderEngine.js";
 import { createView, View } from "./view/view.js";
-import { Camera } from "./renderEngine/sceneObjects.js";
+import { Camera } from "./renderEngine/camera.js";
 import { FrameTimeGraph } from "./widgets.js";
+
+// expose view render modes from here
+export { RenderModes } from "./view/view.js";
 
 
 /** Class representing the application */
@@ -195,7 +198,7 @@ export class App {
 
         const id = Math.round(Math.random()*1024);
         
-        const view = createView(
+        const view = await createView(
             id,
             {
                 camera: new Camera(),

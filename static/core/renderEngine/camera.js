@@ -1,46 +1,8 @@
-// sceneObjects.js
-// this file contains prototypes and functions for handling the scene and renderable management
+// camera.js
 
 import {mat4, vec3} from "../gl-matrix.js";
 import {toRads, newId, clamp} from "../utils.js";
 import { VecMath } from "../VecMath.js";
-
-// Some Basic Scene Objects =======================================================================
-// scene objects are the nodes in the scene graph
-// they can have multiple renderables linked
-
-// what kind of scene object this is
-export const SceneObjectTypes = {
-    EMPTY:      0,
-    MESH:       1,
-    DATA:       2,
-    CAMERA:     4,
-    LIGHT:      8,
-    VECTOR:    16,
-    AXES:      32,
-};
-
-// informs render engine how to set it up and create its needed renderables
-export const SceneObjectRenderModes = {
-    NONE:                   0,
-    MESH_SURFACE:           1,
-    MESH_WIREFRAME:         2,
-    MESH_POINTS:            4,
-    DATA_POINTS:            8,
-    DATA_MARCH_SURFACE:    16,
-    DATA_MARCH_POINTS:     32,
-    DATA_RAY_VOLUME:       64,
-    BOUNDING_WIREFRAME:   128,
-    DATA_WIREFRAME:       256,
-    DATA_MESH_GEOMETRY:   512,
-};
-
-export const defaultMaterial = {
-    diffuseCol: [0, 0, 0],
-    specularCol: [1, 1, 1],
-    shininess: 100,
-};
-
 
 
 export class Camera {

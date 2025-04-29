@@ -9,9 +9,20 @@ import { Data } from "../data/data.js";
 
 import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataInfoWidget, DataSrcSelectElemHandler, EnabledGeometryHandler, FrameElemHandler, ThresholdSliderHandler, TransferFunctionHandler } from "./viewElems.js";
 
-import { DataSrcTypes, RenderableTypes } from "../renderEngine/renderEngine.js";
+import { DataSrcTypes, Renderable, RenderableTypes } from "../renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
-import { Camera } from "../renderEngine/sceneObjects.js";
+import { Camera } from "../renderEngine/camera.js";
+import { RenderModes } from "../app.js";
+
+
+export const RenderModes = {
+    NONE        : 0,
+    RAY_VOLUME  : 1,
+    POINTS      : 2,
+    WIREFRAME   : 4,
+    BOUNDING_BOX: 8,
+    GEOMETRY    : 16,
+};
 
 
 /**
@@ -19,16 +30,17 @@ import { Camera } from "../renderEngine/sceneObjects.js";
  * @param {Number} id 
  * @param {*} config 
  * @param {*} renderEngine 
- * @returns {View} The newly created view object
+ * @returns {Promise<View>} The newly created view object
  */
-export function createView(id, config, renderEngine) {    
+export async function createView(id, config, renderEngine) {    
     const container = get("view-container-template").content.cloneNode(true).children[0];
     container.id = id;
 
-    const newView = new View(id, container, config.camera, config.data, config.renderMode, renderEngine);
+    const view = new View(id, container, config.camera, config.data, config.renderMode, renderEngine);
+    await view.init();
     get("view-container-container").appendChild(container);
     show(container);
-    return newView;
+    return view;
 }
 
 
@@ -49,7 +61,9 @@ export class View {
     timeSinceFocusAdjusted = 0;
 
     /** @type {Number} */
-    renderMode;
+    #renderMode;
+    /** @type {Renderable} */
+    #dataRenderable;
 
     /** @type {Boolean} */
     updateDynamicTree = true;
@@ -87,7 +101,7 @@ export class View {
         this.container = containerElem;
         this.camera = camera;
         this.data = data;
-        this.renderMode = renderMode;
+        this.#renderMode = renderMode
 
         this.#createDOM(containerElem);
         
@@ -97,7 +111,18 @@ export class View {
 
         // create scene
         this.scene = renderEngine.createScene();
-        this.scene.addData(this.data, this.renderMode);
+    }
+
+    async init() {
+        if (this.#renderMode & RenderModes.BOUNDING_BOX) {
+            this.scene.addBoundingBox(this.data.extentBox);
+        }
+        if (this.#renderMode & RenderModes.RAY_VOLUME) {
+            this.#dataRenderable = await this.scene.addDataRayVolume(this.data);
+        }
+        if (this.#renderMode & RenderModes.GEOMETRY) {
+            this.scene.addDataGeometry(this.data);
+        }
     }
 
     /**
@@ -258,6 +283,9 @@ export class View {
             );
         }
 
+        // check if there is a data renderable to update
+        if (!this.#dataRenderable || !this.updateDynamicTree) return;
+
         // object which holds all the updates for the render engine
         const updates = {
             threshold: inputs.threshold,
@@ -286,10 +314,7 @@ export class View {
         }
 
         // update the data renderable
-        const dataRenderables = this.scene.getRenderablesOfType(RenderableTypes.UNSTRUCTURED_DATA | RenderableTypes.DATA);
-        if (dataRenderables.length > 0 && this.updateDynamicTree) {
-            this.scene.updateRenderable(dataRenderables[0], updates);
-        }
+        this.scene.updateRenderable(this.#dataRenderable, updates);
     };
 
     /**

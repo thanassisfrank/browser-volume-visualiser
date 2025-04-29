@@ -1,10 +1,9 @@
 // benchmark.js
 import { downloadCanvas, frameInfoStore, pause } from "./utils.js";
-import { App } from "./app.js";
+import { App, RenderModes } from "./app.js";
 import { CornerValTypes } from "./data/treeNodeValues.js";
 import { VecMath } from "./VecMath.js";
 import { View } from "./view/view.js";
-import { SceneObjectRenderModes } from "./renderEngine/sceneObjects.js";
 
 
 
@@ -269,7 +268,7 @@ function viewOptsFromJob(job) {
             nodeItersPerFrame: job.nodeIters ?? 1,
             nodeHysteresis: job.nodeHyst ?? true
         },
-        renderMode: SceneObjectRenderModes.DATA_RAY_VOLUME
+        renderMode: RenderModes.RAY_VOLUME
     };
 }
 

@@ -2,9 +2,8 @@
 // the main js file for index.html
 import {get, getClass, getInputClassAsObj, isVisible, show, hide, downloadCanvas, frameInfoStore} from "./core/utils.js";
 
-import { App } from "./core/app.js";
+import { App, RenderModes } from "./core/app.js";
 
-import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
 import { KDTreeSplitTypes } from "./core/data/cellTree.js";
 import { CornerValTypes } from "./core/data/treeNodeValues.js";
 
@@ -94,12 +93,12 @@ const viewOptsFromInputElems = (dataSelect, opts) => {
 
 
 const renderModeFromOpts = (opts) => {
-    let renderMode = SceneObjectRenderModes.NONE;
-    if (opts.DATA_POINTS) renderMode |= SceneObjectRenderModes.DATA_POINTS;
-    if (opts.DATA_RAY_VOLUME) renderMode |= SceneObjectRenderModes.DATA_RAY_VOLUME;
-    if (opts.DATA_WIREFRAME) renderMode |= SceneObjectRenderModes.DATA_WIREFRAME;
-    if (opts.BOUNDING_WIREFRAME) renderMode |= SceneObjectRenderModes.BOUNDING_WIREFRAME;
-    if (opts.GEOMETRY) renderMode |= SceneObjectRenderModes.DATA_MESH_GEOMETRY;
+    let renderMode = RenderModes.NONE;
+    if (opts.DATA_POINTS) renderMode |= RenderModes.POINTS;
+    if (opts.DATA_RAY_VOLUME) renderMode |= RenderModes.RAY_VOLUME;
+    if (opts.DATA_WIREFRAME) renderMode |= RenderModes.WIREFRAME;
+    if (opts.BOUNDING_WIREFRAME) renderMode |= RenderModes.BOUNDING_BOX;
+    if (opts.GEOMETRY) renderMode |= RenderModes.GEOMETRY;
 
     return renderMode;
 }

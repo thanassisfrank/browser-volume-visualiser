@@ -2,7 +2,6 @@
 // handles the creation of renderable objects for the various scene objects available
 
 import { Renderable, RenderableTypes, RenderableRenderModes} from "../renderEngine.js";
-import { SceneObjectRenderModes } from "../sceneObjects.js";
 
 export class WebGPUScene {
     #webGPU;
@@ -55,11 +54,15 @@ export class WebGPUScene {
 
         // add to the scene graph
         this.#graph.push(renderable);
+
+        return renderable;
     }
 
     addMesh(mesh) {
         const renderable = this.#meshRender.createMeshRenderable(mesh.verts, mesh.indices, mesh.renderMode, mesh.material);
         this.#graph.push(renderable);
+
+        return renderable;
     }
 
     addVector(start, end, color=[0, 0, 0]) {
@@ -71,30 +74,31 @@ export class WebGPUScene {
         );
 
         this.#graph.push(renderable);
+
+        return renderable;
     }
 
     addAxes(origin, length) {
-        this.addVector(origin, [origin[0] + length, origin[1], origin[2]], [1, 0, 0]);
-        this.addVector(origin, [origin[0], origin[1] + length, origin[2]], [0, 1, 0]);
-        this.addVector(origin, [origin[0], origin[1], origin[2] + length], [0, 0, 1]);
+        return [
+            this.addVector(origin, [origin[0] + length, origin[1], origin[2]], [1, 0, 0]),
+            this.addVector(origin, [origin[0], origin[1] + length, origin[2]], [0, 1, 0]),
+            this.addVector(origin, [origin[0], origin[1], origin[2] + length], [0, 0, 1]),
+        ];
     }
 
     // expects a data object 
-    async addData(data, renderMode) {
-        if (renderMode === SceneObjectRenderModes.NONE) return;
-        if (renderMode & SceneObjectRenderModes.BOUNDING_WIREFRAME) {
-            this.addBoundingBox(data.extentBox);
-        }
-        if (renderMode & SceneObjectRenderModes.DATA_RAY_VOLUME) {
-            // create renderable for data
-            this.#graph.push(await this.#rayMarcher.createRenderable(data));
-        }
-        if (renderMode & SceneObjectRenderModes.DATA_MESH_GEOMETRY) {
-            // create mesh renderables
-            if (data.geometry) {
-                Object.values(data.geometry).map(mesh => this.addMesh(mesh));
-            }
-        }
+    async addDataRayVolume(data) {
+        const renderable = await this.#rayMarcher.createRenderable(data);
+        this.#graph.push(renderable);
+
+        return renderable;
+    }
+
+    addDataGeometry(data) {
+        const geom = data.getGeometry();
+        if (!geom) return;
+
+        return Object.values(geom).map(mesh => this.addMesh(mesh));
     }
 
     // called externally to get a list of all renderables

@@ -55,8 +55,7 @@
         </template>
 
         <script type="module">
-            import { App } from "./core/app.js";
-            import { SceneObjectRenderModes } from "./core/renderEngine/sceneObjects.js";
+            import { App, RenderModes } from "./core/app.js";
             import { DataSrcTypes } from "./core/renderEngine/renderEngine.js";
 
             // Create the app and initialise
@@ -69,7 +68,7 @@
                 // The id of the dataset to use, matches the keys in datasets.json
                 dataID: "engine", 
                 // How to render the scene
-                renderMode: SceneObjectRenderModes.BOUNDING_WIREFRAME | SceneObjectRenderModes.DATA_RAY_VOLUME
+                renderMode: RenderModes.BOUNDING_BOX | RenderModes.RAY_VOLUME
             });
 
             // Inputs to each view can be changed via linked UI elements or like below
