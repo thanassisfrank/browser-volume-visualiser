@@ -2,9 +2,9 @@
 
 import { ResolutionModes } from "./dataConstants.js";
 
-import { mat4, vec4 } from "../gl-matrix.js";
-import { VecMath } from "../VecMath.js";
-import { copyBox } from "../boxUtils.js";
+import { mat4, vec4 } from "../utils/gl-matrix.js";
+import { VecMath } from "../utils/VecMath.js";
+import { copyBox } from "../utils/boxUtils.js";
 
 export const NODE_BYTE_LENGTH = 5 * 4;
 

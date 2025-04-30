@@ -2,10 +2,12 @@
 // implements the ray marching algorithm with webgpu
 
 import { DataFormats, ResolutionModes } from "../../../data/dataConstants.js";
-import { clamp, frameInfoStore } from "../../../utils.js";
-import { boxesEqual, copyBox } from "../../../boxUtils.js";
+import { frameInfoStore } from "../../../utils/frameInfo.js";
+import { boxesEqual, copyBox } from "../../../utils/boxUtils.js";
 import { DataSrcTypes, DataSrcUints, GPUResourceTypes, Renderable, RenderableRenderModes, RenderableTypes } from "../../renderEngine.js";
 import { BYTES_PER_ROW_ALIGN, GPUTexelByteLength, GPUTextureMapped, WebGPUBase } from "../webGPUBase.js";
+
+const clamp = (x, min, max) => Math.min(Math.max(x, min), max);
 
 export const DataSrcUses = {
     NONE: 0,

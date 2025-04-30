@@ -1,11 +1,15 @@
 // benchmark.js
-import { downloadCanvas, frameInfoStore, pause } from "./utils.js";
+import { frameInfoStore } from "./frameInfo.js";
 import { App, RenderModes } from "./app.js";
 import { CornerValTypes } from "./data/treeNodeValues.js";
 import { VecMath } from "./VecMath.js";
 import { View } from "./view/view.js";
 
-
+function pause(ms) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {resolve()}, ms);
+    });
+}
 
 const BENCHMARKS = {};
 

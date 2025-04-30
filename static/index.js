@@ -1,6 +1,8 @@
 // index.js
 // the main js file for index.html
-import {get, getClass, getInputClassAsObj, isVisible, show, hide, downloadCanvas, frameInfoStore} from "./core/utils.js";
+import { get, getClass, getInputClassAsObj, isVisible, show, hide } from "./core/utils/domUtils.js";
+import { downloadCanvas } from "./core/utils/downloadUtils.js";
+import { frameInfoStore } from "./core/utils/frameInfo.js";
 
 import { App, RenderModes } from "./core/app.js";
 

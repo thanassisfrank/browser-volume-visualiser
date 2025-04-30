@@ -3,7 +3,7 @@
 
 import { MeshCache } from "../cache/meshCache.js";
 
-import { downloadObject, frameInfoStore, StopWatch } from "../../utils.js";
+import { frameInfoStore, StopWatch } from "../../utils/frameInfo.js";
 
 
 export class DynamicMesh {

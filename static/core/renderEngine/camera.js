@@ -1,9 +1,11 @@
 // camera.js
 
-import {mat4, vec3} from "../gl-matrix.js";
-import {toRads, newId, clamp} from "../utils.js";
-import { VecMath } from "../VecMath.js";
+import { mat4, vec3 } from "../utils/gl-matrix.js";
+import { VecMath } from "../utils/VecMath.js";
 
+const clamp = (x, min, max) => Math.min(Math.max(x, min), max);
+
+const toRads = deg => deg*Math.PI/180;
 
 export class Camera {
     eye = [0, 0, 0];

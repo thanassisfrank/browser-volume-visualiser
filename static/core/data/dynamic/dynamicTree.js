@@ -4,7 +4,7 @@
 import { NODE_BYTE_LENGTH, writeNodeToBuffer, readNodeFromBuffer, processLeafMeshDataInfo } from "../cellTreeUtils.js";
 import { writeCornerVals, readCornerVals } from "../treeNodeValues.js";
 import { AssociativeCache, ScoredCacheManager } from "../cache/cache.js";
-import { downloadObject, frameInfoStore, StopWatch } from "../../utils.js";
+import { frameInfoStore, StopWatch } from "../../utils/frameInfo.js";
 
 
 const NodeStates = {

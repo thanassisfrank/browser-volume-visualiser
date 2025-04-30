@@ -4,7 +4,7 @@
 import { DataArrayTypes } from "../data/dataConstants.js";
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
-import { get, hexStringToRGBArray, setupCanvasDims } from "../utils.js";
+import { get, hexStringToRGBArray, setupCanvasDims } from "../utils/domUtils.js";
 
 
 // close btn

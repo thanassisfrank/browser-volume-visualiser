@@ -1,13 +1,22 @@
 // dataSource.js
 // contains classes for handling different types of data sources, backing data objects
-import {mat4} from "../../gl-matrix.js";
-import { DATA_TYPES, FetchSocket } from "../../utils.js";
+import {mat4} from "../../utils/gl-matrix.js";
+import { FetchSocket } from "../../utils/fetchSocket.js";
 import * as cgns from "./cgns/cgns_hdf5.js";
 import { DataFormats, DataArrayTypes } from "../dataConstants.js";
 import { buildUnstructuredTree, getLeafMeshBuffers, getLeafMeshBuffersAnalyse, loadUnstructuredTree, UnstructuredTree } from "../cellTree.js";
 import { CornerValTypes, createNodeCornerValuesBuffer, loadCornerValues } from "../treeNodeValues.js";
 import { processLeafMeshDataInfo } from "../cellTreeUtils.js";
 
+const DATA_TYPES = {
+    "uint8": Uint8Array,
+    "int32": Int32Array,
+    "uint32": Uint32Array,
+    "int64": BigInt64Array,
+    "uint64": BigUint64Array,
+    "float32": Float32Array,
+    "int16": Int16Array
+}
 
 const DEFAULT_ARRAY_NAME = "Default";
 

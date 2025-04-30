@@ -12,9 +12,6 @@ Each app has a single rendering engine and must be updated regularly (e.g. using
 
 This provides functionality for benchmarking through the `JobRunner` class. This takes an already created `App` object and runs a series of tests defined in a JSON file. For an example of how to use this, see the `benchmark.html` example page.
 
-## Utilities
-
-The other files in this directory act as repositories of utilities.
 
 ## Sub-directories
 
@@ -22,4 +19,7 @@ The other files in this directory act as repositories of utilities.
 
 * [`renderEngine/`](renderEngine/README.md) Rendering engine, generates and draws frames using the GPU
 
+* [`utils/`](utils/README.md) Utilities used throughout the client program.
+
 * [`view/`](view/README.md) Communication between dataset, rendering engine and user interaction
+

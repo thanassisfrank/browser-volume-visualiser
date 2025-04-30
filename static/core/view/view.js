@@ -1,8 +1,8 @@
 // view.js
 // handles the creation of view objects, their management and deletion
 
-import { get, show, hide, newId, hexStringToRGBArray, DOMRectEqual } from "../utils.js";
-import { VecMath } from "../VecMath.js";
+import { get, show, DOMRectEqual } from "../utils/domUtils.js";
+import { VecMath } from "../utils/VecMath.js";
 
 import { ResolutionModes } from "../data/dataConstants.js";
 import { Data } from "../data/data.js";

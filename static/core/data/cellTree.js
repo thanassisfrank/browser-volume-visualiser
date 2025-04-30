@@ -1,8 +1,8 @@
 // cellTree.js
 // provides functions to create and manage full resolution trees generated on unstructured meshes
-import { copyBox } from "../boxUtils.js";
-import { downloadObject, toCSVStr } from "../utils.js";
-import { VecMath } from "../VecMath.js";
+import { copyBox } from "../utils/boxUtils.js";
+import { downloadObject, toCSVStr } from "../utils/downloadUtils.js";
+import { VecMath } from "../utils/VecMath.js";
 
 import { 
     NODE_BYTE_LENGTH, 

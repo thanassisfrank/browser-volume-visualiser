@@ -1,7 +1,7 @@
 // treelet.js
 // handles the generation of treelets
 
-import { copyBox } from "../../boxUtils.js";
+import { copyBox } from "../../utils/boxUtils.js";
 import { checkCellPosition, NODE_BYTE_LENGTH, writeNodeToBuffer } from "../cellTreeUtils.js";
 
 // where the top left and right nodes will be written inside every treelet

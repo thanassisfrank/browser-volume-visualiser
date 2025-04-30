@@ -1,7 +1,11 @@
 // boxUtils.js
-// 
+// A collection of utility functions that all operate on boxes i.e. objects of form:
+// box : {
+//   min : [Number, Number, Number],
+//   max : [Number, Number, Number],
+// }
 
-export var boxesEqual = (box1, box2) => {
+export const boxesEqual = (box1, box2) => {
     if (!box1 || !box2) return false;
     return box1.min[0] == box2.min[0] && 
            box1.min[1] == box2.min[1] && 

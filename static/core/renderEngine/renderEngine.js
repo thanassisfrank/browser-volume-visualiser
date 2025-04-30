@@ -2,7 +2,7 @@
 // allows creation of a new rendering engine object
 import { WebGPURenderEngine } from "./webGPU/webGPURenderEngine.js";
 import { WebGPUBase } from "./webGPU/webGPUBase.js";
-import { mat4 } from '../../core/gl-matrix.js';
+import { mat4 } from '../utils/gl-matrix.js';
 
 export const DataSrcTypes = {
     NONE:  "none",

@@ -1,7 +1,19 @@
 // webGPUBase.js
 // holds utility functions for webgpu, common to both rendering and compute passes
 
-import { stringFormat, clampBox, floorBox, aToXYZ } from "../../utils.js";
+import { clampRect, floorRect } from "../../utils/rectUtils.js";
+
+// replaces every {{key}} in s with replace[key]
+function stringFormat(s, replace) {
+    for (const key in replace) {
+        s = s.replaceAll("{{"+key+"}}", replace[key])   
+    }
+    return s;
+}
+
+const aToXYZ = (a) => {
+    return {x: a[0], y:a[1], z:a[2]};
+};
 
 export const GPUTexelByteLength = {
     "depth32float": 4,
@@ -909,7 +921,7 @@ export class WebGPUBase {
             0, 1
         );
 
-        const scissorBox = floorBox(clampBox(box, boundingBox));
+        const scissorBox = floorRect(clampRect(box, boundingBox));
 
         // will support rect outside the attachment size for V1 of webgpu
         // https://github.com/gpuweb/gpuweb/issues/373 

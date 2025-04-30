@@ -1,17 +1,31 @@
 // app.js
 // provides a single, unified class to handle the program
-import {getClass, frameInfoStore, downloadCanvas} from "./utils.js";
+import { getClass } from "./utils/domUtils.js";
+import { downloadCanvas } from "./utils/downloadUtils.js";
+import { frameInfoStore } from "./utils/frameInfo.js";
 
 import { DataManager } from "./data/data.js";
 import { createRenderEngine } from "./renderEngine/renderEngine.js";
 import { createView, View } from "./view/view.js";
 import { Camera } from "./renderEngine/camera.js";
-import { FrameTimeGraph } from "./widgets.js";
+import { FrameTimeGraph } from "./utils/widgets.js";
 
 // expose view render modes from here
 export { RenderModes } from "./view/view.js";
 // expose data source types from here
 export { DataSrcTypes } from "./renderEngine/renderEngine.js";
+
+
+// return a new id that is not one of the 
+export var newId = (obj) => {
+    var count = 0;
+    let id;
+    do {
+        id = Math.round(Math.random()*512).toString(16);
+        count++;
+    } while (obj[id] && count < 1000);
+    return id;
+}
 
 
 /** Class representing the application */

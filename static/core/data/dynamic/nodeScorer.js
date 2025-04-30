@@ -4,12 +4,11 @@
 import { ResolutionModes } from "../dataConstants.js";
 
 import { NODE_BYTE_LENGTH, readNodeFromBuffer} from "../cellTreeUtils.js";
-import { VecMath } from "../../VecMath.js";
-import { boxVolume, copyBox } from "../../boxUtils.js";
-import { vec4 } from "../../gl-matrix.js";
-import { downloadObject, frameInfoStore, StopWatch } from "../../utils.js";
+import { VecMath } from "../../utils/VecMath.js";
+import { boxVolume, copyBox } from "../../utils/boxUtils.js";
+import { vec4 } from "../../utils/gl-matrix.js";
+import { downloadObject, toCSVStr } from "../../utils/downloadUtils.js";
 import { DataSrcTypes } from "../../renderEngine/renderEngine.js";
-import { toCSVStr } from "../../utils.js";
 
 // checks if the given node is a leaf
 const isDynamicLeaf = (node, nodeCount) => {

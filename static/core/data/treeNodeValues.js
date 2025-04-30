@@ -1,11 +1,19 @@
 // treeNodeValues.js
 // contains functions to manage values associated with cell tree nodes for partial resolution rendering
 
-import { copyBox } from "../boxUtils.js";
-import { smoothStep } from "../utils.js";
-import { VecMath } from "../VecMath.js";
+import { copyBox } from "../utils/boxUtils.js";
+import { VecMath } from "../utils/VecMath.js";
 
-import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, getRandVertInLeafNode, readNodeFromBuffer, sampleLeafRandom, randomInsideBox, getClosestVertexInLeaf, sampleDataArrayWithCell } from "./cellTreeUtils.js";
+import { 
+    NODE_BYTE_LENGTH, 
+    ChildTypes, 
+    getNodeBox, 
+    getLeafAverage, 
+    readNodeFromBuffer, 
+    sampleLeafRandom, 
+    randomInsideBox, 
+    sampleDataArrayWithCell
+} from "./cellTreeUtils.js";
 
 // Node values are 1 value per node and are written into the tree nodes buffer
 // Corner values are 8 values per node and are written into their own buffer
@@ -15,6 +23,10 @@ import { NODE_BYTE_LENGTH, ChildTypes, getNodeBox, sampleLeaf, getLeafAverage, g
 
 
 // utility functions ==================================================================================
+
+const smoothStep = (x) => {
+    return (6*x**2 - 15*x**1 + 10)*x**3
+}
 
 export const readCornerVals = (cornerValBuffer, nodePtr) => {
     return cornerValBuffer.slice(nodePtr * 8, (nodePtr + 1)* 8)

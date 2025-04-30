@@ -2,7 +2,7 @@
 // defines a set of prototypes for creating different widgets
 // each is drawn to their own canvas which they manage
 
-import { setupCanvasDims } from "./utils.js";
+import { setupCanvasDims } from "./domUtils.js";
 
 
 export function FrameTimeGraph(canvas, max = 100, noLines = false, scale = [1, 1]) {

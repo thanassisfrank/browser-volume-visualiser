@@ -36,7 +36,7 @@ These are the simplest types of dataset supported and consist of an array of bin
 			24.195253
 		],
         // datatype of scalar values
-        // for allowed strings see DATA_TYPES in static/core/utils.js
+        // for allowed strings see DATA_TYPES in static/core/data/dataSource/dataSource.js
 		"dataType": "float32",
 		"type": "raw"
 	}

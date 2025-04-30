@@ -13,18 +13,19 @@ import {
     PartialCGNSDataSource 
 } from "./dataSource/dataSource.js";
 
-import { xyzToA } from "../utils.js";
-import {vec3, vec4, mat4} from "../gl-matrix.js";
+import {vec3, vec4, mat4} from "../utils/gl-matrix.js";
 import { DynamicTree } from "./dynamic/dynamicTree.js";
 
 import { DataSrcTypes } from "../renderEngine/renderEngine.js";
 // import { VectorMappingHandler } from "./dataSource/vectorDataArray.js";
 import { NodeScorer } from "./dynamic/nodeScorer.js";
 import { DynamicMesh } from "./dynamic/dynamicMesh.js";
-import { boxSize } from "../boxUtils.js";
+import { boxSize } from "../utils/boxUtils.js";
 import { KDTreeSplitTypes } from "./cellTree.js";
 import { CornerValTypes } from "./treeNodeValues.js";
 
+
+const xyzToA = (obj) => [obj.x, obj.y, obj.z];
 
 const getAsAbsolute = (x, max) => {
     let val;

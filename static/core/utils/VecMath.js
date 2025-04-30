@@ -1,6 +1,9 @@
 //VecMath.js
 
-import {sin30, cos30, toRads} from "./utils.js";
+const toRads = deg => deg*Math.PI/180;
+
+const sin30 = Math.sin(toRads(30));
+const cos30 = Math.cos(toRads(30));
 
 export const VecMath = {
 	// [[0, 1, 2],     [0,
@@ -256,6 +259,14 @@ export const VecMath = {
 		var str = "";
 		for (let row of mat) {
 			str += row.join(" ") + "\n"
+		}
+		return str;
+	},
+	stringifyMatrix: function (mat, row) {
+		let str = "";
+		for (let i = 0; i < mat.length; i++) {
+			if (i % row == 0 && i > 0) str += "\n";
+			str += mat[i].toPrecision(3) + " ";
 		}
 		return str;
 	}
