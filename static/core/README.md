@@ -10,7 +10,7 @@ Each app has a single rendering engine and must be updated regularly (e.g. using
 
 ## benchmark.js
 
-This provides functionality for benchmarking through the `JobRunner` class. This takes an already created `App` object and runs a series of tests using it defined in a JSON file. For an example of how to use this, see the `benchmark.html` example page.
+This provides functionality for benchmarking through the `JobRunner` class. This takes an already created `App` object and runs a series of tests defined in a JSON file. For an example of how to use this, see the `benchmark.html` example page.
 
 ## Utilities
 
