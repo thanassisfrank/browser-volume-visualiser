@@ -1,4 +1,4 @@
-This contains the tools used to convert datasets into the split cgns format used for dynamic streaming. A k-d tree is generated over the dataset volume and the mesh is split at the tree leaf nodes.
+This contains the tools used to convert datasets into the split cgns format used for dynamic streaming. A k-d tree is generated over the dataset volume and the mesh is split at the tree leaf nodes. A guide describing how to use the tools is available [here](CONVERSION.md).
 
 ## `generate_block_mesh.py`
 
