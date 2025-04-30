@@ -14,6 +14,10 @@ The simplest example file consisting of a single view programmatically created.
 
 A full featured program built using the library showcasing the majority of available features on a single view.
 
+### `benchmark.html`
+
+An example showcasing how to set up the app with benchmarking. `textJobs.json` defines the jobs used for this page.
+
 ## Sub-directories
 
 * [`core/`](core/README.md) The implementation of the client code

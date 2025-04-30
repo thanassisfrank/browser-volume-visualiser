@@ -6,9 +6,9 @@ Exposes a function `createRenderEngine(...)` that is called when creating a new 
 
 This also exposes the `Renderable` class which is used to create objects that the render engine uses to manage scene state and resources.
 
-## `sceneObject.js`
+## `camera.js`
 
-TODO
+Defines the `Camera` class which generates projection and view matrices based on its parameters and current position and orientation.
 
 ## Sub-directories
 

@@ -2,13 +2,13 @@
 
 This directory contains the core library behind the volumetric visualiser and is all that is needed to add functionality to your own projects.
 
-## app.js
+## `app.js`
 
 This file provides the `App` class which is the main entrypoint into the functionality of this tool. A single `App` instance can be created to manage multiple views. Views can be created using the `.createView(...)` instance method with a specific dataset and camera specified.
 
 Each app has a single rendering engine and must be updated regularly (e.g. using `requestAnimationFrame`) to handle state changes and render new frames.
 
-## benchmark.js
+## `benchmark.js`
 
 This provides functionality for benchmarking through the `JobRunner` class. This takes an already created `App` object and runs a series of tests defined in a JSON file. For an example of how to use this, see the `benchmark.html` example page.
 
