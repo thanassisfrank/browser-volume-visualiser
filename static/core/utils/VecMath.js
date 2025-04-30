@@ -1,4 +1,6 @@
-//VecMath.js
+// VecMath.js
+// Exports a utility object for vector and matrix operations
+// Some functions take arbitrary size vectors/matrices
 
 const toRads = deg => deg*Math.PI/180;
 
@@ -110,9 +112,6 @@ export const VecMath = {
 	},
 	normalise: function (vec) {
 		return this.scalMult(1/this.magnitude(vec) || 0, vec)
-	},
-	// returns nxn identity matrix
-	createIdenMat: function (order) {
 	},
 	// calculates the inverse of an arbitrary nxn matrix
 	// based on Gauss-Jordan elimination

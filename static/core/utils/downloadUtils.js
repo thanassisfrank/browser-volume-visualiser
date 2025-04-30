@@ -27,7 +27,7 @@ export function objToCSVStr(data, sep=",", endl="\r\n") {
 
 export function downloadCanvas(canvas, fileName, mimeType) {
     try {
-        var dlElem = document.createElement('a');
+        let dlElem = document.createElement('a');
         
         dlElem.download = fileName;
         const image = canvas.toDataURL(mimeType);
@@ -43,10 +43,10 @@ export function downloadCanvas(canvas, fileName, mimeType) {
 
 export function downloadObject(obj, fileName, mimeType) {
     try {
-        var dlElem = document.createElement('a');
+        let dlElem = document.createElement('a');
         
         dlElem.download = fileName;
-        var blob = new Blob([obj], {type: mimeType});
+        let blob = new Blob([obj], {type: mimeType});
         dlElem.href = window.URL.createObjectURL(blob);
         dlElem.click();
     

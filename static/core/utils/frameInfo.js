@@ -1,7 +1,9 @@
+// frameInfo.js
+// Exposes an instance of FrameInfoStore to be used by the program for storing diagnostic information about each frame
+
 // a class to store info generate about each frame
 class FrameInfoStore {
     #samples = {};
-    #frames = []
     #currFrameNum = 0;
     #maxSamples;
     fileName;
@@ -28,6 +30,7 @@ class FrameInfoStore {
         this.#samples[name][this.#getWriteIndex(num)] = value;
     }
 
+    // must be called periodically to advance the internal frame that is written to
     nextFrame() {
         this.#currFrameNum++;
         for (let name in this.#samples) {
@@ -54,9 +57,12 @@ class FrameInfoStore {
     }
 }
 
-// create singleton
+// create instance and export
 export const frameInfoStore = new FrameInfoStore("frameInfo.csv", 2000);
 
+// simple class for timing operations
+// > can be started and stopped arbitrarily many times
+// > will keep a track of the total time spent running
 export class StopWatch {
     #elapsed;
     #currStart;

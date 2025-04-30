@@ -1,4 +1,5 @@
-// utils.js
+// domUtils.js
+// A collection of utilities for interacting with the DOM
 
 export const get = (id) => document.getElementById(id);
 
