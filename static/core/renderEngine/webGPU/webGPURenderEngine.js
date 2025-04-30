@@ -157,12 +157,10 @@ export class WebGPURenderEngine {
     }
     // renders a view object, datasets
     // for now, all share a canvas
-    async renderView(view) {
+    async renderScene(scene, camera, box) {
         // create the render attachments (color and depth textures) that will be used to create the final view
         // these are initialised to a cleared state
         const outputRenderAttachments = await this.#getClearedRenderAttachments();
-        const box = view.getBox();
-        const { scene, camera } = view;
 
         // first check if there is a camera in the scene
         if (!camera) {

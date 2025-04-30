@@ -254,7 +254,7 @@ export class App {
         }
 
         for (let view of this.#views) {
-            await this.#renderEngine.renderView(view)
+            await this.#renderEngine.renderScene(view.scene, view.camera, view.getBox());
         }
         
         frameInfoStore.nextFrame();

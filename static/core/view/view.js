@@ -12,7 +12,6 @@ import { AxesWidget, ClipElemHandler, CloseBtnHandler, ColScaleHandler, DataInfo
 import { DataSrcTypes, Renderable, RenderableTypes } from "../renderEngine/renderEngine.js";
 import { ColourScales, DataSrcUses } from "../renderEngine/webGPU/rayMarching/webGPURayMarching.js";
 import { Camera } from "../renderEngine/camera.js";
-import { RenderModes } from "../app.js";
 
 
 export const RenderModes = {
