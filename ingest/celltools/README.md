@@ -1,0 +1,3 @@
+This is the implementation of a library used by the python conversion scripts for certain cell-related functions to improve performance. An example Makefile is included for a demonstration of how to build and install the library but it may need modification for your system.
+
+A simple test script `test/test.py` is included to verify that the library has been built and installed and is functioning correctly.
